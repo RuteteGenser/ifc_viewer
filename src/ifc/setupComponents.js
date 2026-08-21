@@ -17,7 +17,7 @@ export async function createIfcPipeline() {
   await ifcLoader.setup({
     autoSetWasm: false,
     wasm: {
-      path: "/wasm/",
+      path: `${import.meta.env.BASE_URL}wasm/`,
       absolute: true,
     },
   });

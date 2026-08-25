@@ -116,6 +116,54 @@
   color: #f87171;
 }
 
+/* ---------- Clip plane control ---------- */
+
+.clip-control {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #2b2f38;
+}
+
+.clip-control__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.clip-control__toggle input {
+  accent-color: #3b82f6;
+}
+
+.clip-control__slider {
+  width: 100%;
+  accent-color: #3b82f6;
+}
+
+.clip-control__flip {
+  background: #22262e;
+  color: #e8eaed;
+  border: 1px solid #3a3f4a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.clip-control__flip:hover:not(:disabled) {
+  background: #2a2f38;
+}
+
+.clip-control__flip:disabled,
+.clip-control__toggle input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------- Viewport ---------- */
 
 .viewport-wrapper {

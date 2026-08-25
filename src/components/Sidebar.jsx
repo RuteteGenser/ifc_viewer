@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import ClipPlaneControl from "./ClipPlaneControl";
 
 function ModelRow({ model, onToggleVisible, onRemove }) {
   return (
@@ -33,6 +34,13 @@ export default function Sidebar({
   onRemove,
   isLoading,
   loadingLabel,
+  clipEnabled,
+  onSetClipEnabled,
+  clipInverted,
+  onSetClipInverted,
+  clipHeight,
+  onSetClipHeight,
+  clipRange,
 }) {
   const fileInputRef = useRef(null);
 
@@ -81,6 +89,17 @@ export default function Sidebar({
           ))}
         </ul>
       )}
+
+      <ClipPlaneControl
+        clipEnabled={clipEnabled}
+        onSetClipEnabled={onSetClipEnabled}
+        clipInverted={clipInverted}
+        onSetClipInverted={onSetClipInverted}
+        clipHeight={clipHeight}
+        onSetClipHeight={onSetClipHeight}
+        clipRange={clipRange}
+        disabled={models.length === 0}
+      />
     </aside>
   );
 }

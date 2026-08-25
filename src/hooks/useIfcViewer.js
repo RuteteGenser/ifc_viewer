@@ -11,7 +11,7 @@ function nextId() {
   return `model-${Date.now()}-${uid}`;
 }
 
-function frameCameraOnScene(camera, controls, entries) {
+function getSceneBox(entries) {
   const box = new THREE.Box3();
   let hasContent = false;
   for (const { model, object } of entries) {
@@ -26,7 +26,12 @@ function frameCameraOnScene(camera, controls, entries) {
       hasContent = true;
     }
   }
-  if (!hasContent) return;
+  return hasContent ? box : null;
+}
+
+function frameCameraOnScene(camera, controls, entries) {
+  const box = getSceneBox(entries);
+  if (!box) return;
 
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
@@ -57,6 +62,8 @@ export function useIfcViewer() {
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
+  const rendererRef = useRef(null);
+  const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0));
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
 
   const [models, setModels] = useState([]);
@@ -64,6 +71,10 @@ export function useIfcViewer() {
   const [loadingLabel, setLoadingLabel] = useState("");
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
+  const [clipEnabled, setClipEnabled] = useState(false);
+  const [clipInverted, setClipInverted] = useState(false);
+  const [clipHeight, setClipHeight] = useState(0);
+  const [clipRange, setClipRange] = useState({ min: -5, max: 5 });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -88,10 +99,22 @@ export function useIfcViewer() {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.localClippingEnabled = true;
     container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    controls.enableDamping = false;
+    controls.screenSpacePanning = true;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
@@ -155,8 +178,42 @@ export function useIfcViewer() {
       sceneRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
+      rendererRef.current = null;
       loadedModels.clear();
     };
+  }, []);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const plane = clipPlaneRef.current;
+    if (!renderer) return;
+
+    if (clipInverted) {
+      plane.normal.set(0, 1, 0);
+      plane.constant = -clipHeight;
+    } else {
+      plane.normal.set(0, -1, 0);
+      plane.constant = clipHeight;
+    }
+    renderer.clippingPlanes = clipEnabled ? [plane] : [];
+  }, [clipEnabled, clipHeight, clipInverted]);
+
+  const clipTouchedRef = useRef(false);
+
+  const refreshClipRange = useCallback(() => {
+    const box = getSceneBox(modelsRef.current.values());
+    if (!box) return;
+    const min = box.min.y;
+    const max = box.max.y;
+    setClipRange({ min, max });
+    setClipHeight((prev) =>
+      clipTouchedRef.current ? Math.min(Math.max(prev, min), max) : max,
+    );
+  }, []);
+
+  const handleSetClipHeight = useCallback((value) => {
+    clipTouchedRef.current = true;
+    setClipHeight(value);
   }, []);
 
   const loadFiles = useCallback(async (fileList) => {
@@ -217,18 +274,23 @@ export function useIfcViewer() {
         modelsRef.current.values(),
       );
     }
+    refreshClipRange();
 
     setIsLoading(false);
     setLoadingLabel("");
-  }, []);
+  }, [refreshClipRange]);
 
-  const setVisible = useCallback((modelId, visible) => {
-    const entry = modelsRef.current.get(modelId);
-    if (entry) entry.object.visible = visible;
-    setModels((prev) =>
-      prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
-    );
-  }, []);
+  const setVisible = useCallback(
+    (modelId, visible) => {
+      const entry = modelsRef.current.get(modelId);
+      if (entry) entry.object.visible = visible;
+      setModels((prev) =>
+        prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
+      );
+      refreshClipRange();
+    },
+    [refreshClipRange],
+  );
 
   const removeModel = useCallback(async (modelId) => {
     const pipeline = pipelineRef.current;
@@ -238,13 +300,14 @@ export function useIfcViewer() {
     if (entry && scene) scene.remove(entry.object);
     modelsRef.current.delete(modelId);
     setModels((prev) => prev.filter((m) => m.id !== modelId));
+    refreshClipRange();
 
     try {
       await pipeline?.fragments.core.disposeModel(modelId);
     } catch (err) {
       console.error(`Failed to dispose model ${modelId}`, err);
     }
-  }, []);
+  }, [refreshClipRange]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -259,5 +322,12 @@ export function useIfcViewer() {
     setVisible,
     removeModel,
     clearError,
+    clipEnabled,
+    setClipEnabled,
+    clipInverted,
+    setClipInverted,
+    clipHeight,
+    setClipHeight: handleSetClipHeight,
+    clipRange,
   };
 }

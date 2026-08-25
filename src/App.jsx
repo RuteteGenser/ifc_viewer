@@ -17,6 +17,13 @@ function App() {
     setVisible,
     removeModel,
     clearError,
+    clipEnabled,
+    setClipEnabled,
+    clipInverted,
+    setClipInverted,
+    clipHeight,
+    setClipHeight,
+    clipRange,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -59,6 +66,13 @@ function App() {
         onRemove={removeModel}
         isLoading={isLoading}
         loadingLabel={loadingLabel}
+        clipEnabled={clipEnabled}
+        onSetClipEnabled={setClipEnabled}
+        clipInverted={clipInverted}
+        onSetClipInverted={setClipInverted}
+        clipHeight={clipHeight}
+        onSetClipHeight={setClipHeight}
+        clipRange={clipRange}
       />
 
       <div

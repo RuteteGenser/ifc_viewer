@@ -124,23 +124,83 @@ export function useIfcViewer() {
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
-    // "Grab the model and spin it" rotation (left mouse button): the
-    // camera never moves during this gesture — instead we rotate the
-    // model group around a fixed pivot (its own bounding-sphere center)
-    // using classic arcball math (map cursor position to a point on that
-    // sphere via ray-sphere intersection, then rotate so the point picked
-    // at drag start tracks the current cursor exactly). Recomputing the
-    // rotation fresh from the drag-start snapshot every frame — rather
-    // than integrating small per-frame deltas — means there's no drift
-    // and no dependency on frame timing.
+    // Small marker sphere shown at the current rotation pivot while
+    // dragging, so it's obvious what point the model is spinning around.
+    // Drawn on top of everything and rescaled each frame (see the render
+    // loop) to hold a constant on-screen size at any zoom level.
+    const PIVOT_MARKER_PIXELS = 7;
+    const pivotMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xff6a00, depthTest: false }),
+    );
+    pivotMarker.visible = false;
+    pivotMarker.renderOrder = 999;
+    scene.add(pivotMarker);
+
+    const scalePivotMarker = () => {
+      if (!pivotMarker.visible) return;
+      const distance = camera.position.distanceTo(pivotMarker.position);
+      const worldPerPixel =
+        (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) /
+        renderer.domElement.clientHeight;
+      pivotMarker.scale.setScalar(worldPerPixel * PIVOT_MARKER_PIXELS);
+    };
+
+    // "Orbit the model" rotation (left mouse button). The camera never
+    // moves during the gesture; the model group rotates instead, around
+    // the point under the cursor.
+    //
+    // The whole thing is defined by one invariant:
+    //
+    //     modelQuat === camQuat · virtualQuat(theta, phi)⁻¹
+    //
+    // where virtualQuat is the orientation of an imaginary camera
+    // orbiting an upright model at azimuth `theta` / elevation `phi`,
+    // built with world +Y as its up vector. Rendering the real (fixed)
+    // camera against a model posed this way is pixel-identical to
+    // orbiting a real camera around a static upright model.
+    //
+    // Roll-free by construction: the model's up axis, expressed in
+    // camera space, is
+    //     camQuat⁻¹ · modelQuat · Y  ==  virtualQuat⁻¹ · Y
+    // and since virtualQuat is a +Y-up lookAt, that always has a zero
+    // screen-x component — i.e. the building's vertical stays vertical
+    // on screen and can never tip over, no matter the drag path.
+    //
+    // Note this must be derived from persisted orbit angles rather than
+    // composed onto whatever rotation the group already had: composing
+    // only stays roll-free while the group happens to start upright,
+    // which stops being true after the very first gesture.
     let rotating = false;
     let pendingNdc = null;
     const rotatePivot = new THREE.Vector3();
     let rotateRadius = 1;
-    const rotateV0 = new THREE.Vector3();
+    let startTheta = 0;
+    let startPhi = 0;
+    let startNdcX = 0;
+    let startNdcY = 0;
+    const cameraQuatStart = new THREE.Quaternion();
     const groupQuatStart = new THREE.Quaternion();
     const groupPosStart = new THREE.Vector3();
     const raycaster = new THREE.Raycaster();
+    const WORLD_UP = new THREE.Vector3(0, 1, 0);
+    const EPS = 0.001;
+
+    // Orientation of a camera at `eye` looking at `target`. Uses
+    // Matrix4.lookAt (the camera convention, looking down -Z);
+    // Object3D.lookAt() uses the *object* convention (+Z toward the
+    // target) and would be 180° off.
+    const cameraLookQuaternion = (eye, target) =>
+      new THREE.Quaternion().setFromRotationMatrix(
+        new THREE.Matrix4().lookAt(eye, target, WORLD_UP),
+      );
+
+    const virtualQuaternion = (theta, phi) => {
+      const offset = new THREE.Vector3().setFromSpherical(
+        new THREE.Spherical(1, phi, theta),
+      );
+      return cameraLookQuaternion(offset, new THREE.Vector3(0, 0, 0));
+    };
 
     const getNdc = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -150,38 +210,83 @@ export function useIfcViewer() {
       );
     };
 
-    // Projects a screen point onto the sphere (rotatePivot, rotateRadius),
-    // falling back to the closest point on the sphere to the cursor ray
-    // when the ray misses entirely (dragging past the model's silhouette)
-    // so the rotation stays smooth and well-defined at any drag distance.
-    const raySphereProject = (ndc) => {
+    // Provisional pivot used for the first frames of a drag, until the
+    // (async, worker-backed) geometry raycast comes back with the real
+    // surface point under the cursor. Falls back to the closest point on
+    // the sphere when the ray misses it entirely. The pivot only affects
+    // translation, never the orientation, so it can't upset the
+    // roll-free guarantee above.
+    const raySphereProject = (ndc, center, radius) => {
       raycaster.setFromCamera(ndc, camera);
       const origin = raycaster.ray.origin;
       const dir = raycaster.ray.direction;
-      const oc = origin.clone().sub(rotatePivot);
+      const oc = origin.clone().sub(center);
       const b = oc.dot(dir);
-      const c = oc.dot(oc) - rotateRadius * rotateRadius;
+      const c = oc.dot(oc) - radius * radius;
       const discriminant = b * b - c;
       const t = discriminant >= 0 ? -b - Math.sqrt(discriminant) : -b;
       return origin
         .clone()
         .addScaledVector(dir, t)
-        .sub(rotatePivot)
-        .setLength(rotateRadius)
-        .add(rotatePivot);
+        .sub(center)
+        .setLength(radius)
+        .add(center);
     };
 
     const applyRotation = (ndc) => {
-      const v1 = raySphereProject(ndc).sub(rotatePivot).normalize();
-      const v0 = rotateV0.clone().normalize();
-      const deltaQ = new THREE.Quaternion().setFromUnitVectors(v0, v1);
+      const theta = startTheta - Math.PI * (ndc.x - startNdcX);
+      const phi = Math.max(
+        EPS,
+        Math.min(Math.PI - EPS, startPhi - Math.PI * (ndc.y - startNdcY)),
+      );
 
-      modelsGroup.quaternion.copy(deltaQ).multiply(groupQuatStart);
-      const offset = groupPosStart.clone().sub(rotatePivot).applyQuaternion(deltaQ);
-      modelsGroup.position.copy(rotatePivot).add(offset);
+      const modelQuat = cameraQuatStart
+        .clone()
+        .multiply(virtualQuaternion(theta, phi).invert());
+
+      // World-space rotation applied since the gesture began, used to
+      // swing the group's origin around the pivot so the pivot point
+      // itself stays put.
+      const deltaQ = modelQuat.clone().multiply(groupQuatStart.clone().invert());
+
+      modelsGroup.quaternion.copy(modelQuat);
+      const posOffset = groupPosStart.clone().sub(rotatePivot).applyQuaternion(deltaQ);
+      modelsGroup.position.copy(rotatePivot).add(posOffset);
+    };
+
+    // (Re)base the gesture on the model's current pose and a new pivot.
+    // Because everything is measured relative to this snapshot, doing
+    // this mid-drag swaps the pivot with zero visible jump: at the
+    // instant of the call the accumulated rotation is exactly identity.
+    const anchorGesture = (ndc, pivot) => {
+      rotatePivot.copy(pivot);
+      startNdcX = ndc.x;
+      startNdcY = ndc.y;
+      cameraQuatStart.copy(camera.quaternion);
+      groupQuatStart.copy(modelsGroup.quaternion);
+      groupPosStart.copy(modelsGroup.position);
+
+      // Recover the gesture's starting orbit angles by inverting the
+      // invariant: virtualQuat = modelQuat⁻¹ · camQuat. Reading them
+      // back from the live pose (rather than carrying them in a
+      // long-lived variable) keeps things correct even after a pan or
+      // zoom has moved the camera since the last rotate.
+      const virtualStart = modelsGroup.quaternion
+        .clone()
+        .invert()
+        .multiply(camera.quaternion);
+      const spherical = new THREE.Spherical().setFromVector3(
+        new THREE.Vector3(0, 0, 1).applyQuaternion(virtualStart),
+      );
+      startTheta = spherical.theta;
+      startPhi = spherical.phi;
+
+      pivotMarker.position.copy(rotatePivot);
+      pivotMarker.visible = true;
     };
 
     let activePointerId = null;
+    let gestureSeq = 0;
 
     const onRotateMove = (event) => {
       if (!rotating || event.pointerId !== activePointerId) return;
@@ -192,6 +297,7 @@ export function useIfcViewer() {
       rotating = false;
       activePointerId = null;
       pendingNdc = null;
+      pivotMarker.visible = false;
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
     };
@@ -212,13 +318,32 @@ export function useIfcViewer() {
       event.preventDefault();
 
       const sphere = box.getBoundingSphere(new THREE.Sphere());
-      rotatePivot.copy(sphere.center);
       rotateRadius = Math.max(sphere.radius, 0.001);
-      groupQuatStart.copy(modelsGroup.quaternion);
-      groupPosStart.copy(modelsGroup.position);
 
       const startNdc = getNdc(event);
-      rotateV0.copy(raySphereProject(startNdc)).sub(rotatePivot);
+      const gestureId = ++gestureSeq;
+
+      // Start on a provisional pivot so the drag is responsive
+      // immediately, then swap to the real surface point under the
+      // cursor once the async geometry raycast returns.
+      anchorGesture(startNdc, raySphereProject(startNdc, sphere.center, rotateRadius));
+
+      const pipeline = pipelineRef.current;
+      if (pipeline) {
+        pipeline.fragments
+          .raycast({
+            camera,
+            mouse: new THREE.Vector2(event.clientX, event.clientY),
+            dom: renderer.domElement,
+          })
+          .then((hit) => {
+            // Ignore a result that arrives after this gesture ended or
+            // was superseded by a newer one.
+            if (!hit || !rotating || gestureId !== gestureSeq) return;
+            anchorGesture(pendingNdc ?? startNdc, hit.point);
+          })
+          .catch((err) => console.error("Pivot raycast failed", err));
+      }
 
       rotating = true;
       activePointerId = event.pointerId;
@@ -243,6 +368,7 @@ export function useIfcViewer() {
       frameId = requestAnimationFrame(animate);
       if (rotating && pendingNdc) applyRotation(pendingNdc);
       controls.update();
+      scalePivotMarker();
       pipelineRef.current?.fragments.core.update();
       renderer.render(scene, camera);
     };

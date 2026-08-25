@@ -121,15 +121,27 @@ export function useIfcViewer() {
 
     // Re-center the orbit pivot under the cursor whenever a rotate drag
     // starts on model geometry, so rotating orbits around what you're
-    // looking at instead of a fixed target. Camera position shifts by
-    // the same delta as the target so the view doesn't jump. Clicks that
-    // miss all geometry leave the existing pivot alone — a ground-plane
-    // fallback sounds nice but grazing-angle hits can land arbitrarily
-    // far away and fling the camera off to nowhere on the next rotate.
+    // looking at. The camera itself is never moved here — only `target`
+    // changes, so OrbitControls simply re-aims from the exact same eye
+    // position instead of the whole view jumping/translating. Clicks
+    // that miss all geometry leave the existing pivot alone.
+    let dragMoved = false;
+    const markDragMoved = () => {
+      dragMoved = true;
+    };
+    const clearDragMoved = () => {
+      window.removeEventListener("pointermove", markDragMoved);
+      window.removeEventListener("pointerup", clearDragMoved);
+    };
+
     const pivotOrbitToCursor = async (event) => {
       if (event.button !== 0) return; // only the rotate (left) button
       const pipeline = pipelineRef.current;
       if (!pipeline || modelsRef.current.size === 0) return;
+
+      dragMoved = false;
+      window.addEventListener("pointermove", markDragMoved);
+      window.addEventListener("pointerup", clearDragMoved);
 
       try {
         const hit = await pipeline.fragments.raycast({
@@ -137,12 +149,16 @@ export function useIfcViewer() {
           mouse: new THREE.Vector2(event.clientX, event.clientY),
           dom: renderer.domElement,
         });
-        if (!hit) return;
-        const delta = hit.point.clone().sub(controls.target);
-        controls.target.copy(hit.point);
-        camera.position.add(delta);
+        // If the drag has already started moving by the time the (async,
+        // worker-backed) raycast resolves, retargeting now would yank the
+        // view mid-gesture — skip it and keep the previous pivot instead.
+        if (hit && !dragMoved) {
+          controls.target.copy(hit.point);
+        }
       } catch (err) {
         console.error("Cursor raycast failed", err);
+      } finally {
+        clearDragMoved();
       }
     };
     renderer.domElement.addEventListener("pointerdown", pivotOrbitToCursor);
@@ -196,6 +212,7 @@ export function useIfcViewer() {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", pivotOrbitToCursor);
+      clearDragMoved();
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {

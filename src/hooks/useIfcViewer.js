@@ -126,8 +126,6 @@ export function useIfcViewer() {
     fillLight.position.set(-20, 10, -15);
     scene.add(ambientLight, directionalLight, fillLight);
 
-    const grid = new THREE.GridHelper(100, 100, 0x555b66, 0x33373f);
-    scene.add(grid);
     const axes = new THREE.AxesHelper(5);
     scene.add(axes);
 

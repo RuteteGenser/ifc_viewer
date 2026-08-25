@@ -106,6 +106,7 @@ export function useIfcViewer() {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
     controls.screenSpacePanning = true;
+    controls.zoomToCursor = true;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.PAN,

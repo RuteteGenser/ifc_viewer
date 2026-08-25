@@ -119,6 +119,34 @@ export function useIfcViewer() {
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
+    // Re-center the orbit pivot under the cursor whenever a rotate drag
+    // starts on model geometry, so rotating orbits around what you're
+    // looking at instead of a fixed target. Camera position shifts by
+    // the same delta as the target so the view doesn't jump. Clicks that
+    // miss all geometry leave the existing pivot alone — a ground-plane
+    // fallback sounds nice but grazing-angle hits can land arbitrarily
+    // far away and fling the camera off to nowhere on the next rotate.
+    const pivotOrbitToCursor = async (event) => {
+      if (event.button !== 0) return; // only the rotate (left) button
+      const pipeline = pipelineRef.current;
+      if (!pipeline || modelsRef.current.size === 0) return;
+
+      try {
+        const hit = await pipeline.fragments.raycast({
+          camera,
+          mouse: new THREE.Vector2(event.clientX, event.clientY),
+          dom: renderer.domElement,
+        });
+        if (!hit) return;
+        const delta = hit.point.clone().sub(controls.target);
+        controls.target.copy(hit.point);
+        camera.position.add(delta);
+      } catch (err) {
+        console.error("Cursor raycast failed", err);
+      }
+    };
+    renderer.domElement.addEventListener("pointerdown", pivotOrbitToCursor);
+
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(20, 30, 15);
@@ -167,6 +195,7 @@ export function useIfcViewer() {
       disposed = true;
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", pivotOrbitToCursor);
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {

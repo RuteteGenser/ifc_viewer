@@ -11,16 +11,16 @@ function nextId() {
   return `model-${Date.now()}-${uid}`;
 }
 
+// `object` reflects the *current* world transform (including any rotation
+// applied by the arcball drag below), unlike the fragments library's own
+// `model.box`, which is fixed at load time and would go stale once the
+// model group starts rotating.
 function getSceneBox(entries) {
   const box = new THREE.Box3();
   let hasContent = false;
-  for (const { model, object } of entries) {
+  for (const { object } of entries) {
     if (!object.visible) continue;
-    const modelBox = model.box;
-    const objectBox =
-      modelBox && !modelBox.isEmpty()
-        ? modelBox
-        : new THREE.Box3().setFromObject(object);
+    const objectBox = new THREE.Box3().setFromObject(object);
     if (!objectBox.isEmpty()) {
       box.union(objectBox);
       hasContent = true;
@@ -63,6 +63,7 @@ export function useIfcViewer() {
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const rendererRef = useRef(null);
+  const modelsGroupRef = useRef(null); // THREE.Group holding every loaded model, rotated as a unit
   const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0));
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
 
@@ -87,6 +88,10 @@ export function useIfcViewer() {
     scene.background = new THREE.Color(0x1b1e24);
     sceneRef.current = scene;
 
+    const modelsGroup = new THREE.Group();
+    scene.add(modelsGroup);
+    modelsGroupRef.current = modelsGroup;
+
     const camera = new THREE.PerspectiveCamera(
       60,
       container.clientWidth / container.clientHeight,
@@ -108,7 +113,7 @@ export function useIfcViewer() {
     controls.screenSpacePanning = true;
     controls.zoomToCursor = true;
     controls.mouseButtons = {
-      LEFT: THREE.MOUSE.ROTATE,
+      LEFT: null, // handled by the arcball model-rotation below
       MIDDLE: THREE.MOUSE.PAN,
       RIGHT: THREE.MOUSE.PAN,
     };
@@ -119,49 +124,97 @@ export function useIfcViewer() {
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
-    // Re-center the orbit pivot under the cursor whenever a rotate drag
-    // starts on model geometry, so rotating orbits around what you're
-    // looking at. The camera itself is never moved here — only `target`
-    // changes, so OrbitControls simply re-aims from the exact same eye
-    // position instead of the whole view jumping/translating. Clicks
-    // that miss all geometry leave the existing pivot alone.
-    let dragMoved = false;
-    const markDragMoved = () => {
-      dragMoved = true;
-    };
-    const clearDragMoved = () => {
-      window.removeEventListener("pointermove", markDragMoved);
-      window.removeEventListener("pointerup", clearDragMoved);
+    // "Grab the model and spin it" rotation (left mouse button): the
+    // camera never moves during this gesture — instead we rotate the
+    // model group around a fixed pivot (its own bounding-sphere center)
+    // using classic arcball math (map cursor position to a point on that
+    // sphere via ray-sphere intersection, then rotate so the point picked
+    // at drag start tracks the current cursor exactly). Recomputing the
+    // rotation fresh from the drag-start snapshot every frame — rather
+    // than integrating small per-frame deltas — means there's no drift
+    // and no dependency on frame timing.
+    let rotating = false;
+    let pendingNdc = null;
+    const rotatePivot = new THREE.Vector3();
+    let rotateRadius = 1;
+    const rotateV0 = new THREE.Vector3();
+    const groupQuatStart = new THREE.Quaternion();
+    const groupPosStart = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster();
+
+    const getNdc = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      return new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
     };
 
-    const pivotOrbitToCursor = async (event) => {
+    // Projects a screen point onto the sphere (rotatePivot, rotateRadius),
+    // falling back to the closest point on the sphere to the cursor ray
+    // when the ray misses entirely (dragging past the model's silhouette)
+    // so the rotation stays smooth and well-defined at any drag distance.
+    const raySphereProject = (ndc) => {
+      raycaster.setFromCamera(ndc, camera);
+      const origin = raycaster.ray.origin;
+      const dir = raycaster.ray.direction;
+      const oc = origin.clone().sub(rotatePivot);
+      const b = oc.dot(dir);
+      const c = oc.dot(oc) - rotateRadius * rotateRadius;
+      const discriminant = b * b - c;
+      const t = discriminant >= 0 ? -b - Math.sqrt(discriminant) : -b;
+      return origin
+        .clone()
+        .addScaledVector(dir, t)
+        .sub(rotatePivot)
+        .setLength(rotateRadius)
+        .add(rotatePivot);
+    };
+
+    const applyRotation = (ndc) => {
+      const v1 = raySphereProject(ndc).sub(rotatePivot).normalize();
+      const v0 = rotateV0.clone().normalize();
+      const deltaQ = new THREE.Quaternion().setFromUnitVectors(v0, v1);
+
+      modelsGroup.quaternion.copy(deltaQ).multiply(groupQuatStart);
+      const offset = groupPosStart.clone().sub(rotatePivot).applyQuaternion(deltaQ);
+      modelsGroup.position.copy(rotatePivot).add(offset);
+    };
+
+    const onRotateMove = (event) => {
+      if (!rotating) return;
+      pendingNdc = getNdc(event);
+    };
+    const onRotateEnd = (event) => {
+      if (event.button !== 0) return;
+      rotating = false;
+      pendingNdc = null;
+      window.removeEventListener("pointermove", onRotateMove);
+      window.removeEventListener("pointerup", onRotateEnd);
+    };
+    const onRotateStart = (event) => {
       if (event.button !== 0) return; // only the rotate (left) button
-      const pipeline = pipelineRef.current;
-      if (!pipeline || modelsRef.current.size === 0) return;
+      if (modelsGroup.children.length === 0) return;
 
-      dragMoved = false;
-      window.addEventListener("pointermove", markDragMoved);
-      window.addEventListener("pointerup", clearDragMoved);
+      const box = new THREE.Box3().setFromObject(modelsGroup);
+      if (box.isEmpty()) return;
+      event.preventDefault();
 
-      try {
-        const hit = await pipeline.fragments.raycast({
-          camera,
-          mouse: new THREE.Vector2(event.clientX, event.clientY),
-          dom: renderer.domElement,
-        });
-        // If the drag has already started moving by the time the (async,
-        // worker-backed) raycast resolves, retargeting now would yank the
-        // view mid-gesture — skip it and keep the previous pivot instead.
-        if (hit && !dragMoved) {
-          controls.target.copy(hit.point);
-        }
-      } catch (err) {
-        console.error("Cursor raycast failed", err);
-      } finally {
-        clearDragMoved();
-      }
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      rotatePivot.copy(sphere.center);
+      rotateRadius = Math.max(sphere.radius, 0.001);
+      groupQuatStart.copy(modelsGroup.quaternion);
+      groupPosStart.copy(modelsGroup.position);
+
+      const startNdc = getNdc(event);
+      rotateV0.copy(raySphereProject(startNdc)).sub(rotatePivot);
+
+      rotating = true;
+      pendingNdc = startNdc;
+      window.addEventListener("pointermove", onRotateMove);
+      window.addEventListener("pointerup", onRotateEnd);
     };
-    renderer.domElement.addEventListener("pointerdown", pivotOrbitToCursor);
+    renderer.domElement.addEventListener("pointerdown", onRotateStart);
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -176,6 +229,7 @@ export function useIfcViewer() {
     let frameId;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
+      if (rotating && pendingNdc) applyRotation(pendingNdc);
       controls.update();
       pipelineRef.current?.fragments.core.update();
       renderer.render(scene, camera);
@@ -211,8 +265,9 @@ export function useIfcViewer() {
       disposed = true;
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", pivotOrbitToCursor);
-      clearDragMoved();
+      renderer.domElement.removeEventListener("pointerdown", onRotateStart);
+      window.removeEventListener("pointermove", onRotateMove);
+      window.removeEventListener("pointerup", onRotateEnd);
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
@@ -224,6 +279,7 @@ export function useIfcViewer() {
       cameraRef.current = null;
       controlsRef.current = null;
       rendererRef.current = null;
+      modelsGroupRef.current = null;
       loadedModels.clear();
     };
   }, []);
@@ -263,8 +319,8 @@ export function useIfcViewer() {
 
   const loadFiles = useCallback(async (fileList) => {
     const pipeline = pipelineRef.current;
-    const scene = sceneRef.current;
-    if (!pipeline || !scene) {
+    const modelsGroup = modelsGroupRef.current;
+    if (!pipeline || !modelsGroup) {
       setError("The viewer is still starting up. Please try again in a moment.");
       return;
     }
@@ -293,7 +349,7 @@ export function useIfcViewer() {
         const model = await pipeline.ifcLoader.load(data, true, modelId);
 
         if (cameraRef.current) model.useCamera(cameraRef.current);
-        scene.add(model.object);
+        modelsGroup.add(model.object);
         modelsRef.current.set(modelId, { model, object: model.object });
 
         setModels((prev) => [
@@ -339,10 +395,10 @@ export function useIfcViewer() {
 
   const removeModel = useCallback(async (modelId) => {
     const pipeline = pipelineRef.current;
-    const scene = sceneRef.current;
+    const modelsGroup = modelsGroupRef.current;
     const entry = modelsRef.current.get(modelId);
 
-    if (entry && scene) scene.remove(entry.object);
+    if (entry && modelsGroup) modelsGroup.remove(entry.object);
     modelsRef.current.delete(modelId);
     setModels((prev) => prev.filter((m) => m.id !== modelId));
     refreshClipRange();

@@ -16,6 +16,7 @@ body,
 }
 
 body {
-  background: #14161a;
+  background: #1b1e24;
   color: #e8eaed;
+  overscroll-behavior: none;
 }

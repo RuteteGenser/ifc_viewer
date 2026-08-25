@@ -118,7 +118,7 @@ export function useIfcViewer() {
       RIGHT: THREE.MOUSE.PAN,
     };
     controls.touches = {
-      ONE: THREE.TOUCH.ROTATE,
+      ONE: null, // single-finger drag is handled by the arcball rotation below too
       TWO: THREE.TOUCH.DOLLY_PAN,
     };
     controls.target.set(0, 0, 0);
@@ -181,19 +181,30 @@ export function useIfcViewer() {
       modelsGroup.position.copy(rotatePivot).add(offset);
     };
 
+    let activePointerId = null;
+
     const onRotateMove = (event) => {
-      if (!rotating) return;
+      if (!rotating || event.pointerId !== activePointerId) return;
       pendingNdc = getNdc(event);
     };
     const onRotateEnd = (event) => {
-      if (event.button !== 0) return;
+      if (event.pointerId !== activePointerId) return;
       rotating = false;
+      activePointerId = null;
       pendingNdc = null;
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
     };
     const onRotateStart = (event) => {
-      if (event.button !== 0) return; // only the rotate (left) button
+      // A second touch point landing mid-drag means the gesture just
+      // became a pinch/two-finger pan — hand off to OrbitControls' own
+      // touch handling instead of continuing to spin the model with the
+      // first finger's movement.
+      if (event.pointerType === "touch" && !event.isPrimary) {
+        if (rotating) onRotateEnd({ pointerId: activePointerId });
+        return;
+      }
+      if (event.button !== 0) return; // only the rotate (left) button / primary touch
       if (modelsGroup.children.length === 0) return;
 
       const box = new THREE.Box3().setFromObject(modelsGroup);
@@ -210,6 +221,7 @@ export function useIfcViewer() {
       rotateV0.copy(raySphereProject(startNdc)).sub(rotatePivot);
 
       rotating = true;
+      activePointerId = event.pointerId;
       pendingNdc = startNdc;
       window.addEventListener("pointermove", onRotateMove);
       window.addEventListener("pointerup", onRotateEnd);

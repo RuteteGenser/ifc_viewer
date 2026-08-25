@@ -27,6 +27,7 @@ function App() {
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const dragDepthRef = useRef(0);
 
   const handleDragEnter = useCallback((e) => {
@@ -59,9 +60,31 @@ function App() {
 
   return (
     <div className="app">
+      <button
+        type="button"
+        className="menu-toggle"
+        aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+        onClick={() => setSidebarOpen((open) => !open)}
+      >
+        {sidebarOpen ? "✕" : "☰"}
+      </button>
+
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Close menu"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <Sidebar
+        className={sidebarOpen ? "sidebar--open" : ""}
         models={models}
-        onFilesSelected={loadFiles}
+        onFilesSelected={(files) => {
+          loadFiles(files);
+          setSidebarOpen(false);
+        }}
         onToggleVisible={setVisible}
         onRemove={removeModel}
         isLoading={isLoading}

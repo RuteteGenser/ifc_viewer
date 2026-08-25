@@ -28,6 +28,7 @@ function ModelRow({ model, onToggleVisible, onRemove }) {
 }
 
 export default function Sidebar({
+  className = "",
   models,
   onFilesSelected,
   onToggleVisible,
@@ -45,7 +46,7 @@ export default function Sidebar({
   const fileInputRef = useRef(null);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${className}`.trim()}>
       <h1 className="sidebar__title">IFC Viewer</h1>
 
       <button

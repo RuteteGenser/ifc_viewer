@@ -235,9 +235,12 @@ export function useIfcViewer() {
 
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * (ndc.x - startNdcX);
+      // + on the elevation term: ndc.y grows upward, and dragging up
+      // should tip the model's top away from you (equivalently, raise
+      // the virtual camera), matching OrbitControls' vertical direction.
       const phi = Math.max(
         EPS,
-        Math.min(Math.PI - EPS, startPhi - Math.PI * (ndc.y - startNdcY)),
+        Math.min(Math.PI - EPS, startPhi + Math.PI * (ndc.y - startNdcY)),
       );
 
       const modelQuat = cameraQuatStart

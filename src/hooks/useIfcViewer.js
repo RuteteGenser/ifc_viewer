@@ -394,6 +394,16 @@ export function useIfcViewer() {
 
       const pipeline = pipelineRef.current;
       if (pipeline) {
+        // The fragments library's own raycast resolves asynchronously (it's
+        // worker-backed) and converts its local-space hit back to world
+        // space using modelsGroup's matrixWorld *at the time it resolves*,
+        // not at dispatch time. If the user starts dragging immediately,
+        // the provisional pivot has already started rotating the group by
+        // then, so that conversion lands on wherever the clicked surface
+        // point rotated *to* — not where it was under the cursor at
+        // mousedown. Snapshot the dispatch-time matrix and undo/redo the
+        // library's conversion to recover the true click-time point.
+        const dispatchMatrix = modelsGroup.matrixWorld.clone();
         pipeline.fragments
           .raycast({
             camera,
@@ -404,7 +414,12 @@ export function useIfcViewer() {
             // Ignore a result that arrives after this gesture ended or
             // was superseded by a newer one.
             if (!hit || !rotating || gestureId !== gestureSeq) return;
-            anchorGesture(pendingNdc ?? startNdc, hit.point);
+            modelsGroup.updateMatrixWorld(true);
+            const correction = dispatchMatrix
+              .clone()
+              .multiply(modelsGroup.matrixWorld.clone().invert());
+            const clickTimePoint = hit.point.clone().applyMatrix4(correction);
+            anchorGesture(pendingNdc ?? startNdc, clickTimePoint);
           })
           .catch((err) => console.error("Pivot raycast failed", err));
       }

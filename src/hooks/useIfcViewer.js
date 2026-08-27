@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createIfcPipeline } from "../ifc/setupComponents";
 
 const IFC_EXTENSION = /\.ifc$/i;
 
@@ -66,6 +65,8 @@ export function useIfcViewer() {
   const modelsGroupRef = useRef(null); // THREE.Group holding every loaded model, rotated as a unit
   const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0));
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
+  const invalidateGroupSphereRef = useRef(() => {});
+  const requestRenderRef = useRef(() => {});
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -91,6 +92,37 @@ export function useIfcViewer() {
     const modelsGroup = new THREE.Group();
     scene.add(modelsGroup);
     modelsGroupRef.current = modelsGroup;
+
+    // Bounding sphere of `modelsGroup`, cached in the group's own local
+    // frame (so it survives the group's rotation/translation during an
+    // arcball drag, both of which are rigid transforms that preserve a
+    // sphere's radius) and only recomputed when the model set or a model's
+    // visibility actually changes (see invalidateGroupSphere below), rather
+    // than on every rotate-gesture pointerdown — `Box3.setFromObject` walks
+    // the whole geometry tree, so recomputing it per-gesture is wasteful
+    // for large models.
+    let groupSphereLocal = null; // { center: Vector3 in modelsGroup-local space, radius }
+    const invalidateGroupSphere = () => {
+      groupSphereLocal = null;
+    };
+    const getGroupSphere = () => {
+      if (!groupSphereLocal) {
+        if (modelsGroup.children.length === 0) return null;
+        const box = new THREE.Box3().setFromObject(modelsGroup);
+        if (box.isEmpty()) return null;
+        const worldSphere = box.getBoundingSphere(new THREE.Sphere());
+        groupSphereLocal = {
+          center: modelsGroup.worldToLocal(worldSphere.center.clone()),
+          radius: worldSphere.radius,
+        };
+      }
+      modelsGroup.updateMatrixWorld(true);
+      return {
+        center: modelsGroup.localToWorld(groupSphereLocal.center.clone()),
+        radius: groupSphereLocal.radius,
+      };
+    };
+    invalidateGroupSphereRef.current = invalidateGroupSphere;
 
     const camera = new THREE.PerspectiveCamera(
       60,
@@ -123,6 +155,34 @@ export function useIfcViewer() {
     };
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
+
+    // On-demand rendering: the actual GPU draw (`renderer.render`) only
+    // needs to happen when something visible has actually changed, not on
+    // every RAF tick — otherwise the viewer keeps rendering at 60fps
+    // forever even while the user is just looking at a static model.
+    // `controls.update()` and the fragments worker sync stay unconditional
+    // since they're comparatively cheap bookkeeping (and the latter drives
+    // progressive geometry streaming, which shouldn't depend on the camera
+    // having moved).
+    let needsRender = true;
+    const requestRender = () => {
+      needsRender = true;
+    };
+    requestRenderRef.current = requestRender;
+    controls.addEventListener("change", requestRender);
+
+    // Suppress the browser's native middle-click autoscroll (the little
+    // scroll-icon drag mode most browsers activate on a middle-button
+    // mousedown) — it fights with OrbitControls' own middle-button pan for
+    // the first frame or two, which looked like a jump/stutter right after
+    // the click.
+    const suppressMiddleClickAutoscroll = (event) => {
+      if (event.button === 1) event.preventDefault();
+    };
+    renderer.domElement.addEventListener(
+      "mousedown",
+      suppressMiddleClickAutoscroll,
+    );
 
     // Small marker sphere shown at the current rotation pivot while
     // dragging, so it's obvious what point the model is spinning around.
@@ -286,6 +346,7 @@ export function useIfcViewer() {
 
       pivotMarker.position.copy(rotatePivot);
       pivotMarker.visible = true;
+      requestRender();
     };
 
     let activePointerId = null;
@@ -301,6 +362,7 @@ export function useIfcViewer() {
       activePointerId = null;
       pendingNdc = null;
       pivotMarker.visible = false;
+      requestRender();
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
     };
@@ -316,11 +378,10 @@ export function useIfcViewer() {
       if (event.button !== 0) return; // only the rotate (left) button / primary touch
       if (modelsGroup.children.length === 0) return;
 
-      const box = new THREE.Box3().setFromObject(modelsGroup);
-      if (box.isEmpty()) return;
+      const sphere = getGroupSphere();
+      if (!sphere) return;
       event.preventDefault();
 
-      const sphere = box.getBoundingSphere(new THREE.Sphere());
       rotateRadius = Math.max(sphere.radius, 0.001);
 
       const startNdc = getNdc(event);
@@ -369,10 +430,15 @@ export function useIfcViewer() {
     let frameId;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
-      if (rotating && pendingNdc) applyRotation(pendingNdc);
+      if (rotating && pendingNdc) {
+        applyRotation(pendingNdc);
+        requestRender();
+      }
       controls.update();
-      scalePivotMarker();
       pipelineRef.current?.fragments.core.update();
+      if (!needsRender) return;
+      needsRender = false;
+      scalePivotMarker();
       renderer.render(scene, camera);
     };
     animate();
@@ -384,10 +450,16 @@ export function useIfcViewer() {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      requestRender();
     });
     resizeObserver.observe(container);
 
-    createIfcPipeline()
+    // Loaded lazily so the canvas/UI can paint first — this pulls in
+    // @thatopen/components, the fragments worker, and the web-ifc wasm
+    // setup, which would otherwise be part of the initial JS the browser
+    // has to parse/execute before anything is on screen.
+    import("../ifc/setupComponents")
+      .then(({ createIfcPipeline }) => createIfcPipeline())
       .then((pipeline) => {
         if (disposed) return;
         pipelineRef.current = pipeline;
@@ -407,8 +479,13 @@ export function useIfcViewer() {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onRotateStart);
+      renderer.domElement.removeEventListener(
+        "mousedown",
+        suppressMiddleClickAutoscroll,
+      );
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
+      controls.removeEventListener("change", requestRender);
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
@@ -438,6 +515,7 @@ export function useIfcViewer() {
       plane.constant = clipHeight;
     }
     renderer.clippingPlanes = clipEnabled ? [plane] : [];
+    requestRenderRef.current();
   }, [clipEnabled, clipHeight, clipInverted]);
 
   const clipTouchedRef = useRef(false);
@@ -492,6 +570,8 @@ export function useIfcViewer() {
         if (cameraRef.current) model.useCamera(cameraRef.current);
         modelsGroup.add(model.object);
         modelsRef.current.set(modelId, { model, object: model.object });
+        invalidateGroupSphereRef.current();
+        requestRenderRef.current();
 
         setModels((prev) => [
           ...prev,
@@ -526,6 +606,8 @@ export function useIfcViewer() {
     (modelId, visible) => {
       const entry = modelsRef.current.get(modelId);
       if (entry) entry.object.visible = visible;
+      invalidateGroupSphereRef.current();
+      requestRenderRef.current();
       setModels((prev) =>
         prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
       );
@@ -541,6 +623,8 @@ export function useIfcViewer() {
 
     if (entry && modelsGroup) modelsGroup.remove(entry.object);
     modelsRef.current.delete(modelId);
+    invalidateGroupSphereRef.current();
+    requestRenderRef.current();
     setModels((prev) => prev.filter((m) => m.id !== modelId));
     refreshClipRange();
 

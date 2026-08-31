@@ -5,6 +5,7 @@ import Sidebar from "./components/Sidebar";
 import DropOverlay from "./components/DropOverlay";
 import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
+import ElementInfoPanel from "./components/ElementInfoPanel";
 import "./App.css";
 
 function App() {
@@ -26,6 +27,14 @@ function App() {
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
+    cameraClipEnabled,
+    setCameraClipEnabled,
+    cameraClipDistance,
+    setCameraClipDistance,
+    cameraClipRange,
+    selectedElement,
+    selectedElementLoading,
+    clearSelection,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -96,6 +105,11 @@ function App() {
         hasClipPlane={hasClipPlane}
         onFlipClipPlane={flipClipPlane}
         onClearClipPlane={clearClipPlane}
+        cameraClipEnabled={cameraClipEnabled}
+        onSetCameraClipEnabled={setCameraClipEnabled}
+        cameraClipDistance={cameraClipDistance}
+        onSetCameraClipDistance={setCameraClipDistance}
+        cameraClipRange={cameraClipRange}
       />
 
       <div
@@ -123,6 +137,12 @@ function App() {
           onClose={closeContextMenu}
         />
       )}
+
+      <ElementInfoPanel
+        element={selectedElement}
+        loading={selectedElementLoading}
+        onClose={clearSelection}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
+import CameraClipControl from "./CameraClipControl";
 
 function ModelRow({ model, onToggleVisible, onRemove }) {
   return (
@@ -40,6 +41,11 @@ export default function Sidebar({
   hasClipPlane,
   onFlipClipPlane,
   onClearClipPlane,
+  cameraClipEnabled,
+  onSetCameraClipEnabled,
+  cameraClipDistance,
+  onSetCameraClipDistance,
+  cameraClipRange,
 }) {
   const fileInputRef = useRef(null);
 
@@ -95,6 +101,15 @@ export default function Sidebar({
         hasClipPlane={hasClipPlane}
         onFlipClipPlane={onFlipClipPlane}
         onClearClipPlane={onClearClipPlane}
+      />
+
+      <CameraClipControl
+        cameraClipEnabled={cameraClipEnabled}
+        onSetCameraClipEnabled={onSetCameraClipEnabled}
+        cameraClipDistance={cameraClipDistance}
+        onSetCameraClipDistance={onSetCameraClipDistance}
+        cameraClipRange={cameraClipRange}
+        disabled={models.length === 0}
       />
     </aside>
   );

@@ -67,9 +67,13 @@ export function useIfcViewer() {
   const clipPlaneLocalRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)); // modelsGroup-local space, source of truth
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const invalidateGroupSphereRef = useRef(() => {});
+  const getGroupSphereRef = useRef(() => null);
   const requestRenderRef = useRef(() => {});
   const hasClipPlaneRef = useRef(false);
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
+  const cameraClipPlaneRef = useRef(new THREE.Plane());
+  const cameraClipEnabledRef = useRef(false);
+  const cameraClipDistanceRef = useRef(10);
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,6 +83,11 @@ export function useIfcViewer() {
   const [clipEnabled, setClipEnabled] = useState(false);
   const [hasClipPlane, setHasClipPlane] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
+  const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
+  const [cameraClipDistance, setCameraClipDistanceState] = useState(10);
+  const [cameraClipRange, setCameraClipRange] = useState({ min: 0, max: 20 });
+  const [selectedElement, setSelectedElement] = useState(null);
+  const [selectedElementLoading, setSelectedElementLoading] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -125,6 +134,7 @@ export function useIfcViewer() {
       };
     };
     invalidateGroupSphereRef.current = invalidateGroupSphere;
+    getGroupSphereRef.current = getGroupSphere;
 
     const camera = new THREE.PerspectiveCamera(
       60,
@@ -401,6 +411,61 @@ export function useIfcViewer() {
       requestRender();
     };
 
+    // A left-click (mousedown+mouseup with barely any movement) selects
+    // the element under the cursor and shows its IFC properties; a real
+    // drag past this threshold is a rotate gesture instead. Reuses the
+    // exact same raycast already dispatched for the rotation pivot below
+    // (same screen position) rather than firing a second one.
+    const CLICK_MOVE_THRESHOLD = 5;
+    let downClientX = 0;
+    let downClientY = 0;
+    let pivotRaycastPromise = null;
+
+    const formatElementData = (data) => {
+      const psets = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
+      return {
+        category: data._category?.value ?? "Unknown",
+        name: data.Name?.value ?? null,
+        guid: data._guid?.value ?? null,
+        objectType: data.ObjectType?.value ?? null,
+        tag: data.Tag?.value ?? null,
+        propertySets: psets
+          .filter((pset) => Array.isArray(pset.HasProperties))
+          .map((pset) => ({
+            name: pset.Name?.value ?? "Property set",
+            properties: pset.HasProperties.map((prop) => ({
+              name: prop.Name?.value ?? "",
+              value: prop.NominalValue?.value ?? prop.Value?.value ?? null,
+            })),
+          })),
+      };
+    };
+
+    const selectElementFrom = async (raycastPromise) => {
+      if (!raycastPromise) {
+        setSelectedElement(null);
+        return;
+      }
+      setSelectedElementLoading(true);
+      try {
+        const hit = await raycastPromise;
+        if (!hit) {
+          setSelectedElement(null);
+          return;
+        }
+        const [data] = await hit.fragments.getItemsData([hit.localId], {
+          attributesDefault: true,
+          relations: { IsDefinedBy: { attributes: true, relations: true } },
+        });
+        setSelectedElement(data ? formatElementData(data) : null);
+      } catch (err) {
+        console.error("Failed to fetch element properties", err);
+        setSelectedElement(null);
+      } finally {
+        setSelectedElementLoading(false);
+      }
+    };
+
     let activePointerId = null;
     let gestureSeq = 0;
 
@@ -417,6 +482,13 @@ export function useIfcViewer() {
       requestRender();
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
+
+      if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+        const moved = Math.hypot(event.clientX - downClientX, event.clientY - downClientY);
+        if (moved < CLICK_MOVE_THRESHOLD) {
+          selectElementFrom(pivotRaycastPromise);
+        }
+      }
     };
     const onRotateStart = (event) => {
       // A second touch point landing mid-drag means the gesture just
@@ -434,6 +506,10 @@ export function useIfcViewer() {
       if (!sphere) return;
       event.preventDefault();
 
+      downClientX = event.clientX;
+      downClientY = event.clientY;
+      pivotRaycastPromise = null;
+
       rotateRadius = Math.max(sphere.radius, 0.001);
 
       const startNdc = getNdc(event);
@@ -446,23 +522,26 @@ export function useIfcViewer() {
 
       const pipeline = pipelineRef.current;
       if (pipeline) {
-        // hit.point is already expressed in modelsGroup's *current* frame
-        // (the fragments library converts its local-space hit to world
-        // space using matrixWorld as of when the raycast resolves), which
-        // is exactly the frame anchorGesture needs: it re-captures
-        // groupPosStart/groupQuatStart from the model's current live pose,
-        // so the pivot must be consistent with "now", not with the pose at
-        // mousedown.
-        pipeline.fragments
-          .raycast({
-            camera,
-            mouse: new THREE.Vector2(event.clientX, event.clientY),
-            dom: renderer.domElement,
-          })
+        // Also reused by onRotateEnd for element selection if this turns
+        // out to be a click rather than a drag — same screen position, no
+        // need to raycast twice.
+        pivotRaycastPromise = pipeline.fragments.raycast({
+          camera,
+          mouse: new THREE.Vector2(event.clientX, event.clientY),
+          dom: renderer.domElement,
+        });
+        pivotRaycastPromise
           .then((hit) => {
             // Ignore a result that arrives after this gesture ended or
             // was superseded by a newer one.
             if (!hit || !rotating || gestureId !== gestureSeq) return;
+            // hit.point is already expressed in modelsGroup's *current*
+            // frame (the fragments library converts its local-space hit
+            // to world space using matrixWorld as of when the raycast
+            // resolves), which is exactly the frame anchorGesture needs:
+            // it re-captures groupPosStart/groupQuatStart from the
+            // model's current live pose, so the pivot must be consistent
+            // with "now", not with the pose at mousedown.
             anchorGesture(pendingNdc ?? startNdc, hit.point);
           })
           .catch((err) => console.error("Pivot raycast failed", err));
@@ -519,6 +598,20 @@ export function useIfcViewer() {
         const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
         clipPlaneRef.current.normal.copy(worldNormal);
         clipPlaneRef.current.constant = -worldNormal.dot(pointOnPlaneWorld);
+      }
+      if (cameraClipEnabledRef.current) {
+        // Always perpendicular to the view direction, at an adjustable
+        // distance in front of the camera — a manual "peel" plane so
+        // zooming in doesn't dip inside geometry (ugly backfaces/interior)
+        // but instead shows a clean cross-section. Kept region is
+        // whatever is *beyond* the plane along the view direction
+        // (farther from the camera than cameraClipDistance); the near
+        // side (between the camera and the plane) is discarded.
+        const forward = camera.getWorldDirection(new THREE.Vector3());
+        const planePoint = camera.position
+          .clone()
+          .addScaledVector(forward, cameraClipDistanceRef.current);
+        cameraClipPlaneRef.current.setFromNormalAndCoplanarPoint(forward, planePoint);
       }
       renderer.render(scene, camera);
     };
@@ -590,12 +683,46 @@ export function useIfcViewer() {
   }, [hasClipPlane]);
 
   useEffect(() => {
+    cameraClipEnabledRef.current = cameraClipEnabled;
+  }, [cameraClipEnabled]);
+
+  useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    renderer.clippingPlanes =
-      clipEnabled && hasClipPlane ? [clipPlaneRef.current] : [];
+    const planes = [];
+    if (clipEnabled && hasClipPlane) planes.push(clipPlaneRef.current);
+    if (cameraClipEnabled) planes.push(cameraClipPlaneRef.current);
+    renderer.clippingPlanes = planes;
     requestRenderRef.current();
-  }, [clipEnabled, hasClipPlane]);
+  }, [clipEnabled, hasClipPlane, cameraClipEnabled]);
+
+  const setCameraClipEnabled = useCallback((enabled) => {
+    if (enabled) {
+      // The kept region is whatever lies *beyond* cameraClipDistance
+      // along the view direction, so distance 0 keeps everything already
+      // in front of the camera (nothing clipped) and increasing it peels
+      // away more of the near side. Default to 0 so enabling this never
+      // suddenly hides anything; range up to just past the model's far
+      // edge (as seen from the camera) so the slider can peel through
+      // the whole thing.
+      const camera = cameraRef.current;
+      const sphere = getGroupSphereRef.current();
+      const far = camera && sphere
+        ? camera.position.distanceTo(sphere.center) + sphere.radius
+        : 10;
+      const max = Math.max(far * 1.05, 0.1);
+      setCameraClipRange({ min: 0, max });
+      setCameraClipDistanceState(0);
+      cameraClipDistanceRef.current = 0;
+    }
+    setCameraClipEnabledState(enabled);
+  }, []);
+
+  const setCameraClipDistance = useCallback((value) => {
+    cameraClipDistanceRef.current = value;
+    setCameraClipDistanceState(value);
+    requestRenderRef.current();
+  }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -739,6 +866,7 @@ export function useIfcViewer() {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
+  const clearSelection = useCallback(() => setSelectedElement(null), []);
 
   return {
     containerRef,
@@ -759,5 +887,13 @@ export function useIfcViewer() {
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
+    cameraClipEnabled,
+    setCameraClipEnabled,
+    cameraClipDistance,
+    setCameraClipDistance,
+    cameraClipRange,
+    selectedElement,
+    selectedElementLoading,
+    clearSelection,
   };
 }

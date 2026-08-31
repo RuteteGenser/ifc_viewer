@@ -127,7 +127,15 @@ export function useIfcViewer() {
           radius: worldSphere.radius,
         };
       }
-      modelsGroup.updateMatrixWorld(true);
+      // Only modelsGroup's own matrixWorld is needed here (not any
+      // child's), and its parent (the scene) never moves, so this cheap
+      // update is exactly equivalent to a full updateMatrixWorld(true)
+      // for our purposes — without recursing into every child mesh.
+      // Matters now that this is called on every zoom wheel tick (not
+      // just once per rotate-gesture start), which can fire very
+      // frequently on a trackpad.
+      modelsGroup.updateMatrix();
+      modelsGroup.matrixWorld.copy(modelsGroup.matrix);
       return {
         center: modelsGroup.localToWorld(groupSphereLocal.center.clone()),
         radius: groupSphereLocal.radius,
@@ -155,6 +163,11 @@ export function useIfcViewer() {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
     controls.screenSpacePanning = true;
+    // Mouse-wheel zoom is intercepted and replaced by the cursor-relative
+    // version below (see onZoomWheel), but zoomToCursor/enableZoom stay
+    // on so two-finger touch pinch-zoom — which OrbitControls handles
+    // via an entirely separate (non-'wheel') code path gated on these
+    // same flags — keeps working on mobile exactly as before.
     controls.zoomToCursor = true;
     controls.mouseButtons = {
       LEFT: null, // handled by the arcball model-rotation below
@@ -381,6 +394,60 @@ export function useIfcViewer() {
         .setLength(radius)
         .add(center);
     };
+
+    // Custom zoom, intercepting mouse-wheel events before OrbitControls'
+    // own built-in wheel-zoom ever sees them (same window+capture-phase
+    // trick as onCtrlWheel above, needed since both would otherwise be
+    // listening on the very same element). OrbitControls' own dolly
+    // always scales by a percentage of the distance to controls.target,
+    // never to whatever's actually under the cursor — for a large model
+    // where target sits far from the pointed-at detail, that makes zoom
+    // feel wildly too coarse or too fine. This uses the distance to the
+    // point under the cursor (via the same ray-sphere projection used
+    // for the rotate pivot) as the basis instead. Touch pinch-zoom is
+    // untouched — it's a completely separate code path in OrbitControls
+    // that never dispatches 'wheel' events, so enableZoom/zoomToCursor
+    // are left on for it.
+    const onZoomWheel = (event) => {
+      if (event.ctrlKey) return; // handled by onCtrlWheel instead
+      if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const ndc = getNdc(event);
+      const sphere = getGroupSphere();
+      const cursorPoint = sphere
+        ? raySphereProject(ndc, sphere.center, Math.max(sphere.radius, 0.001))
+        : controls.target;
+      raycaster.setFromCamera(ndc, camera);
+      const dir = raycaster.ray.direction; // camera -> into the scene, through the cursor
+
+      const prevDistance = camera.position.distanceTo(cursorPoint);
+      // Same formula OrbitControls' own default zoomSpeed uses, so
+      // scroll "feel" (speed scaling with how hard/fast you scroll) is
+      // unchanged — only the distance basis changes.
+      const scale = Math.pow(0.95, Math.abs(event.deltaY) * 0.01);
+      const zoomingIn = event.deltaY < 0;
+      const rawDistance = zoomingIn ? prevDistance * scale : prevDistance / scale;
+      const minDistance = Math.max(camera.near * 4, 1e-3);
+      const newDistance = Math.max(rawDistance, minDistance);
+      const radiusDelta = prevDistance - newDistance;
+
+      camera.position.addScaledVector(dir, radiusDelta);
+
+      // Keep target exactly on the camera's *current* forward axis (not
+      // at cursorPoint, which is generally off-center) so the next
+      // controls.update()'s unconditional object.lookAt(target) is a
+      // no-op and doesn't reorient the camera — only its distance
+      // changes. Mirrors what OrbitControls' own zoomToCursor does after
+      // a cursor-biased dolly.
+      const forward = camera.getWorldDirection(new THREE.Vector3());
+      controls.target.copy(camera.position).addScaledVector(forward, newDistance);
+
+      requestRender();
+    };
+    window.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
 
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * (ndc.x - startNdcX);
@@ -683,6 +750,7 @@ export function useIfcViewer() {
         suppressMiddleClickAutoscroll,
       );
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("wheel", onZoomWheel, { capture: true });
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);

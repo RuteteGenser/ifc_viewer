@@ -168,9 +168,14 @@
   margin: 0;
 }
 
-.clip-control__slider {
+.clip-control__number-input {
   width: 100%;
-  accent-color: #3b82f6;
+  background: #22262e;
+  color: #e8eaed;
+  border: 1px solid #3a3f4a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
 .camera-clip-control {

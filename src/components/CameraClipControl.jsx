@@ -3,12 +3,8 @@ export default function CameraClipControl({
   onSetCameraClipEnabled,
   cameraClipDistance,
   onSetCameraClipDistance,
-  cameraClipRange,
   disabled,
 }) {
-  const { min, max } = cameraClipRange;
-  const span = Math.max(max - min, 0.001);
-
   return (
     <div className="clip-control camera-clip-control">
       <div className="sidebar__section-title">Camera clip</div>
@@ -25,13 +21,15 @@ export default function CameraClipControl({
       {cameraClipEnabled && (
         <>
           <input
-            type="range"
-            className="clip-control__slider"
-            min={min}
-            max={max}
-            step={span / 200}
+            type="number"
+            className="clip-control__number-input"
+            min="0"
+            step="0.1"
             value={cameraClipDistance}
-            onChange={(e) => onSetCameraClipDistance(Number(e.target.value))}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              if (!Number.isNaN(value)) onSetCameraClipDistance(value);
+            }}
           />
           <p className="clip-control__hint">
             Distance from camera to the cut plane.

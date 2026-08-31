@@ -67,14 +67,12 @@ export function useIfcViewer() {
   const clipPlaneLocalRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)); // modelsGroup-local space, source of truth
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const invalidateGroupSphereRef = useRef(() => {});
-  const getGroupSphereRef = useRef(() => null);
-  const nearestModelHitRef = useRef(() => null);
   const requestRenderRef = useRef(() => {});
   const hasClipPlaneRef = useRef(false);
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
-  const cameraClipDistanceRef = useRef(10);
+  const cameraClipDistanceRef = useRef(0);
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -85,8 +83,7 @@ export function useIfcViewer() {
   const [hasClipPlane, setHasClipPlane] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
   const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
-  const [cameraClipDistance, setCameraClipDistanceState] = useState(10);
-  const [cameraClipRange, setCameraClipRange] = useState({ min: 0, max: 20 });
+  const [cameraClipDistance, setCameraClipDistanceState] = useState(0);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
 
@@ -206,8 +203,6 @@ export function useIfcViewer() {
       return best;
     };
     invalidateGroupSphereRef.current = invalidateGroupSphere;
-    getGroupSphereRef.current = getGroupSphere;
-    nearestModelHitRef.current = nearestModelHit;
 
     const camera = new THREE.PerspectiveCamera(
       60,
@@ -875,49 +870,12 @@ export function useIfcViewer() {
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
       // The kept region is whatever lies *beyond* cameraClipDistance
-      // along the view direction, so a distance at/before the model's
-      // near edge keeps everything (nothing clipped) and increasing it
-      // peels away more of the near side. Bound the range around where
-      // the model actually is (roughly its near-to-far extent) rather
-      // than [0, far] — for a model framed the usual way (camera pulled
-      // back to several times the model's size) the sphere radius is a
-      // small fraction of the camera distance, so a [0, far] range left
-      // almost the whole slider doing nothing and the small part that
-      // mattered moving fast per pixel/step. The lower bound reaches
-      // well past the near edge, toward the camera, so the plane can
-      // also be pulled in tight against the camera itself.
-      //
-      // Prefer whatever model is actually in front of the camera
-      // (nearestModelHit) over the whole-group sphere for dist/radius —
-      // with several models of very different scale loaded together
-      // (e.g. a building plus a much larger landscape), the combined
-      // sphere is dominated by the largest one and produces a range
-      // sized for the whole scene rather than for what's being looked
-      // at, which is why this could otherwise span e.g. 10-100 while
-      // only values under 10 were ever useful for the model in view.
-      const camera = cameraRef.current;
-      const forward = camera ? camera.getWorldDirection(new THREE.Vector3()) : null;
-      const hit =
-        camera && forward ? nearestModelHitRef.current(camera.position, forward) : null;
-      const sphere = getGroupSphereRef.current();
-      const dist = hit
-        ? hit.t
-        : camera && sphere
-          ? camera.position.distanceTo(sphere.center)
-          : 10;
-      const radius = hit ? hit.radius : sphere ? sphere.radius : 5;
-      const near = Math.max(dist - radius, 0);
-      const far = dist + radius;
-      const margin = radius * 0.1;
-      // Reach much closer to the camera than the model's own near
-      // surface, so the plane can be pulled in tight against the lens
-      // (e.g. when zoomed in close) instead of only ranging across the
-      // model itself.
-      const min = Math.max(near / 5, 0);
-      const max = far + margin;
-      setCameraClipRange({ min, max });
-      setCameraClipDistanceState(min);
-      cameraClipDistanceRef.current = min;
+      // along the view direction, so 0 always means "nothing clipped"
+      // regardless of model scale or camera distance — no need to
+      // inspect the scene's geometry for a default. The user dials in
+      // the actual cut distance themselves via the number input.
+      cameraClipDistanceRef.current = 0;
+      setCameraClipDistanceState(0);
     }
     setCameraClipEnabledState(enabled);
   }, []);
@@ -1095,7 +1053,6 @@ export function useIfcViewer() {
     setCameraClipEnabled,
     cameraClipDistance,
     setCameraClipDistance,
-    cameraClipRange,
     selectedElement,
     selectedElementLoading,
     clearSelection,

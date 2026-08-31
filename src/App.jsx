@@ -31,7 +31,6 @@ function App() {
     setCameraClipEnabled,
     cameraClipDistance,
     setCameraClipDistance,
-    cameraClipRange,
     selectedElement,
     selectedElementLoading,
     clearSelection,
@@ -109,7 +108,6 @@ function App() {
         onSetCameraClipEnabled={setCameraClipEnabled}
         cameraClipDistance={cameraClipDistance}
         onSetCameraClipDistance={setCameraClipDistance}
-        cameraClipRange={cameraClipRange}
       />
 
       <div

@@ -45,7 +45,6 @@ export default function Sidebar({
   onSetCameraClipEnabled,
   cameraClipDistance,
   onSetCameraClipDistance,
-  cameraClipRange,
 }) {
   const fileInputRef = useRef(null);
 
@@ -108,7 +107,6 @@ export default function Sidebar({
         onSetCameraClipEnabled={onSetCameraClipEnabled}
         cameraClipDistance={cameraClipDistance}
         onSetCameraClipDistance={onSetCameraClipDistance}
-        cameraClipRange={cameraClipRange}
         disabled={models.length === 0}
       />
     </aside>

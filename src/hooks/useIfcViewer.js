@@ -726,13 +726,15 @@ export function useIfcViewer() {
       // The kept region is whatever lies *beyond* cameraClipDistance
       // along the view direction, so a distance at/before the model's
       // near edge keeps everything (nothing clipped) and increasing it
-      // peels away more of the near side. Bound the range tightly around
-      // where the model actually is (near edge to far edge, plus a small
-      // margin) rather than [0, far] — for a model framed the usual way
-      // (camera pulled back to several times the model's size) the
-      // sphere radius is a small fraction of the camera distance, so a
-      // [0, far] range left almost the whole slider doing nothing and
-      // the small part that mattered moving fast per pixel/step.
+      // peels away more of the near side. Bound the range around where
+      // the model actually is (roughly its near-to-far extent) rather
+      // than [0, far] — for a model framed the usual way (camera pulled
+      // back to several times the model's size) the sphere radius is a
+      // small fraction of the camera distance, so a [0, far] range left
+      // almost the whole slider doing nothing and the small part that
+      // mattered moving fast per pixel/step. The lower bound reaches
+      // well past the near edge, toward the camera, so the plane can
+      // also be pulled in tight against the camera itself.
       const camera = cameraRef.current;
       const sphere = getGroupSphereRef.current();
       const dist = camera && sphere ? camera.position.distanceTo(sphere.center) : 10;
@@ -740,7 +742,11 @@ export function useIfcViewer() {
       const near = Math.max(dist - radius, 0);
       const far = dist + radius;
       const margin = radius * 0.1;
-      const min = Math.max(near - margin, 0);
+      // Reach much closer to the camera than the model's own near
+      // surface, so the plane can be pulled in tight against the lens
+      // (e.g. when zoomed in close) instead of only ranging across the
+      // model itself.
+      const min = Math.max(near / 5, 0);
       const max = far + margin;
       setCameraClipRange({ min, max });
       setCameraClipDistanceState(min);

@@ -63,7 +63,8 @@ export function useIfcViewer() {
   const controlsRef = useRef(null);
   const rendererRef = useRef(null);
   const modelsGroupRef = useRef(null); // THREE.Group holding every loaded model, rotated as a unit
-  const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0));
+  const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)); // world-space, derived each frame from clipPlaneLocalRef
+  const clipPlaneLocalRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)); // modelsGroup-local space, source of truth
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
@@ -217,7 +218,7 @@ export function useIfcViewer() {
     // before OrbitControls' own wheel listener on `renderer.domElement`;
     // registration order alone wouldn't guarantee that, since both would
     // otherwise be listening on the very same element.
-    const CLIP_SCROLL_SENSITIVITY = 0.02;
+    const CLIP_SCROLL_SENSITIVITY = 0.004;
     const onCtrlWheel = (event) => {
       if (!event.ctrlKey) return;
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
@@ -226,7 +227,11 @@ export function useIfcViewer() {
       event.preventDefault();
       event.stopPropagation();
       if (!hasClipPlaneRef.current) return;
-      clipPlaneRef.current.constant -= event.deltaY * CLIP_SCROLL_SENSITIVITY;
+      // Move the plane in its own local frame — same reasoning as the
+      // render loop's re-derivation: the local plane is the source of
+      // truth, and the world-space clipPlaneRef is only ever a per-frame
+      // projection of it.
+      clipPlaneLocalRef.current.constant -= event.deltaY * CLIP_SCROLL_SENSITIVITY;
       requestRender();
     };
     window.addEventListener("wheel", onCtrlWheel, { capture: true, passive: false });
@@ -490,6 +495,31 @@ export function useIfcViewer() {
       if (!needsRender) return;
       needsRender = false;
       scalePivotMarker();
+      if (hasClipPlaneRef.current) {
+        // The clip plane is authored in modelsGroup's local frame so it
+        // rotates together with the model instead of staying fixed in
+        // world space — which, since the *camera* never actually moves
+        // during a rotate gesture, is what made it look like the plane
+        // was stuck to the camera/view instead of the surface it was
+        // created on. Re-derive the world-space plane every frame from
+        // the model's current pose. Avoids the full recursive
+        // updateMatrixWorld(true) (which would also update every child
+        // mesh) since only modelsGroup's own matrix is needed here, and
+        // its parent (the scene) never moves.
+        modelsGroup.updateMatrix();
+        modelsGroup.matrixWorld.copy(modelsGroup.matrix);
+        const localPlane = clipPlaneLocalRef.current;
+        const worldNormal = localPlane.normal
+          .clone()
+          .applyQuaternion(modelsGroup.quaternion)
+          .normalize();
+        const pointOnPlaneLocal = localPlane.normal
+          .clone()
+          .multiplyScalar(-localPlane.constant);
+        const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
+        clipPlaneRef.current.normal.copy(worldNormal);
+        clipPlaneRef.current.constant = -worldNormal.dot(pointOnPlaneWorld);
+      }
       renderer.render(scene, camera);
     };
     animate();
@@ -576,13 +606,24 @@ export function useIfcViewer() {
     const hit = await pending.promise;
     if (!hit || !hit.normal) return;
 
-    // "Clip in front of the surface": keep the far/behind side, discard
-    // the near side. A THREE.js clipping plane keeps the half-space where
-    // normal·X + constant >= 0, so the kept region is the side the
-    // surface's own (outward-facing) normal points *away* from.
-    const plane = clipPlaneRef.current;
-    plane.normal.copy(hit.normal).negate();
-    plane.constant = -plane.normal.dot(hit.point);
+    const modelsGroup = modelsGroupRef.current;
+    if (!modelsGroup) return;
+    modelsGroup.updateMatrixWorld(true);
+
+    // Store the plane in modelsGroup's local frame (see the render loop)
+    // so it rotates together with the model instead of staying fixed in
+    // world space. "Clip in front of the surface": keep the far/behind
+    // side, discard the near side — a THREE.js clipping plane keeps the
+    // half-space where normal·X + constant >= 0, so the kept region is
+    // the side the surface's own (outward-facing) normal points *away*
+    // from.
+    const invQuat = modelsGroup.quaternion.clone().invert();
+    const localNormal = hit.normal.clone().applyQuaternion(invQuat).negate();
+    const localPoint = modelsGroup.worldToLocal(hit.point.clone());
+
+    const plane = clipPlaneLocalRef.current;
+    plane.normal.copy(localNormal);
+    plane.constant = -plane.normal.dot(localPoint);
 
     setHasClipPlane(true);
     setClipEnabled(true);
@@ -590,7 +631,7 @@ export function useIfcViewer() {
   }, []);
 
   const flipClipPlane = useCallback(() => {
-    const plane = clipPlaneRef.current;
+    const plane = clipPlaneLocalRef.current;
     plane.normal.negate();
     plane.constant *= -1;
     requestRenderRef.current();

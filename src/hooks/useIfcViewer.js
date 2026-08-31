@@ -67,6 +67,8 @@ export function useIfcViewer() {
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
+  const hasClipPlaneRef = useRef(false);
+  const pendingSurfacePickRef = useRef(null); // { id, promise } | null
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,9 +76,8 @@ export function useIfcViewer() {
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
   const [clipEnabled, setClipEnabled] = useState(false);
-  const [clipInverted, setClipInverted] = useState(false);
-  const [clipHeight, setClipHeight] = useState(0);
-  const [clipRange, setClipRange] = useState({ min: -5, max: 5 });
+  const [hasClipPlane, setHasClipPlane] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
 
   useEffect(() => {
     const container = containerRef.current;
@@ -147,7 +148,7 @@ export function useIfcViewer() {
     controls.mouseButtons = {
       LEFT: null, // handled by the arcball model-rotation below
       MIDDLE: THREE.MOUSE.PAN,
-      RIGHT: THREE.MOUSE.PAN,
+      RIGHT: null, // right-click opens a context menu instead (see below)
     };
     controls.touches = {
       ONE: null, // single-finger drag is handled by the arcball rotation below too
@@ -183,6 +184,52 @@ export function useIfcViewer() {
       "mousedown",
       suppressMiddleClickAutoscroll,
     );
+
+    // Right-click opens a context menu (see App.jsx) instead of the
+    // browser's native one. Kick off the surface raycast immediately so
+    // it's ready (or close to it) by the time the user picks a menu item;
+    // the menu itself opens without waiting on it.
+    let contextMenuSeq = 0;
+    const onContextMenu = (event) => {
+      event.preventDefault();
+      const pipeline = pipelineRef.current;
+      const id = ++contextMenuSeq;
+      const promise = pipeline
+        ? pipeline.fragments
+            .raycast({
+              camera,
+              mouse: new THREE.Vector2(event.clientX, event.clientY),
+              dom: renderer.domElement,
+            })
+            .catch((err) => {
+              console.error("Surface pick failed", err);
+              return null;
+            })
+        : Promise.resolve(null);
+      pendingSurfacePickRef.current = { id, promise };
+      setContextMenu({ x: event.clientX, y: event.clientY });
+    };
+    renderer.domElement.addEventListener("contextmenu", onContextMenu);
+
+    // Ctrl+scroll moves the active clip plane along its own normal instead
+    // of zooming (and instead of the browser's page-zoom). Attached to
+    // `window` with `capture: true` so it runs — and can stop the event —
+    // before OrbitControls' own wheel listener on `renderer.domElement`;
+    // registration order alone wouldn't guarantee that, since both would
+    // otherwise be listening on the very same element.
+    const CLIP_SCROLL_SENSITIVITY = 0.02;
+    const onCtrlWheel = (event) => {
+      if (!event.ctrlKey) return;
+      if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (!hasClipPlaneRef.current) return;
+      clipPlaneRef.current.constant -= event.deltaY * CLIP_SCROLL_SENSITIVITY;
+      requestRender();
+    };
+    window.addEventListener("wheel", onCtrlWheel, { capture: true, passive: false });
 
     // Small marker sphere shown at the current rotation pivot while
     // dragging, so it's obvious what point the model is spinning around.
@@ -394,16 +441,13 @@ export function useIfcViewer() {
 
       const pipeline = pipelineRef.current;
       if (pipeline) {
-        // The fragments library's own raycast resolves asynchronously (it's
-        // worker-backed) and converts its local-space hit back to world
-        // space using modelsGroup's matrixWorld *at the time it resolves*,
-        // not at dispatch time. If the user starts dragging immediately,
-        // the provisional pivot has already started rotating the group by
-        // then, so that conversion lands on wherever the clicked surface
-        // point rotated *to* — not where it was under the cursor at
-        // mousedown. Snapshot the dispatch-time matrix and undo/redo the
-        // library's conversion to recover the true click-time point.
-        const dispatchMatrix = modelsGroup.matrixWorld.clone();
+        // hit.point is already expressed in modelsGroup's *current* frame
+        // (the fragments library converts its local-space hit to world
+        // space using matrixWorld as of when the raycast resolves), which
+        // is exactly the frame anchorGesture needs: it re-captures
+        // groupPosStart/groupQuatStart from the model's current live pose,
+        // so the pivot must be consistent with "now", not with the pose at
+        // mousedown.
         pipeline.fragments
           .raycast({
             camera,
@@ -414,12 +458,7 @@ export function useIfcViewer() {
             // Ignore a result that arrives after this gesture ended or
             // was superseded by a newer one.
             if (!hit || !rotating || gestureId !== gestureSeq) return;
-            modelsGroup.updateMatrixWorld(true);
-            const correction = dispatchMatrix
-              .clone()
-              .multiply(modelsGroup.matrixWorld.clone().invert());
-            const clickTimePoint = hit.point.clone().applyMatrix4(correction);
-            anchorGesture(pendingNdc ?? startNdc, clickTimePoint);
+            anchorGesture(pendingNdc ?? startNdc, hit.point);
           })
           .catch((err) => console.error("Pivot raycast failed", err));
       }
@@ -438,9 +477,6 @@ export function useIfcViewer() {
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
     fillLight.position.set(-20, 10, -15);
     scene.add(ambientLight, directionalLight, fillLight);
-
-    const axes = new THREE.AxesHelper(5);
-    scene.add(axes);
 
     let frameId;
     const animate = () => {
@@ -498,6 +534,8 @@ export function useIfcViewer() {
         "mousedown",
         suppressMiddleClickAutoscroll,
       );
+      renderer.domElement.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
       controls.removeEventListener("change", requestRender);
@@ -518,37 +556,49 @@ export function useIfcViewer() {
   }, []);
 
   useEffect(() => {
+    hasClipPlaneRef.current = hasClipPlane;
+  }, [hasClipPlane]);
+
+  useEffect(() => {
     const renderer = rendererRef.current;
-    const plane = clipPlaneRef.current;
     if (!renderer) return;
-
-    if (clipInverted) {
-      plane.normal.set(0, 1, 0);
-      plane.constant = -clipHeight;
-    } else {
-      plane.normal.set(0, -1, 0);
-      plane.constant = clipHeight;
-    }
-    renderer.clippingPlanes = clipEnabled ? [plane] : [];
+    renderer.clippingPlanes =
+      clipEnabled && hasClipPlane ? [clipPlaneRef.current] : [];
     requestRenderRef.current();
-  }, [clipEnabled, clipHeight, clipInverted]);
+  }, [clipEnabled, hasClipPlane]);
 
-  const clipTouchedRef = useRef(false);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-  const refreshClipRange = useCallback(() => {
-    const box = getSceneBox(modelsRef.current.values());
-    if (!box) return;
-    const min = box.min.y;
-    const max = box.max.y;
-    setClipRange({ min, max });
-    setClipHeight((prev) =>
-      clipTouchedRef.current ? Math.min(Math.max(prev, min), max) : max,
-    );
+  const createClipPlaneHere = useCallback(async () => {
+    const pending = pendingSurfacePickRef.current;
+    setContextMenu(null);
+    if (!pending) return;
+    const hit = await pending.promise;
+    if (!hit || !hit.normal) return;
+
+    // "Clip in front of the surface": keep the far/behind side, discard
+    // the near side. A THREE.js clipping plane keeps the half-space where
+    // normal·X + constant >= 0, so the kept region is the side the
+    // surface's own (outward-facing) normal points *away* from.
+    const plane = clipPlaneRef.current;
+    plane.normal.copy(hit.normal).negate();
+    plane.constant = -plane.normal.dot(hit.point);
+
+    setHasClipPlane(true);
+    setClipEnabled(true);
+    requestRenderRef.current();
   }, []);
 
-  const handleSetClipHeight = useCallback((value) => {
-    clipTouchedRef.current = true;
-    setClipHeight(value);
+  const flipClipPlane = useCallback(() => {
+    const plane = clipPlaneRef.current;
+    plane.normal.negate();
+    plane.constant *= -1;
+    requestRenderRef.current();
+  }, []);
+
+  const clearClipPlane = useCallback(() => {
+    setHasClipPlane(false);
+    setClipEnabled(false);
   }, []);
 
   const loadFiles = useCallback(async (fileList) => {
@@ -611,11 +661,10 @@ export function useIfcViewer() {
         modelsRef.current.values(),
       );
     }
-    refreshClipRange();
 
     setIsLoading(false);
     setLoadingLabel("");
-  }, [refreshClipRange]);
+  }, []);
 
   const setVisible = useCallback(
     (modelId, visible) => {
@@ -626,9 +675,8 @@ export function useIfcViewer() {
       setModels((prev) =>
         prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
       );
-      refreshClipRange();
     },
-    [refreshClipRange],
+    [],
   );
 
   const removeModel = useCallback(async (modelId) => {
@@ -641,14 +689,13 @@ export function useIfcViewer() {
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
     setModels((prev) => prev.filter((m) => m.id !== modelId));
-    refreshClipRange();
 
     try {
       await pipeline?.fragments.core.disposeModel(modelId);
     } catch (err) {
       console.error(`Failed to dispose model ${modelId}`, err);
     }
-  }, [refreshClipRange]);
+  }, []);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -665,10 +712,11 @@ export function useIfcViewer() {
     clearError,
     clipEnabled,
     setClipEnabled,
-    clipInverted,
-    setClipInverted,
-    clipHeight,
-    setClipHeight: handleSetClipHeight,
-    clipRange,
+    hasClipPlane,
+    flipClipPlane,
+    clearClipPlane,
+    contextMenu,
+    closeContextMenu,
+    createClipPlaneHere,
   };
 }

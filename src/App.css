@@ -162,12 +162,19 @@
   accent-color: #3b82f6;
 }
 
-.clip-control__slider {
-  width: 100%;
-  accent-color: #3b82f6;
+.clip-control__hint {
+  font-size: 12px;
+  color: #9aa0aa;
+  margin: 0;
 }
 
-.clip-control__flip {
+.clip-control__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.clip-control__flip,
+.clip-control__remove {
   background: #22262e;
   color: #e8eaed;
   border: 1px solid #3a3f4a;
@@ -175,16 +182,52 @@
   padding: 6px 10px;
   font-size: 13px;
   cursor: pointer;
+  flex: 1;
 }
 
-.clip-control__flip:hover:not(:disabled) {
+.clip-control__flip:hover,
+.clip-control__remove:hover {
   background: #2a2f38;
 }
 
-.clip-control__flip:disabled,
 .clip-control__toggle input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---------- Context menu ---------- */
+
+.context-menu {
+  position: fixed;
+  z-index: 50;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: #22262e;
+  border: 1px solid #3a3f4a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 180px;
+}
+
+.context-menu li {
+  display: block;
+}
+
+.context-menu button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e8eaed;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.context-menu button:hover {
+  background: #3a3f4a;
 }
 
 /* ---------- Viewport ---------- */

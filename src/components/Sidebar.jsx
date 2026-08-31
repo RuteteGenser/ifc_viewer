@@ -37,11 +37,9 @@ export default function Sidebar({
   loadingLabel,
   clipEnabled,
   onSetClipEnabled,
-  clipInverted,
-  onSetClipInverted,
-  clipHeight,
-  onSetClipHeight,
-  clipRange,
+  hasClipPlane,
+  onFlipClipPlane,
+  onClearClipPlane,
 }) {
   const fileInputRef = useRef(null);
 
@@ -94,12 +92,9 @@ export default function Sidebar({
       <ClipPlaneControl
         clipEnabled={clipEnabled}
         onSetClipEnabled={onSetClipEnabled}
-        clipInverted={clipInverted}
-        onSetClipInverted={onSetClipInverted}
-        clipHeight={clipHeight}
-        onSetClipHeight={onSetClipHeight}
-        clipRange={clipRange}
-        disabled={models.length === 0}
+        hasClipPlane={hasClipPlane}
+        onFlipClipPlane={onFlipClipPlane}
+        onClearClipPlane={onClearClipPlane}
       />
     </aside>
   );

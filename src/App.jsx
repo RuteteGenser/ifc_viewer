@@ -4,6 +4,7 @@ import Viewport from "./components/Viewport";
 import Sidebar from "./components/Sidebar";
 import DropOverlay from "./components/DropOverlay";
 import StatusBanner from "./components/StatusBanner";
+import ContextMenu from "./components/ContextMenu";
 import "./App.css";
 
 function App() {
@@ -19,11 +20,12 @@ function App() {
     clearError,
     clipEnabled,
     setClipEnabled,
-    clipInverted,
-    setClipInverted,
-    clipHeight,
-    setClipHeight,
-    clipRange,
+    hasClipPlane,
+    flipClipPlane,
+    clearClipPlane,
+    contextMenu,
+    closeContextMenu,
+    createClipPlaneHere,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -91,11 +93,9 @@ function App() {
         loadingLabel={loadingLabel}
         clipEnabled={clipEnabled}
         onSetClipEnabled={setClipEnabled}
-        clipInverted={clipInverted}
-        onSetClipInverted={setClipInverted}
-        clipHeight={clipHeight}
-        onSetClipHeight={setClipHeight}
-        clipRange={clipRange}
+        hasClipPlane={hasClipPlane}
+        onFlipClipPlane={flipClipPlane}
+        onClearClipPlane={clearClipPlane}
       />
 
       <div
@@ -114,6 +114,15 @@ function App() {
           onDismissError={clearError}
         />
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onCreateClipPlane={createClipPlaneHere}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 }

@@ -68,6 +68,7 @@ export function useIfcViewer() {
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const invalidateGroupSphereRef = useRef(() => {});
   const getGroupSphereRef = useRef(() => null);
+  const nearestModelHitRef = useRef(() => null);
   const requestRenderRef = useRef(() => {});
   const hasClipPlaneRef = useRef(false);
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
@@ -113,8 +114,19 @@ export function useIfcViewer() {
     // the whole geometry tree, so recomputing it per-gesture is wasteful
     // for large models.
     let groupSphereLocal = null; // { center: Vector3 in modelsGroup-local space, radius }
+    // Per-model bounding spheres, cached the same way as groupSphereLocal
+    // but keyed by modelId. A single sphere spanning every loaded model
+    // (groupSphereLocal) is a fine proxy for "the scale of what's in
+    // view" only when there's roughly one model — once a much larger
+    // model (e.g. a low-poly city/landscape) shares the group with a
+    // much smaller one (e.g. a house), the combined sphere is dominated
+    // by the larger model and no longer reflects what's actually under
+    // the cursor or in front of the camera. nearestModelHit below uses
+    // these instead wherever that distinction matters.
+    let modelSpheresLocal = null; // Map<modelId, { center: Vector3 local, radius }>
     const invalidateGroupSphere = () => {
       groupSphereLocal = null;
+      modelSpheresLocal = null;
     };
     const getGroupSphere = () => {
       if (!groupSphereLocal) {
@@ -141,8 +153,61 @@ export function useIfcViewer() {
         radius: groupSphereLocal.radius,
       };
     };
+    const getModelSpheres = () => {
+      if (!modelSpheresLocal) {
+        modelSpheresLocal = new Map();
+        for (const [modelId, entry] of modelsRef.current) {
+          const box = new THREE.Box3().setFromObject(entry.object);
+          if (box.isEmpty()) continue;
+          const worldSphere = box.getBoundingSphere(new THREE.Sphere());
+          modelSpheresLocal.set(modelId, {
+            center: modelsGroup.worldToLocal(worldSphere.center.clone()),
+            radius: worldSphere.radius,
+          });
+        }
+      }
+      modelsGroup.updateMatrix();
+      modelsGroup.matrixWorld.copy(modelsGroup.matrix);
+      const spheres = [];
+      for (const [modelId, local] of modelSpheresLocal) {
+        const entry = modelsRef.current.get(modelId);
+        if (!entry || !entry.object.visible) continue;
+        spheres.push({
+          center: modelsGroup.localToWorld(local.center.clone()),
+          radius: Math.max(local.radius, 0.001),
+        });
+      }
+      return spheres;
+    };
+    // Finds where a ray first meets any loaded model's own bounding
+    // sphere (not one sphere spanning every loaded model — see the
+    // comment on modelSpheresLocal above for why that distinction
+    // matters). Handles the ray origin being inside a sphere by using
+    // the exit point ahead of it rather than the entry point behind it,
+    // which matters once the camera is zoomed in close to/inside the
+    // model being viewed. Returns { point, t, radius } for the nearest
+    // hit ahead of origin, or null if the ray misses every model.
+    const nearestModelHit = (origin, dir) => {
+      let best = null;
+      for (const { center, radius } of getModelSpheres()) {
+        const oc = origin.clone().sub(center);
+        const b = oc.dot(dir);
+        const c = oc.dot(oc) - radius * radius;
+        const discriminant = b * b - c;
+        if (discriminant < 0) continue;
+        const sqrtDisc = Math.sqrt(discriminant);
+        const tNear = -b - sqrtDisc;
+        const t = tNear > 0 ? tNear : -b + sqrtDisc;
+        if (t <= 0) continue;
+        if (!best || t < best.t) {
+          best = { t, radius, point: origin.clone().addScaledVector(dir, t) };
+        }
+      }
+      return best;
+    };
     invalidateGroupSphereRef.current = invalidateGroupSphere;
     getGroupSphereRef.current = getGroupSphere;
+    nearestModelHitRef.current = nearestModelHit;
 
     const camera = new THREE.PerspectiveCamera(
       60,
@@ -403,11 +468,17 @@ export function useIfcViewer() {
     // never to whatever's actually under the cursor — for a large model
     // where target sits far from the pointed-at detail, that makes zoom
     // feel wildly too coarse or too fine. This uses the distance to the
-    // point under the cursor (via the same ray-sphere projection used
-    // for the rotate pivot) as the basis instead. Touch pinch-zoom is
-    // untouched — it's a completely separate code path in OrbitControls
-    // that never dispatches 'wheel' events, so enableZoom/zoomToCursor
-    // are left on for it.
+    // point under the cursor as the basis instead, found via
+    // nearestModelHit against each loaded model's own bounding sphere
+    // (not one sphere spanning every loaded model — critical once models
+    // of very different scale, e.g. a building plus a much larger
+    // landscape, are loaded together: a combined sphere is dominated by
+    // the largest model and gives a wildly wrong distance for anything
+    // else). Falls back to the old whole-group projection only when the
+    // cursor is over genuinely empty space (no model hit at all). Touch
+    // pinch-zoom is untouched — it's a completely separate code path in
+    // OrbitControls that never dispatches 'wheel' events, so
+    // enableZoom/zoomToCursor are left on for it.
     const onZoomWheel = (event) => {
       if (event.ctrlKey) return; // handled by onCtrlWheel instead
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
@@ -416,12 +487,15 @@ export function useIfcViewer() {
       event.preventDefault();
       event.stopPropagation();
       const ndc = getNdc(event);
-      const sphere = getGroupSphere();
-      const cursorPoint = sphere
-        ? raySphereProject(ndc, sphere.center, Math.max(sphere.radius, 0.001))
-        : controls.target;
       raycaster.setFromCamera(ndc, camera);
       const dir = raycaster.ray.direction; // camera -> into the scene, through the cursor
+      const hit = nearestModelHit(raycaster.ray.origin, dir);
+      const sphere = getGroupSphere();
+      const cursorPoint = hit
+        ? hit.point
+        : sphere
+          ? raySphereProject(ndc, sphere.center, sphere.radius)
+          : controls.target;
 
       const prevDistance = camera.position.distanceTo(cursorPoint);
       // Same formula OrbitControls' own default zoomSpeed uses, so
@@ -611,8 +685,17 @@ export function useIfcViewer() {
 
       // Start on a provisional pivot so the drag is responsive
       // immediately, then swap to the real surface point under the
-      // cursor once the async geometry raycast returns.
-      anchorGesture(startNdc, raySphereProject(startNdc, sphere.center, rotateRadius));
+      // cursor once the async geometry raycast returns. Prefer the
+      // model actually under the cursor (nearestModelHit) over the
+      // whole-group sphere, which can be dominated by a much larger
+      // co-loaded model (e.g. a landscape alongside a building) and
+      // land the provisional pivot far from where the user clicked.
+      raycaster.setFromCamera(startNdc, camera);
+      const startHit = nearestModelHit(raycaster.ray.origin, raycaster.ray.direction);
+      anchorGesture(
+        startNdc,
+        startHit ? startHit.point : raySphereProject(startNdc, sphere.center, rotateRadius),
+      );
 
       const pipeline = pipelineRef.current;
       if (pipeline) {
@@ -803,10 +886,26 @@ export function useIfcViewer() {
       // mattered moving fast per pixel/step. The lower bound reaches
       // well past the near edge, toward the camera, so the plane can
       // also be pulled in tight against the camera itself.
+      //
+      // Prefer whatever model is actually in front of the camera
+      // (nearestModelHit) over the whole-group sphere for dist/radius —
+      // with several models of very different scale loaded together
+      // (e.g. a building plus a much larger landscape), the combined
+      // sphere is dominated by the largest one and produces a range
+      // sized for the whole scene rather than for what's being looked
+      // at, which is why this could otherwise span e.g. 10-100 while
+      // only values under 10 were ever useful for the model in view.
       const camera = cameraRef.current;
+      const forward = camera ? camera.getWorldDirection(new THREE.Vector3()) : null;
+      const hit =
+        camera && forward ? nearestModelHitRef.current(camera.position, forward) : null;
       const sphere = getGroupSphereRef.current();
-      const dist = camera && sphere ? camera.position.distanceTo(sphere.center) : 10;
-      const radius = sphere ? sphere.radius : 5;
+      const dist = hit
+        ? hit.t
+        : camera && sphere
+          ? camera.position.distanceTo(sphere.center)
+          : 10;
+      const radius = hit ? hit.radius : sphere ? sphere.radius : 5;
       const near = Math.max(dist - radius, 0);
       const far = dist + radius;
       const margin = radius * 0.1;

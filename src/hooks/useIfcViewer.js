@@ -196,6 +196,42 @@ export function useIfcViewer() {
       suppressMiddleClickAutoscroll,
     );
 
+    // Clipping planes only discard pixels at render time — the mesh/BVH
+    // data a raycast walks is completely untouched by them. Without this,
+    // rotating, selecting, or placing a clip plane after cutting into the
+    // model would happily hit geometry that's currently invisible behind
+    // the cut. When no plane is active this reduces to the plain
+    // nearest-hit raycast (fast path); when one or more are active it
+    // collects every hit along the ray from every loaded model and
+    // returns the closest one that isn't discarded by any active plane,
+    // using the exact same normal·X + constant >= 0 "kept" convention
+    // clipPlaneRef/cameraClipPlaneRef are already built around.
+    const raycastVisible = async (clientX, clientY) => {
+      const data = {
+        camera,
+        mouse: new THREE.Vector2(clientX, clientY),
+        dom: renderer.domElement,
+      };
+      const activePlanes = renderer.clippingPlanes;
+      if (activePlanes.length === 0) {
+        const pipeline = pipelineRef.current;
+        return pipeline ? pipeline.fragments.raycast(data) : null;
+      }
+      const allHits = [];
+      for (const entry of modelsRef.current.values()) {
+        const hits = await entry.model.raycastAll(data);
+        if (hits) allHits.push(...hits);
+      }
+      if (allHits.length === 0) return null;
+      allHits.sort((a, b) => a.distance - b.distance);
+      const EPS = 1e-4;
+      return (
+        allHits.find((hit) =>
+          activePlanes.every((plane) => plane.distanceToPoint(hit.point) >= -EPS),
+        ) ?? null
+      );
+    };
+
     // Right-click opens a context menu (see App.jsx) instead of the
     // browser's native one. Kick off the surface raycast immediately so
     // it's ready (or close to it) by the time the user picks a menu item;
@@ -203,20 +239,11 @@ export function useIfcViewer() {
     let contextMenuSeq = 0;
     const onContextMenu = (event) => {
       event.preventDefault();
-      const pipeline = pipelineRef.current;
       const id = ++contextMenuSeq;
-      const promise = pipeline
-        ? pipeline.fragments
-            .raycast({
-              camera,
-              mouse: new THREE.Vector2(event.clientX, event.clientY),
-              dom: renderer.domElement,
-            })
-            .catch((err) => {
-              console.error("Surface pick failed", err);
-              return null;
-            })
-        : Promise.resolve(null);
+      const promise = raycastVisible(event.clientX, event.clientY).catch((err) => {
+        console.error("Surface pick failed", err);
+        return null;
+      });
       pendingSurfacePickRef.current = { id, promise };
       setContextMenu({ x: event.clientX, y: event.clientY });
     };
@@ -524,12 +551,10 @@ export function useIfcViewer() {
       if (pipeline) {
         // Also reused by onRotateEnd for element selection if this turns
         // out to be a click rather than a drag — same screen position, no
-        // need to raycast twice.
-        pivotRaycastPromise = pipeline.fragments.raycast({
-          camera,
-          mouse: new THREE.Vector2(event.clientX, event.clientY),
-          dom: renderer.domElement,
-        });
+        // need to raycast twice. raycastVisible skips anything hidden
+        // behind an active clip plane, so rotating/selecting after a cut
+        // pivots on what's actually on screen.
+        pivotRaycastPromise = raycastVisible(event.clientX, event.clientY);
         pivotRaycastPromise
           .then((hit) => {
             // Ignore a result that arrives after this gesture ended or
@@ -699,21 +724,27 @@ export function useIfcViewer() {
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
       // The kept region is whatever lies *beyond* cameraClipDistance
-      // along the view direction, so distance 0 keeps everything already
-      // in front of the camera (nothing clipped) and increasing it peels
-      // away more of the near side. Default to 0 so enabling this never
-      // suddenly hides anything; range up to just past the model's far
-      // edge (as seen from the camera) so the slider can peel through
-      // the whole thing.
+      // along the view direction, so a distance at/before the model's
+      // near edge keeps everything (nothing clipped) and increasing it
+      // peels away more of the near side. Bound the range tightly around
+      // where the model actually is (near edge to far edge, plus a small
+      // margin) rather than [0, far] — for a model framed the usual way
+      // (camera pulled back to several times the model's size) the
+      // sphere radius is a small fraction of the camera distance, so a
+      // [0, far] range left almost the whole slider doing nothing and
+      // the small part that mattered moving fast per pixel/step.
       const camera = cameraRef.current;
       const sphere = getGroupSphereRef.current();
-      const far = camera && sphere
-        ? camera.position.distanceTo(sphere.center) + sphere.radius
-        : 10;
-      const max = Math.max(far * 1.05, 0.1);
-      setCameraClipRange({ min: 0, max });
-      setCameraClipDistanceState(0);
-      cameraClipDistanceRef.current = 0;
+      const dist = camera && sphere ? camera.position.distanceTo(sphere.center) : 10;
+      const radius = sphere ? sphere.radius : 5;
+      const near = Math.max(dist - radius, 0);
+      const far = dist + radius;
+      const margin = radius * 0.1;
+      const min = Math.max(near - margin, 0);
+      const max = far + margin;
+      setCameraClipRange({ min, max });
+      setCameraClipDistanceState(min);
+      cameraClipDistanceRef.current = min;
     }
     setCameraClipEnabledState(enabled);
   }, []);

@@ -63,12 +63,10 @@ export function useIfcViewer() {
   const controlsRef = useRef(null);
   const rendererRef = useRef(null);
   const modelsGroupRef = useRef(null); // THREE.Group holding every loaded model, rotated as a unit
-  const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)); // world-space, derived each frame from clipPlaneLocalRef
-  const clipPlaneLocalRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)); // modelsGroup-local space, source of truth
+  const clipPlaneManagerRef = useRef(null); // { add, remove, flip, setEnabled, setGizmoVisible, list } | null
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
-  const hasClipPlaneRef = useRef(false);
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
@@ -79,8 +77,7 @@ export function useIfcViewer() {
   const [loadingLabel, setLoadingLabel] = useState("");
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
-  const [clipEnabled, setClipEnabled] = useState(false);
-  const [hasClipPlane, setHasClipPlane] = useState(false);
+  const [clipPlanes, setClipPlanes] = useState([]); // [{ id, enabled, gizmoVisible }]
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
   const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
   const [cameraClipDistance, setCameraClipDistanceState] = useState(1);
@@ -276,6 +273,140 @@ export function useIfcViewer() {
     requestRenderRef.current = requestRender;
     controls.addEventListener("change", requestRender);
 
+    // Multiple independent surface clip planes, each created via
+    // right-click "Create clip plane here". Each plane's definition
+    // (localPlane) lives in modelsGroup's local frame — same reasoning as
+    // the single-plane version this replaces: the camera never moves
+    // during a rotate gesture, so a world-fixed plane would appear to
+    // swing through the model instead of staying put on the surface it
+    // was created on; re-deriving the world-space plane every frame from
+    // the model's current pose (see the render loop below) keeps it
+    // glued there. Each plane also gets a translucent, draggable "gizmo"
+    // mesh, parented under modelsGroup so it inherits the model's
+    // rotation for free (no manual per-frame world-quaternion math needed
+    // for the mesh, unlike the clipping plane itself, which THREE.js
+    // requires in world space) — it visualizes where the cut is and, when
+    // its own gizmoVisible flag is on, can be shift+dragged along its own
+    // normal (see onRotateStart/onClipPlaneDragMove below).
+    let clipPlaneUid = 0;
+    const clipPlanesRuntime = []; // { id, localPlane, worldPlane, mesh, enabled, gizmoVisible }
+    // A simple quad (2 triangles sharing one diagonal) rather than a
+    // many-segment circle/fan: a triangle fan's segments all share the
+    // center vertex, and anti-aliased edge coverage gets blended twice
+    // at each shared edge under transparency — visible as a faint
+    // radiating moiré/seam pattern across the whole disc. A quad has
+    // only one internal edge, so this artifact is negligible.
+    const gizmoGeometry = new THREE.PlaneGeometry(1, 1);
+    const GIZMO_UP = new THREE.Vector3(0, 0, 1); // PlaneGeometry lies in XY, facing +Z
+
+    const refreshClippingPlanes = () => {
+      const planes = clipPlanesRuntime.filter((p) => p.enabled).map((p) => p.worldPlane);
+      if (cameraClipEnabledRef.current) planes.push(cameraClipPlaneRef.current);
+      renderer.clippingPlanes = planes;
+      requestRender();
+    };
+
+    // Repositions/reorients/rescales a plane's gizmo mesh from its local
+    // plane definition. Only needs to run when the local plane itself
+    // changes (creation, flip, drag) or the model's overall scale
+    // reference changes — not every frame, since the mesh is parented
+    // under modelsGroup and inherits its rotation automatically.
+    const syncGizmoMesh = (entry) => {
+      const { localPlane, mesh } = entry;
+      const sphere = getGroupSphere();
+      const scale = sphere ? Math.max(sphere.radius * 2.6, 1) : 10;
+      const pointOnPlaneLocal = localPlane.normal.clone().multiplyScalar(-localPlane.constant);
+      // The gizmo sits exactly at the clip plane's own boundary — which
+      // this very plane also clips against — so at that exact distance,
+      // GPU floating-point clip-distance evaluation is right at the
+      // zero/epsilon threshold and flickers per-fragment (a sparse,
+      // dithered dropout pattern) between clipped and kept. Nudge it a
+      // hair into the kept region (along +normal) so it renders solidly;
+      // the offset is far too small relative to the gizmo's own size to
+      // be visually distinguishable from sitting exactly on the plane.
+      const KEPT_SIDE_EPSILON = scale * 0.002;
+      mesh.position.copy(pointOnPlaneLocal).addScaledVector(localPlane.normal, KEPT_SIDE_EPSILON);
+      mesh.quaternion.setFromUnitVectors(GIZMO_UP, localPlane.normal);
+      // PlaneGeometry(1, 1) is a unit square (half-width 0.5), so scale by
+      // ~2x the radius to get a comparable span to what a radius-1.3x
+      // circle would have covered.
+      mesh.scale.setScalar(scale);
+    };
+
+    const clipPlaneManager = {
+      add: (localNormal, localPoint) => {
+        const id = `clip-${++clipPlaneUid}`;
+        const localPlane = new THREE.Plane();
+        localPlane.normal.copy(localNormal);
+        localPlane.constant = -localPlane.normal.dot(localPoint);
+        const material = new THREE.MeshBasicMaterial({
+          color: 0x3b82f6,
+          transparent: true,
+          opacity: 0.25,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          // The gizmo sits exactly on the clip plane — which is also
+          // exactly where the model's own cut cross-section lies — so
+          // without this the two coplanar surfaces z-fight (flickering,
+          // radiating moiré patterns) rather than blending cleanly.
+          // Negative polygon-offset values push this surface slightly
+          // toward the camera in the depth buffer only, with no effect
+          // on its actual (already-correct) position.
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4,
+        });
+        const mesh = new THREE.Mesh(gizmoGeometry, material);
+        mesh.renderOrder = 1;
+        modelsGroup.add(mesh);
+        const entry = {
+          id,
+          localPlane,
+          worldPlane: new THREE.Plane(),
+          mesh,
+          enabled: true,
+          gizmoVisible: true,
+        };
+        syncGizmoMesh(entry);
+        clipPlanesRuntime.push(entry);
+        refreshClippingPlanes();
+        return id;
+      },
+      remove: (id) => {
+        const index = clipPlanesRuntime.findIndex((p) => p.id === id);
+        if (index === -1) return;
+        const [entry] = clipPlanesRuntime.splice(index, 1);
+        modelsGroup.remove(entry.mesh);
+        entry.mesh.material.dispose();
+        refreshClippingPlanes();
+      },
+      flip: (id) => {
+        const entry = clipPlanesRuntime.find((p) => p.id === id);
+        if (!entry) return;
+        entry.localPlane.normal.negate();
+        entry.localPlane.constant *= -1;
+        syncGizmoMesh(entry);
+        requestRender();
+      },
+      setEnabled: (id, enabled) => {
+        const entry = clipPlanesRuntime.find((p) => p.id === id);
+        if (!entry) return;
+        entry.enabled = enabled;
+        refreshClippingPlanes();
+      },
+      setGizmoVisible: (id, visible) => {
+        const entry = clipPlanesRuntime.find((p) => p.id === id);
+        if (!entry) return;
+        entry.gizmoVisible = visible;
+        entry.mesh.visible = visible;
+        requestRender();
+      },
+      list: () =>
+        clipPlanesRuntime.map((p) => ({ id: p.id, enabled: p.enabled, gizmoVisible: p.gizmoVisible })),
+      refreshClippingPlanes,
+    };
+    clipPlaneManagerRef.current = clipPlaneManager;
+
     // Suppress the browser's native middle-click autoscroll (the little
     // scroll-icon drag mode most browsers activate on a middle-button
     // mousedown) — it fights with OrbitControls' own middle-button pan for
@@ -298,7 +429,7 @@ export function useIfcViewer() {
     // collects every hit along the ray from every loaded model and
     // returns the closest one that isn't discarded by any active plane,
     // using the exact same normal·X + constant >= 0 "kept" convention
-    // clipPlaneRef/cameraClipPlaneRef are already built around.
+    // every plane's worldPlane/cameraClipPlaneRef is already built around.
     const raycastVisible = async (clientX, clientY) => {
       const data = {
         camera,
@@ -342,13 +473,17 @@ export function useIfcViewer() {
     };
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
 
-    // Ctrl+scroll moves the active clip plane along its own normal instead
-    // of zooming (and instead of the browser's page-zoom). Attached to
-    // `window` with `capture: true` so it runs — and can stop the event —
-    // before OrbitControls' own wheel listener on `renderer.domElement`;
-    // registration order alone wouldn't guarantee that, since both would
-    // otherwise be listening on the very same element.
-    const CLIP_SCROLL_SENSITIVITY = 0.004;
+    // Ctrl+scroll used to move the (single) clip plane along its own
+    // normal; that's now done by shift+dragging its gizmo instead (see
+    // onClipPlaneDragMove below), since with multiple planes there's no
+    // single unambiguous "the" plane for a keyboard-modified scroll to
+    // target. Ctrl+wheel is still swallowed here (rather than left
+    // unhandled) so it doesn't fall through to the browser's own
+    // page-zoom — attached to `window` with `capture: true` so it runs,
+    // and can stop the event, before OrbitControls' own wheel listener on
+    // `renderer.domElement`; registration order alone wouldn't guarantee
+    // that, since both would otherwise be listening on the very same
+    // element.
     const onCtrlWheel = (event) => {
       if (!event.ctrlKey) return;
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
@@ -356,13 +491,6 @@ export function useIfcViewer() {
       }
       event.preventDefault();
       event.stopPropagation();
-      if (!hasClipPlaneRef.current) return;
-      // Move the plane in its own local frame — same reasoning as the
-      // render loop's re-derivation: the local plane is the source of
-      // truth, and the world-space clipPlaneRef is only ever a per-frame
-      // projection of it.
-      clipPlaneLocalRef.current.constant -= event.deltaY * CLIP_SCROLL_SENSITIVITY;
-      requestRender();
     };
     window.addEventListener("wheel", onCtrlWheel, { capture: true, passive: false });
 
@@ -810,7 +938,92 @@ export function useIfcViewer() {
         }
       }
     };
+    // Shift+drag on a clip plane's visible gizmo moves it along its own
+    // normal — the standard "cursor projected onto a line" technique
+    // single-axis translate handles use: build a plane that CONTAINS the
+    // drag axis and faces the camera as much as possible, intersect the
+    // cursor ray with THAT (well-defined) plane, then project the result
+    // back onto the axis line. Intersecting the 1-D axis line with the
+    // ray directly has no well-defined solution in general (skew lines),
+    // which is why this indirection is needed.
+    const projectRayOntoAxis = (ray, axisPoint, axisDir) => {
+      const toOrigin = ray.origin.clone().sub(axisPoint);
+      const alongAxis = axisDir.clone().multiplyScalar(toOrigin.dot(axisDir));
+      const perp = toOrigin.sub(alongAxis);
+      if (perp.lengthSq() < 1e-10) return null; // camera sits exactly on the axis — degenerate
+      const auxPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(perp.normalize(), axisPoint);
+      const hitPoint = new THREE.Vector3();
+      if (!ray.intersectPlane(auxPlane, hitPoint)) return null;
+      return axisDir.dot(hitPoint.sub(axisPoint));
+    };
+
+    let draggingClipPlaneId = null;
+    let dragAxisWorld = null; // THREE.Vector3 | null — world-space plane normal at drag start
+    let dragAxisPointWorld = null; // THREE.Vector3 | null — a world-space point on that axis line
+    let dragStartLocalConstant = 0;
+
+    const onClipPlaneDragMove = (event) => {
+      const entry = clipPlanesRuntime.find((p) => p.id === draggingClipPlaneId);
+      if (!entry) return;
+      const ndc = getNdc(event);
+      raycaster.setFromCamera(ndc, camera);
+      const delta = projectRayOntoAxis(raycaster.ray, dragAxisPointWorld, dragAxisWorld);
+      if (delta === null) return;
+      // Moving the anchor point by `delta` along the world-space normal
+      // is the same delta along the *local* normal too — the model's
+      // rotation changes the normal's direction but not the relationship
+      // between the plane and its own reference point, so this identity
+      // holds regardless of modelsGroup's current orientation.
+      entry.localPlane.constant = dragStartLocalConstant - delta;
+      syncGizmoMesh(entry);
+      requestRender();
+    };
+    const onClipPlaneDragEnd = () => {
+      draggingClipPlaneId = null;
+      dragAxisWorld = null;
+      dragAxisPointWorld = null;
+      window.removeEventListener("pointermove", onClipPlaneDragMove);
+      window.removeEventListener("pointerup", onClipPlaneDragEnd);
+    };
+    // Returns true if a drag was started (caller should not also start a
+    // rotate gesture for this same pointerdown).
+    const tryStartClipPlaneDrag = (event) => {
+      if (!event.shiftKey || event.button !== 0) return false;
+      const hittable = clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh);
+      if (hittable.length === 0) return false;
+      const ndc = getNdc(event);
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(hittable, false);
+      if (hits.length === 0) return false;
+      const entry = clipPlanesRuntime.find((p) => p.mesh === hits[0].object);
+      if (!entry) return false;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      modelsGroup.updateMatrix();
+      modelsGroup.matrixWorld.copy(modelsGroup.matrix);
+      const worldNormal = entry.localPlane.normal
+        .clone()
+        .applyQuaternion(modelsGroup.quaternion)
+        .normalize();
+      const pointOnPlaneLocal = entry.localPlane.normal
+        .clone()
+        .multiplyScalar(-entry.localPlane.constant);
+      const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
+
+      draggingClipPlaneId = entry.id;
+      dragAxisWorld = worldNormal;
+      dragAxisPointWorld = pointOnPlaneWorld;
+      dragStartLocalConstant = entry.localPlane.constant;
+
+      window.addEventListener("pointermove", onClipPlaneDragMove);
+      window.addEventListener("pointerup", onClipPlaneDragEnd);
+      return true;
+    };
+
     const onRotateStart = (event) => {
+      if (tryStartClipPlaneDrag(event)) return;
       // A second touch point landing mid-drag means the gesture just
       // became a pinch/two-finger pan — hand off to OrbitControls' own
       // touch handling instead of continuing to spin the model with the
@@ -901,30 +1114,34 @@ export function useIfcViewer() {
       if (!needsRender) return;
       needsRender = false;
       scalePivotMarker();
-      if (hasClipPlaneRef.current) {
-        // The clip plane is authored in modelsGroup's local frame so it
+      if (clipPlanesRuntime.length > 0) {
+        // Each plane is authored in modelsGroup's local frame so it
         // rotates together with the model instead of staying fixed in
         // world space — which, since the *camera* never actually moves
         // during a rotate gesture, is what made it look like the plane
         // was stuck to the camera/view instead of the surface it was
-        // created on. Re-derive the world-space plane every frame from
-        // the model's current pose. Avoids the full recursive
-        // updateMatrixWorld(true) (which would also update every child
-        // mesh) since only modelsGroup's own matrix is needed here, and
-        // its parent (the scene) never moves.
+        // created on. Re-derive every plane's world-space definition each
+        // frame from the model's current pose (the gizmo meshes need no
+        // such per-frame work — they're real children of modelsGroup and
+        // inherit its rotation through the normal scene graph). Avoids
+        // the full recursive updateMatrixWorld(true) (which would also
+        // update every child mesh) since only modelsGroup's own matrix is
+        // needed here, and its parent (the scene) never moves.
         modelsGroup.updateMatrix();
         modelsGroup.matrixWorld.copy(modelsGroup.matrix);
-        const localPlane = clipPlaneLocalRef.current;
-        const worldNormal = localPlane.normal
-          .clone()
-          .applyQuaternion(modelsGroup.quaternion)
-          .normalize();
-        const pointOnPlaneLocal = localPlane.normal
-          .clone()
-          .multiplyScalar(-localPlane.constant);
-        const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
-        clipPlaneRef.current.normal.copy(worldNormal);
-        clipPlaneRef.current.constant = -worldNormal.dot(pointOnPlaneWorld);
+        for (const entry of clipPlanesRuntime) {
+          const localPlane = entry.localPlane;
+          const worldNormal = localPlane.normal
+            .clone()
+            .applyQuaternion(modelsGroup.quaternion)
+            .normalize();
+          const pointOnPlaneLocal = localPlane.normal
+            .clone()
+            .multiplyScalar(-localPlane.constant);
+          const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
+          entry.worldPlane.normal.copy(worldNormal);
+          entry.worldPlane.constant = -worldNormal.dot(pointOnPlaneWorld);
+        }
       }
       if (cameraClipEnabledRef.current) {
         // Always perpendicular to the view direction, at an adjustable
@@ -990,6 +1207,13 @@ export function useIfcViewer() {
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
+      window.removeEventListener("pointermove", onClipPlaneDragMove);
+      window.removeEventListener("pointerup", onClipPlaneDragEnd);
+      for (const entry of clipPlanesRuntime) {
+        modelsGroup.remove(entry.mesh);
+        entry.mesh.material.dispose();
+      }
+      gizmoGeometry.dispose();
       controls.removeEventListener("change", requestRender);
       controls.dispose();
       renderer.dispose();
@@ -1008,22 +1232,14 @@ export function useIfcViewer() {
   }, []);
 
   useEffect(() => {
-    hasClipPlaneRef.current = hasClipPlane;
-  }, [hasClipPlane]);
-
-  useEffect(() => {
     cameraClipEnabledRef.current = cameraClipEnabled;
+    // Surface clip planes' enabled state is already applied immediately
+    // (imperatively) by clipPlaneManager's own setEnabled/add/remove, but
+    // toggling the *camera* clip plane needs to re-run that same
+    // composition too, since it shares the same renderer.clippingPlanes
+    // array with every surface plane.
+    clipPlaneManagerRef.current?.refreshClippingPlanes();
   }, [cameraClipEnabled]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    const planes = [];
-    if (clipEnabled && hasClipPlane) planes.push(clipPlaneRef.current);
-    if (cameraClipEnabled) planes.push(cameraClipPlaneRef.current);
-    renderer.clippingPlanes = planes;
-    requestRenderRef.current();
-  }, [clipEnabled, hasClipPlane, cameraClipEnabled]);
 
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
@@ -1053,7 +1269,8 @@ export function useIfcViewer() {
     if (!hit || !hit.normal) return;
 
     const modelsGroup = modelsGroupRef.current;
-    if (!modelsGroup) return;
+    const manager = clipPlaneManagerRef.current;
+    if (!modelsGroup || !manager) return;
     modelsGroup.updateMatrixWorld(true);
 
     // Store the plane in modelsGroup's local frame (see the render loop)
@@ -1067,25 +1284,33 @@ export function useIfcViewer() {
     const localNormal = hit.normal.clone().applyQuaternion(invQuat).negate();
     const localPoint = modelsGroup.worldToLocal(hit.point.clone());
 
-    const plane = clipPlaneLocalRef.current;
-    plane.normal.copy(localNormal);
-    plane.constant = -plane.normal.dot(localPoint);
-
-    setHasClipPlane(true);
-    setClipEnabled(true);
-    requestRenderRef.current();
+    manager.add(localNormal, localPoint);
+    setClipPlanes(manager.list());
   }, []);
 
-  const flipClipPlane = useCallback(() => {
-    const plane = clipPlaneLocalRef.current;
-    plane.normal.negate();
-    plane.constant *= -1;
-    requestRenderRef.current();
+  const flipClipPlane = useCallback((id) => {
+    clipPlaneManagerRef.current?.flip(id);
   }, []);
 
-  const clearClipPlane = useCallback(() => {
-    setHasClipPlane(false);
-    setClipEnabled(false);
+  const removeClipPlane = useCallback((id) => {
+    const manager = clipPlaneManagerRef.current;
+    if (!manager) return;
+    manager.remove(id);
+    setClipPlanes(manager.list());
+  }, []);
+
+  const setClipPlaneEnabled = useCallback((id, enabled) => {
+    const manager = clipPlaneManagerRef.current;
+    if (!manager) return;
+    manager.setEnabled(id, enabled);
+    setClipPlanes(manager.list());
+  }, []);
+
+  const setClipPlaneGizmoVisible = useCallback((id, visible) => {
+    const manager = clipPlaneManagerRef.current;
+    if (!manager) return;
+    manager.setGizmoVisible(id, visible);
+    setClipPlanes(manager.list());
   }, []);
 
   const loadFiles = useCallback(async (fileList) => {
@@ -1198,11 +1423,11 @@ export function useIfcViewer() {
     setVisible,
     removeModel,
     clearError,
-    clipEnabled,
-    setClipEnabled,
-    hasClipPlane,
+    clipPlanes,
+    setClipPlaneEnabled,
+    setClipPlaneGizmoVisible,
     flipClipPlane,
-    clearClipPlane,
+    removeClipPlane,
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,

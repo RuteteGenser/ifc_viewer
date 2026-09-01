@@ -36,11 +36,11 @@ export default function Sidebar({
   onRemove,
   isLoading,
   loadingLabel,
-  clipEnabled,
-  onSetClipEnabled,
-  hasClipPlane,
+  clipPlanes,
+  onSetClipPlaneEnabled,
+  onSetClipPlaneGizmoVisible,
   onFlipClipPlane,
-  onClearClipPlane,
+  onRemoveClipPlane,
   cameraClipEnabled,
   onSetCameraClipEnabled,
   cameraClipDistance,
@@ -95,11 +95,11 @@ export default function Sidebar({
       )}
 
       <ClipPlaneControl
-        clipEnabled={clipEnabled}
-        onSetClipEnabled={onSetClipEnabled}
-        hasClipPlane={hasClipPlane}
+        clipPlanes={clipPlanes}
+        onSetClipPlaneEnabled={onSetClipPlaneEnabled}
+        onSetClipPlaneGizmoVisible={onSetClipPlaneGizmoVisible}
         onFlipClipPlane={onFlipClipPlane}
-        onClearClipPlane={onClearClipPlane}
+        onRemoveClipPlane={onRemoveClipPlane}
       />
 
       <CameraClipControl

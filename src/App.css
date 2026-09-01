@@ -204,6 +204,23 @@
   cursor: not-allowed;
 }
 
+.clip-control__plane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #2b2f38;
+  border-radius: 8px;
+}
+
+.clip-control__plane-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9aa0aa;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 /* ---------- Context menu ---------- */
 
 .context-menu {

@@ -19,11 +19,11 @@ function App() {
     setVisible,
     removeModel,
     clearError,
-    clipEnabled,
-    setClipEnabled,
-    hasClipPlane,
+    clipPlanes,
+    setClipPlaneEnabled,
+    setClipPlaneGizmoVisible,
     flipClipPlane,
-    clearClipPlane,
+    removeClipPlane,
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
@@ -99,11 +99,11 @@ function App() {
         onRemove={removeModel}
         isLoading={isLoading}
         loadingLabel={loadingLabel}
-        clipEnabled={clipEnabled}
-        onSetClipEnabled={setClipEnabled}
-        hasClipPlane={hasClipPlane}
+        clipPlanes={clipPlanes}
+        onSetClipPlaneEnabled={setClipPlaneEnabled}
+        onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
         onFlipClipPlane={flipClipPlane}
-        onClearClipPlane={clearClipPlane}
+        onRemoveClipPlane={removeClipPlane}
         cameraClipEnabled={cameraClipEnabled}
         onSetCameraClipEnabled={setCameraClipEnabled}
         cameraClipDistance={cameraClipDistance}

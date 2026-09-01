@@ -130,10 +130,20 @@ export function useIfcViewer() {
     // real hit resolves, or when the cursor is over empty space.
     let zoomHitCache = null; // { point: THREE.Vector3 (world), clientX, clientY } | null
     let zoomRaycastPending = false;
+    // Rate-limits onZoomWheel's distance basis tick-to-tick (see below) —
+    // separate from zoomHitCache, which caches the *point*; this caches
+    // how far the *previous* tick judged that point (or its fallback) to
+    // be, so a single anomalous jump (e.g. a raycast that skips through a
+    // window's missing glazing to a wall meters behind it) can't produce
+    // an outsized zoom step.
+    let lastZoomTickPos = null; // { clientX, clientY } | null
+    let lastZoomDistance = null; // number | null
     const invalidateGroupSphere = () => {
       groupSphereLocal = null;
       modelSpheresLocal = null;
       zoomHitCache = null;
+      lastZoomTickPos = null;
+      lastZoomDistance = null;
     };
     const getGroupSphere = () => {
       if (!groupSphereLocal) {
@@ -465,6 +475,29 @@ export function useIfcViewer() {
         .add(center);
     };
 
+    // Kicks off (at most one at a time) the real, worker-backed raycast
+    // that keeps zoomHitCache warm — called both after every zoom tick
+    // and on plain hover, so the cache is usually already populated for
+    // wherever the cursor currently sits by the time the user starts
+    // scrolling, rather than only starting to warm up on the first tick.
+    const refreshZoomHitCache = (clientX, clientY) => {
+      if (zoomRaycastPending) return;
+      zoomRaycastPending = true;
+      raycastVisible(clientX, clientY)
+        .then((result) => {
+          if (disposed) return;
+          zoomHitCache = result
+            ? { point: result.point.clone(), clientX, clientY }
+            : null;
+        })
+        .catch(() => {
+          zoomHitCache = null;
+        })
+        .finally(() => {
+          zoomRaycastPending = false;
+        });
+    };
+
     // Custom zoom, intercepting mouse-wheel events before OrbitControls'
     // own built-in wheel-zoom ever sees them (same window+capture-phase
     // trick as onCtrlWheel above, needed since both would otherwise be
@@ -519,7 +552,30 @@ export function useIfcViewer() {
             : controls.target;
       }
 
-      const prevDistance = camera.position.distanceTo(cursorPoint);
+      const rawPrevDistance = camera.position.distanceTo(cursorPoint);
+      const samePositionAsLastTick =
+        lastZoomTickPos &&
+        Math.hypot(
+          lastZoomTickPos.clientX - event.clientX,
+          lastZoomTickPos.clientY - event.clientY,
+        ) <= CACHE_PIXEL_TOLERANCE;
+
+      let prevDistance = rawPrevDistance;
+      if (samePositionAsLastTick && lastZoomDistance != null) {
+        // Bound how far the distance basis can jump in a single tick
+        // relative to where the last tick left off. A legitimate zoom
+        // tick only moves the camera by a small fraction of prevDistance
+        // (scale is always close to 1 for a normal wheel delta), so this
+        // only ever engages for a genuinely anomalous jump — e.g. a
+        // raycast that skipped through a window's missing glazing to a
+        // wall meters behind it — without limiting normal zoom speed at
+        // all, in either direction.
+        const MAX_TICK_RATIO = 1.5;
+        prevDistance = Math.min(
+          Math.max(rawPrevDistance, lastZoomDistance / MAX_TICK_RATIO),
+          lastZoomDistance * MAX_TICK_RATIO,
+        );
+      }
       // Same formula OrbitControls' own default zoomSpeed uses, so
       // scroll "feel" (speed scaling with how hard/fast you scroll) is
       // unchanged — only the distance basis changes.
@@ -541,31 +597,26 @@ export function useIfcViewer() {
       const forward = camera.getWorldDirection(new THREE.Vector3());
       controls.target.copy(camera.position).addScaledVector(forward, newDistance);
 
+      lastZoomTickPos = { clientX: event.clientX, clientY: event.clientY };
+      lastZoomDistance = newDistance;
+
       requestRender();
 
-      // Refresh the real-hit cache in the background for subsequent
-      // ticks — never more than one raycast in flight regardless of how
-      // fast wheel events fire (trackpad flicks can be 60-100/s).
-      if (!zoomRaycastPending) {
-        zoomRaycastPending = true;
-        const clientX = event.clientX;
-        const clientY = event.clientY;
-        raycastVisible(clientX, clientY)
-          .then((result) => {
-            if (disposed) return;
-            zoomHitCache = result
-              ? { point: result.point.clone(), clientX, clientY }
-              : null;
-          })
-          .catch(() => {
-            zoomHitCache = null;
-          })
-          .finally(() => {
-            zoomRaycastPending = false;
-          });
-      }
+      refreshZoomHitCache(event.clientX, event.clientY);
     };
     window.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
+
+    // Keep zoomHitCache warm from mere hovering, not just from wheel
+    // ticks — otherwise the very first tick of every zoom gesture always
+    // falls back to the coarse sphere estimate, since nothing has
+    // populated the cache for wherever the cursor just landed yet. This
+    // way, by the time the user actually starts scrolling, a real hit is
+    // usually already resolved and waiting.
+    const onZoomHoverMove = (event) => {
+      if (!renderer.domElement.contains(event.target)) return;
+      refreshZoomHitCache(event.clientX, event.clientY);
+    };
+    renderer.domElement.addEventListener("pointermove", onZoomHoverMove);
 
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * (ndc.x - startNdcX);
@@ -878,6 +929,7 @@ export function useIfcViewer() {
       );
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
+      renderer.domElement.removeEventListener("pointermove", onZoomHoverMove);
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);

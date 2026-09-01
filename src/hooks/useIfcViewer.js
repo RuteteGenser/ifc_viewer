@@ -823,6 +823,13 @@ export function useIfcViewer() {
     const CLICK_MOVE_THRESHOLD = 5;
     let downClientX = 0;
     let downClientY = 0;
+    // Updated on every pointermove during a rotate gesture, so the async
+    // pivot refinement below (which can resolve ~300ms after mousedown)
+    // can tell whether the user has already moved enough for a pivot
+    // swap to be a noticeable, unpredictable jump rather than an
+    // invisible refinement.
+    let lastClientX = 0;
+    let lastClientY = 0;
     let pivotRaycastPromise = null;
 
     // IfcElementQuantity (e.g. "BaseQuantities") is a *different* relation
@@ -935,6 +942,8 @@ export function useIfcViewer() {
     const onRotateMove = (event) => {
       if (!rotating || event.pointerId !== activePointerId) return;
       pendingNdc = getNdc(event);
+      lastClientX = event.clientX;
+      lastClientY = event.clientY;
     };
     const onRotateEnd = (event) => {
       if (event.pointerId !== activePointerId) return;
@@ -1056,6 +1065,8 @@ export function useIfcViewer() {
 
       downClientX = event.clientX;
       downClientY = event.clientY;
+      lastClientX = event.clientX;
+      lastClientY = event.clientY;
       pivotRaycastPromise = null;
 
       rotateRadius = Math.max(sphere.radius, 0.001);
@@ -1090,6 +1101,20 @@ export function useIfcViewer() {
             // Ignore a result that arrives after this gesture ended or
             // was superseded by a newer one.
             if (!hit || !rotating || gestureId !== gestureSeq) return;
+            // Once the user has already moved past the click threshold,
+            // this is an unambiguous, in-progress drag: swapping the
+            // pivot now would silently change what future movement
+            // orbits around, which reads as the rotation jumping to a
+            // different object partway through a fast gesture — the
+            // very thing this guard exists to prevent. Only refine the
+            // pivot while the gesture is still small enough (typically
+            // because the user started the drag slowly) that the swap
+            // goes unnoticed.
+            const movedSinceStart = Math.hypot(
+              lastClientX - downClientX,
+              lastClientY - downClientY,
+            );
+            if (movedSinceStart >= CLICK_MOVE_THRESHOLD) return;
             // hit.point is already expressed in modelsGroup's *current*
             // frame (the fragments library converts its local-space hit
             // to world space using matrixWorld as of when the raycast

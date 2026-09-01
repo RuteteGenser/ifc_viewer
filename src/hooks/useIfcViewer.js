@@ -121,9 +121,19 @@ export function useIfcViewer() {
     // the cursor or in front of the camera. nearestModelHit below uses
     // these instead wherever that distinction matters.
     let modelSpheresLocal = null; // Map<modelId, { center: Vector3 local, radius }>
+    // Real per-pixel raycasting is async (worker-backed) and too slow to
+    // run synchronously on every wheel tick, so the exact hit point under
+    // the cursor is cached from the last resolved raycast and reused,
+    // refreshed in the background on every zoom tick (never more than one
+    // request in flight — see onZoomWheel). The sphere-based estimate
+    // above is only a fallback for the handful of ticks before the first
+    // real hit resolves, or when the cursor is over empty space.
+    let zoomHitCache = null; // { point: THREE.Vector3 (world), clientX, clientY } | null
+    let zoomRaycastPending = false;
     const invalidateGroupSphere = () => {
       groupSphereLocal = null;
       modelSpheresLocal = null;
+      zoomHitCache = null;
     };
     const getGroupSphere = () => {
       if (!groupSphereLocal) {
@@ -463,17 +473,20 @@ export function useIfcViewer() {
     // never to whatever's actually under the cursor — for a large model
     // where target sits far from the pointed-at detail, that makes zoom
     // feel wildly too coarse or too fine. This uses the distance to the
-    // point under the cursor as the basis instead, found via
-    // nearestModelHit against each loaded model's own bounding sphere
-    // (not one sphere spanning every loaded model — critical once models
-    // of very different scale, e.g. a building plus a much larger
-    // landscape, are loaded together: a combined sphere is dominated by
-    // the largest model and gives a wildly wrong distance for anything
-    // else). Falls back to the old whole-group projection only when the
-    // cursor is over genuinely empty space (no model hit at all). Touch
-    // pinch-zoom is untouched — it's a completely separate code path in
-    // OrbitControls that never dispatches 'wheel' events, so
-    // enableZoom/zoomToCursor are left on for it.
+    // real point under the cursor as the basis instead (via zoomHitCache,
+    // refreshed below from the async exact-geometry raycast), falling
+    // back to the nearestModelHit/getGroupSphere bounding-sphere estimate
+    // only until the first real hit resolves, or when the cursor is over
+    // empty space. The sphere estimate alone was not enough: a sphere's
+    // surface sits far beyond a wide-but-thin model's (e.g. a building's)
+    // real extent along its short axis, so looking close to straight down
+    // or up made the estimated distance wildly too large — the camera
+    // would blow straight through the roof in one tick, or (once inside
+    // the oversized sphere) re-inflate to the far exit point right when
+    // trying to slow down and approach precisely. Touch pinch-zoom is
+    // untouched — it's a completely separate code path in OrbitControls
+    // that never dispatches 'wheel' events, so enableZoom/zoomToCursor
+    // are left on for it.
     const onZoomWheel = (event) => {
       if (event.ctrlKey) return; // handled by onCtrlWheel instead
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
@@ -484,13 +497,27 @@ export function useIfcViewer() {
       const ndc = getNdc(event);
       raycaster.setFromCamera(ndc, camera);
       const dir = raycaster.ray.direction; // camera -> into the scene, through the cursor
-      const hit = nearestModelHit(raycaster.ray.origin, dir);
-      const sphere = getGroupSphere();
-      const cursorPoint = hit
-        ? hit.point
-        : sphere
-          ? raySphereProject(ndc, sphere.center, sphere.radius)
-          : controls.target;
+
+      const CACHE_PIXEL_TOLERANCE = 20;
+      const cacheValid =
+        zoomHitCache &&
+        Math.hypot(
+          zoomHitCache.clientX - event.clientX,
+          zoomHitCache.clientY - event.clientY,
+        ) <= CACHE_PIXEL_TOLERANCE;
+
+      let cursorPoint;
+      if (cacheValid) {
+        cursorPoint = zoomHitCache.point;
+      } else {
+        const hit = nearestModelHit(raycaster.ray.origin, dir);
+        const sphere = getGroupSphere();
+        cursorPoint = hit
+          ? hit.point
+          : sphere
+            ? raySphereProject(ndc, sphere.center, sphere.radius)
+            : controls.target;
+      }
 
       const prevDistance = camera.position.distanceTo(cursorPoint);
       // Same formula OrbitControls' own default zoomSpeed uses, so
@@ -515,6 +542,28 @@ export function useIfcViewer() {
       controls.target.copy(camera.position).addScaledVector(forward, newDistance);
 
       requestRender();
+
+      // Refresh the real-hit cache in the background for subsequent
+      // ticks — never more than one raycast in flight regardless of how
+      // fast wheel events fire (trackpad flicks can be 60-100/s).
+      if (!zoomRaycastPending) {
+        zoomRaycastPending = true;
+        const clientX = event.clientX;
+        const clientY = event.clientY;
+        raycastVisible(clientX, clientY)
+          .then((result) => {
+            if (disposed) return;
+            zoomHitCache = result
+              ? { point: result.point.clone(), clientX, clientY }
+              : null;
+          })
+          .catch(() => {
+            zoomHitCache = null;
+          })
+          .finally(() => {
+            zoomRaycastPending = false;
+          });
+      }
     };
     window.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
 

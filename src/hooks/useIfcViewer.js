@@ -827,13 +827,6 @@ export function useIfcViewer() {
     const CLICK_MOVE_THRESHOLD = 5;
     let downClientX = 0;
     let downClientY = 0;
-    // Updated on every pointermove during a rotate gesture, so the async
-    // pivot refinement below (which can resolve ~300ms after mousedown)
-    // can tell whether the user has already moved enough for a pivot
-    // swap to be a noticeable, unpredictable jump rather than an
-    // invisible refinement.
-    let lastClientX = 0;
-    let lastClientY = 0;
     let pivotRaycastPromise = null;
 
     // IfcElementQuantity (e.g. "BaseQuantities") is a *different* relation
@@ -942,16 +935,19 @@ export function useIfcViewer() {
 
     let activePointerId = null;
     let gestureSeq = 0;
+    // True from mousedown until the pivot raycast below resolves (or the
+    // gesture ends first) — see onRotateStart for why the gesture waits
+    // on this rather than starting from an approximate point.
+    let pivotPending = false;
 
     const onRotateMove = (event) => {
-      if (!rotating || event.pointerId !== activePointerId) return;
+      if ((!rotating && !pivotPending) || event.pointerId !== activePointerId) return;
       pendingNdc = getNdc(event);
-      lastClientX = event.clientX;
-      lastClientY = event.clientY;
     };
     const onRotateEnd = (event) => {
       if (event.pointerId !== activePointerId) return;
       rotating = false;
+      pivotPending = false;
       activePointerId = null;
       pendingNdc = null;
       pivotMarker.visible = false;
@@ -1057,7 +1053,7 @@ export function useIfcViewer() {
       // touch handling instead of continuing to spin the model with the
       // first finger's movement.
       if (event.pointerType === "touch" && !event.isPrimary) {
-        if (rotating) onRotateEnd({ pointerId: activePointerId });
+        if (rotating || pivotPending) onRotateEnd({ pointerId: activePointerId });
         return;
       }
       if (event.button !== 0) return; // only the rotate (left) button / primary touch
@@ -1069,8 +1065,6 @@ export function useIfcViewer() {
 
       downClientX = event.clientX;
       downClientY = event.clientY;
-      lastClientX = event.clientX;
-      lastClientY = event.clientY;
       pivotRaycastPromise = null;
 
       rotateRadius = Math.max(sphere.radius, 0.001);
@@ -1078,78 +1072,58 @@ export function useIfcViewer() {
       const startNdc = getNdc(event);
       const gestureId = ++gestureSeq;
 
-      // Prefer whatever the hover-raycast cache (zoomHitCache, kept warm
-      // by onZoomHoverMove on every pointermove — see below) already
-      // resolved for this cursor position: it's the real, accurate
-      // surface point, usually already sitting there from before the
-      // click, so using it means the pivot starts correct immediately
-      // with no async wait at all — which is exactly what a fast drag
-      // needs, since it won't survive long enough for a fresh raycast
-      // fired now to land (see the movedSinceStart gate below). Only
-      // fall back to the coarse sphere estimate when the cache is empty
-      // or too stale for this click (e.g. the pointer just entered the
-      // canvas with no prior hover, or the last hover raycast is still
-      // in flight). nearestModelHit is preferred over the whole-group
-      // sphere in that fallback case since the sphere can be dominated
-      // by a much larger co-loaded model (e.g. a landscape alongside a
-      // building) and land the pivot far from where the user clicked.
-      const cachedHit =
-        zoomHitCache &&
-        Math.hypot(
-          zoomHitCache.clientX - event.clientX,
-          zoomHitCache.clientY - event.clientY,
-        ) <= CACHE_PIXEL_TOLERANCE
-          ? zoomHitCache.point
-          : null;
-      raycaster.setFromCamera(startNdc, camera);
-      const startHit =
-        cachedHit ?? nearestModelHit(raycaster.ray.origin, raycaster.ray.direction)?.point;
-      anchorGesture(startNdc, startHit ?? raySphereProject(startNdc, sphere.center, rotateRadius));
-
-      const pipeline = pipelineRef.current;
-      if (pipeline) {
-        // Also reused by onRotateEnd for element selection if this turns
-        // out to be a click rather than a drag — same screen position, no
-        // need to raycast twice. raycastVisible skips anything hidden
-        // behind an active clip plane, so rotating/selecting after a cut
-        // pivots on what's actually on screen.
-        pivotRaycastPromise = raycastVisible(event.clientX, event.clientY);
-        pivotRaycastPromise
-          .then((hit) => {
-            // Ignore a result that arrives after this gesture ended or
-            // was superseded by a newer one.
-            if (!hit || !rotating || gestureId !== gestureSeq) return;
-            // Once the user has already moved past the click threshold,
-            // this is an unambiguous, in-progress drag: swapping the
-            // pivot now would silently change what future movement
-            // orbits around, which reads as the rotation jumping to a
-            // different object partway through a fast gesture — the
-            // very thing this guard exists to prevent. Only refine the
-            // pivot while the gesture is still small enough (typically
-            // because the user started the drag slowly) that the swap
-            // goes unnoticed.
-            const movedSinceStart = Math.hypot(
-              lastClientX - downClientX,
-              lastClientY - downClientY,
-            );
-            if (movedSinceStart >= CLICK_MOVE_THRESHOLD) return;
-            // hit.point is already expressed in modelsGroup's *current*
-            // frame (the fragments library converts its local-space hit
-            // to world space using matrixWorld as of when the raycast
-            // resolves), which is exactly the frame anchorGesture needs:
-            // it re-captures groupPosStart/groupQuatStart from the
-            // model's current live pose, so the pivot must be consistent
-            // with "now", not with the pose at mousedown.
-            anchorGesture(pendingNdc ?? startNdc, hit.point);
-          })
-          .catch((err) => console.error("Pivot raycast failed", err));
-      }
-
-      rotating = true;
+      // The real, per-triangle hit test (the fragments library's
+      // worker-backed raycast) can't run synchronously, but it typically
+      // resolves in only a few milliseconds — far below what a person
+      // can perceive. Rather than starting the gesture immediately from
+      // an approximate point (a bounding-sphere projection, which
+      // usually lands off the actual model surface — visibly "floating"
+      // in empty space — and would otherwise need a later correction
+      // that reads as the rotation jumping to a different point), the
+      // gesture waits for this one real result before it begins at all.
+      // pendingNdc is kept live by onRotateMove during this brief wait
+      // (see its pivotPending check), so the gesture still starts from
+      // wherever the cursor actually is by the time the raycast lands,
+      // not from the stale mousedown position.
       activePointerId = event.pointerId;
       pendingNdc = startNdc;
+      pivotPending = true;
       window.addEventListener("pointermove", onRotateMove);
       window.addEventListener("pointerup", onRotateEnd);
+
+      const pipeline = pipelineRef.current;
+      // Also reused by onRotateEnd for element selection if this turns
+      // out to be a click rather than a drag — same screen position, no
+      // need to raycast twice. raycastVisible skips anything hidden
+      // behind an active clip plane, so rotating/selecting after a cut
+      // pivots on what's actually on screen.
+      pivotRaycastPromise = pipeline ? raycastVisible(event.clientX, event.clientY) : Promise.resolve(null);
+      pivotRaycastPromise
+        .then((hit) => {
+          // The gesture already ended (a fast click-and-release faster
+          // than the raycast) or was superseded by a newer one — nothing
+          // left to anchor.
+          if (!pivotPending || gestureId !== gestureSeq) return;
+          pivotPending = false;
+          const ndc = pendingNdc ?? startNdc;
+          // hit.point is already expressed in modelsGroup's *current*
+          // frame (the fragments library converts its local-space hit
+          // to world space using matrixWorld as of when the raycast
+          // resolves), which is exactly the frame anchorGesture needs.
+          // A miss (click landed on empty space, or the pipeline wasn't
+          // ready) falls back to the closest model actually under the
+          // cursor, or as a last resort the whole-group bounding sphere.
+          let pivotPoint = hit ? hit.point : null;
+          if (!pivotPoint) {
+            raycaster.setFromCamera(ndc, camera);
+            pivotPoint =
+              nearestModelHit(raycaster.ray.origin, raycaster.ray.direction)?.point ??
+              raySphereProject(ndc, sphere.center, rotateRadius);
+          }
+          anchorGesture(ndc, pivotPoint);
+          rotating = true;
+        })
+        .catch((err) => console.error("Pivot raycast failed", err));
     };
     renderer.domElement.addEventListener("pointerdown", onRotateStart);
 

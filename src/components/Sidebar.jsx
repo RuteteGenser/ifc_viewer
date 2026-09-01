@@ -34,6 +34,8 @@ export default function Sidebar({
   onFilesSelected,
   onToggleVisible,
   onRemove,
+  onResetView,
+  onResetVisibility,
   isLoading,
   loadingLabel,
   clipPlanes,
@@ -52,14 +54,25 @@ export default function Sidebar({
     <aside className={`sidebar ${className}`.trim()}>
       <h1 className="sidebar__title">IFC Viewer</h1>
 
-      <button
-        type="button"
-        className="sidebar__add-button"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={isLoading}
-      >
-        {isLoading ? loadingLabel || "Loading…" : "+ Add IFC file(s)"}
-      </button>
+      <div className="sidebar__top-buttons">
+        <button
+          type="button"
+          className="sidebar__add-button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading}
+        >
+          {isLoading ? loadingLabel || "Loading…" : "+ Add IFC file(s)"}
+        </button>
+        <button
+          type="button"
+          className="sidebar__home-button"
+          onClick={onResetView}
+          disabled={models.length === 0}
+          title="Reset to the default view"
+        >
+          Home
+        </button>
+      </div>
       <input
         ref={fileInputRef}
         type="file"
@@ -93,6 +106,16 @@ export default function Sidebar({
           ))}
         </ul>
       )}
+
+      <button
+        type="button"
+        className="sidebar__reset-visibility-button"
+        onClick={onResetVisibility}
+        disabled={models.length === 0}
+        title="Show any elements hidden via right-click"
+      >
+        Reset visibility
+      </button>
 
       <ClipPlaneControl
         clipPlanes={clipPlanes}

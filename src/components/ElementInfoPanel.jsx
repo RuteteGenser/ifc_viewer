@@ -30,6 +30,12 @@ export default function ElementInfoPanel({ element, loading, onClose }) {
         {element && (
           <>
             <dl className="element-panel__attrs">
+              {element.modelName && (
+                <>
+                  <dt>Model</dt>
+                  <dd>{element.modelName}</dd>
+                </>
+              )}
               {element.typeName && (
                 <>
                   <dt>Type</dt>

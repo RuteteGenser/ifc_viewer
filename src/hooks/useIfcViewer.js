@@ -65,6 +65,7 @@ export function useIfcViewer() {
   const modelsGroupRef = useRef(null); // THREE.Group holding every loaded model, rotated as a unit
   const clipPlaneManagerRef = useRef(null); // { add, remove, flip, setEnabled, setGizmoVisible, list } | null
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
+  const modelNamesRef = useRef(new Map()); // modelId -> display name, kept in sync with `models` state
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
@@ -834,7 +835,7 @@ export function useIfcViewer() {
       return null;
     };
 
-    const formatElementData = (data) => {
+    const formatElementData = (data, modelName) => {
       const definitions = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
       const propertySets = definitions
         .map((def) => {
@@ -882,6 +883,7 @@ export function useIfcViewer() {
         objectType: data.ObjectType?.value ?? null,
         tag: data.Tag?.value ?? null,
         typeName,
+        modelName: modelName ?? null,
         propertySets,
       };
     };
@@ -905,7 +907,8 @@ export function useIfcViewer() {
             IsTypedBy: { attributes: true, relations: false },
           },
         });
-        setSelectedElement(data ? formatElementData(data) : null);
+        const modelName = modelNamesRef.current.get(hit.fragments.modelId);
+        setSelectedElement(data ? formatElementData(data, modelName) : null);
       } catch (err) {
         console.error("Failed to fetch element properties", err);
         setSelectedElement(null);
@@ -1241,6 +1244,10 @@ export function useIfcViewer() {
     clipPlaneManagerRef.current?.refreshClippingPlanes();
   }, [cameraClipEnabled]);
 
+  useEffect(() => {
+    modelNamesRef.current = new Map(models.map((m) => [m.id, m.name]));
+  }, [models]);
+
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
       // The kept region is whatever lies *beyond* cameraClipDistance
@@ -1311,6 +1318,24 @@ export function useIfcViewer() {
     if (!manager) return;
     manager.setGizmoVisible(id, visible);
     setClipPlanes(manager.list());
+  }, []);
+
+  const hideElementHere = useCallback(async () => {
+    const pending = pendingSurfacePickRef.current;
+    setContextMenu(null);
+    if (!pending) return;
+    const hit = await pending.promise;
+    if (!hit || hit.localId == null) return;
+    await hit.fragments.setVisible([hit.localId], false);
+    invalidateGroupSphereRef.current();
+    requestRenderRef.current();
+  }, []);
+
+  const resetVisibility = useCallback(async () => {
+    const entries = [...modelsRef.current.values()];
+    await Promise.all(entries.map(({ model }) => model.resetVisible()));
+    invalidateGroupSphereRef.current();
+    requestRenderRef.current();
   }, []);
 
   const loadFiles = useCallback(async (fileList) => {
@@ -1409,6 +1434,21 @@ export function useIfcViewer() {
     }
   }, []);
 
+  // "Home": back to the same framing new files get on load, with the
+  // model's own orientation reset too (rotation is the only transform
+  // the arcball drag ever applies to modelsGroup — it's never
+  // translated — so resetting its quaternion to identity is enough to
+  // undo any amount of dragging).
+  const resetView = useCallback(() => {
+    const modelsGroup = modelsGroupRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    if (modelsGroup) modelsGroup.quaternion.identity();
+    frameCameraOnScene(camera, controls, modelsRef.current.values());
+    requestRenderRef.current();
+  }, []);
+
   const clearError = useCallback(() => setError(null), []);
   const clearSelection = useCallback(() => setSelectedElement(null), []);
 
@@ -1422,6 +1462,7 @@ export function useIfcViewer() {
     loadFiles,
     setVisible,
     removeModel,
+    resetView,
     clearError,
     clipPlanes,
     setClipPlaneEnabled,
@@ -1431,6 +1472,8 @@ export function useIfcViewer() {
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
+    hideElementHere,
+    resetVisibility,
     cameraClipEnabled,
     setCameraClipEnabled,
     cameraClipDistance,

@@ -18,6 +18,8 @@ function App() {
     loadFiles,
     setVisible,
     removeModel,
+    resetView,
+    resetVisibility,
     clearError,
     clipPlanes,
     setClipPlaneEnabled,
@@ -27,6 +29,7 @@ function App() {
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
+    hideElementHere,
     cameraClipEnabled,
     setCameraClipEnabled,
     cameraClipDistance,
@@ -97,6 +100,8 @@ function App() {
         }}
         onToggleVisible={setVisible}
         onRemove={removeModel}
+        onResetView={resetView}
+        onResetVisibility={resetVisibility}
         isLoading={isLoading}
         loadingLabel={loadingLabel}
         clipPlanes={clipPlanes}
@@ -132,6 +137,7 @@ function App() {
           x={contextMenu.x}
           y={contextMenu.y}
           onCreateClipPlane={createClipPlaneHere}
+          onHideElement={hideElementHere}
           onClose={closeContextMenu}
         />
       )}

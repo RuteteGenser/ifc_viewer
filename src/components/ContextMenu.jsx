@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-export default function ContextMenu({ x, y, onCreateClipPlane, onClose }) {
+export default function ContextMenu({ x, y, onCreateClipPlane, onHideElement, onClose }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function ContextMenu({ x, y, onCreateClipPlane, onClose }) {
 
   const style = {
     left: Math.min(x, window.innerWidth - 220),
-    top: Math.min(y, window.innerHeight - 60),
+    top: Math.min(y, window.innerHeight - 100),
   };
 
   return (
@@ -28,6 +28,11 @@ export default function ContextMenu({ x, y, onCreateClipPlane, onClose }) {
       <li>
         <button type="button" onClick={onCreateClipPlane}>
           Create clip plane here
+        </button>
+      </li>
+      <li>
+        <button type="button" onClick={onHideElement}>
+          Hide element
         </button>
       </li>
     </ul>

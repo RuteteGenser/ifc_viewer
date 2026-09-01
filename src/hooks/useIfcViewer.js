@@ -72,7 +72,7 @@ export function useIfcViewer() {
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
-  const cameraClipDistanceRef = useRef(0);
+  const cameraClipDistanceRef = useRef(1);
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -83,7 +83,7 @@ export function useIfcViewer() {
   const [hasClipPlane, setHasClipPlane] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
   const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
-  const [cameraClipDistance, setCameraClipDistanceState] = useState(0);
+  const [cameraClipDistance, setCameraClipDistanceState] = useState(1);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
 
@@ -971,12 +971,11 @@ export function useIfcViewer() {
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
       // The kept region is whatever lies *beyond* cameraClipDistance
-      // along the view direction, so 0 always means "nothing clipped"
-      // regardless of model scale or camera distance — no need to
-      // inspect the scene's geometry for a default. The user dials in
-      // the actual cut distance themselves via the number input.
-      cameraClipDistanceRef.current = 0;
-      setCameraClipDistanceState(0);
+      // along the view direction. The slider's fixed range is [1, 2]
+      // (the user's own chosen bounds, not scene-derived), so default to
+      // its minimum on enable rather than 0, which is now out of range.
+      cameraClipDistanceRef.current = 1;
+      setCameraClipDistanceState(1);
     }
     setCameraClipEnabledState(enabled);
   }, []);

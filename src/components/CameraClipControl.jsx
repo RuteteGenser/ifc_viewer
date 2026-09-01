@@ -21,15 +21,13 @@ export default function CameraClipControl({
       {cameraClipEnabled && (
         <>
           <input
-            type="number"
-            className="clip-control__number-input"
-            min="0"
-            step="0.1"
+            type="range"
+            className="clip-control__slider"
+            min="1"
+            max="2"
+            step="any"
             value={cameraClipDistance}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              if (!Number.isNaN(value)) onSetCameraClipDistance(value);
-            }}
+            onChange={(e) => onSetCameraClipDistance(Number(e.target.value))}
           />
           <p className="clip-control__hint">
             Distance from camera to the cut plane.

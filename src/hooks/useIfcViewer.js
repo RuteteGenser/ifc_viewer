@@ -684,23 +684,77 @@ export function useIfcViewer() {
     let downClientY = 0;
     let pivotRaycastPromise = null;
 
+    // IfcElementQuantity (e.g. "BaseQuantities") is a *different* relation
+    // target than IfcPropertySet, even though both attach to an element
+    // via the same IsDefinedBy relation: it carries a `Quantities` array
+    // instead of `HasProperties`, and each quantity's numeric value lives
+    // under whichever IFC attribute matches its specific subtype
+    // (IfcQuantityLength -> LengthValue, IfcQuantityArea -> AreaValue,
+    // etc. — there's no single common field name).
+    const QUANTITY_VALUE_KEYS = [
+      "LengthValue",
+      "AreaValue",
+      "VolumeValue",
+      "WeightValue",
+      "CountValue",
+      "TimeValue",
+    ];
+    const getQuantityValue = (quantity) => {
+      for (const key of QUANTITY_VALUE_KEYS) {
+        if (quantity[key] !== undefined) return quantity[key].value ?? null;
+      }
+      return null;
+    };
+
     const formatElementData = (data) => {
-      const psets = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
+      const definitions = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
+      const propertySets = definitions
+        .map((def) => {
+          if (Array.isArray(def.HasProperties)) {
+            return {
+              name: def.Name?.value ?? "Property set",
+              properties: def.HasProperties.map((prop) => ({
+                name: prop.Name?.value ?? "",
+                value: prop.NominalValue?.value ?? prop.Value?.value ?? null,
+              })),
+            };
+          }
+          if (Array.isArray(def.Quantities)) {
+            return {
+              name: def.Name?.value ?? "Quantities",
+              properties: def.Quantities.map((quantity) => ({
+                name: quantity.Name?.value ?? "",
+                value: getQuantityValue(quantity),
+              })),
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      // IFC4 gives an element its own IsTypedBy relation for this; IFC2x3
+      // (what this app mostly sees in practice) instead folds the type
+      // into the same IsDefinedBy array as the psets/qsets above — it's
+      // the one entry with neither HasProperties nor Quantities, since
+      // IfcRelDefinesByType and IfcRelDefinesByProperties share the same
+      // abstract IfcRelDefines supertype and thus the same inverse
+      // attribute on the element.
+      const types = Array.isArray(data.IsTypedBy) ? data.IsTypedBy : [];
+      const typeDef =
+        types[0] ??
+        definitions.find(
+          (def) => !Array.isArray(def.HasProperties) && !Array.isArray(def.Quantities) && def.Name?.value,
+        );
+      const typeName = typeDef?.Name?.value ?? null;
+
       return {
         category: data._category?.value ?? "Unknown",
         name: data.Name?.value ?? null,
         guid: data._guid?.value ?? null,
         objectType: data.ObjectType?.value ?? null,
         tag: data.Tag?.value ?? null,
-        propertySets: psets
-          .filter((pset) => Array.isArray(pset.HasProperties))
-          .map((pset) => ({
-            name: pset.Name?.value ?? "Property set",
-            properties: pset.HasProperties.map((prop) => ({
-              name: prop.Name?.value ?? "",
-              value: prop.NominalValue?.value ?? prop.Value?.value ?? null,
-            })),
-          })),
+        typeName,
+        propertySets,
       };
     };
 
@@ -718,7 +772,10 @@ export function useIfcViewer() {
         }
         const [data] = await hit.fragments.getItemsData([hit.localId], {
           attributesDefault: true,
-          relations: { IsDefinedBy: { attributes: true, relations: true } },
+          relations: {
+            IsDefinedBy: { attributes: true, relations: true },
+            IsTypedBy: { attributes: true, relations: false },
+          },
         });
         setSelectedElement(data ? formatElementData(data) : null);
       } catch (err) {

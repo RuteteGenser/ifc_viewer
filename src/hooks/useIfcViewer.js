@@ -128,6 +128,11 @@ export function useIfcViewer() {
     // real hit resolves, or when the cursor is over empty space.
     let zoomHitCache = null; // { point: THREE.Vector3 (world), clientX, clientY } | null
     let zoomRaycastPending = false;
+    // Shared by anything that wants to reuse zoomHitCache for the current
+    // cursor position (zoom-to-cursor, and the rotate pivot below) — how
+    // close (in screen pixels) the cache's own cursor position has to be
+    // to count as "still describing here."
+    const CACHE_PIXEL_TOLERANCE = 20;
     // Rate-limits onZoomWheel's distance basis tick-to-tick (see below) —
     // separate from zoomHitCache, which caches the *point*; this caches
     // how far the *previous* tick judged that point (or its fallback) to
@@ -672,7 +677,6 @@ export function useIfcViewer() {
       raycaster.setFromCamera(ndc, camera);
       const dir = raycaster.ray.direction; // camera -> into the scene, through the cursor
 
-      const CACHE_PIXEL_TOLERANCE = 20;
       const cacheValid =
         zoomHitCache &&
         Math.hypot(
@@ -1074,19 +1078,33 @@ export function useIfcViewer() {
       const startNdc = getNdc(event);
       const gestureId = ++gestureSeq;
 
-      // Start on a provisional pivot so the drag is responsive
-      // immediately, then swap to the real surface point under the
-      // cursor once the async geometry raycast returns. Prefer the
-      // model actually under the cursor (nearestModelHit) over the
-      // whole-group sphere, which can be dominated by a much larger
-      // co-loaded model (e.g. a landscape alongside a building) and
-      // land the provisional pivot far from where the user clicked.
+      // Prefer whatever the hover-raycast cache (zoomHitCache, kept warm
+      // by onZoomHoverMove on every pointermove — see below) already
+      // resolved for this cursor position: it's the real, accurate
+      // surface point, usually already sitting there from before the
+      // click, so using it means the pivot starts correct immediately
+      // with no async wait at all — which is exactly what a fast drag
+      // needs, since it won't survive long enough for a fresh raycast
+      // fired now to land (see the movedSinceStart gate below). Only
+      // fall back to the coarse sphere estimate when the cache is empty
+      // or too stale for this click (e.g. the pointer just entered the
+      // canvas with no prior hover, or the last hover raycast is still
+      // in flight). nearestModelHit is preferred over the whole-group
+      // sphere in that fallback case since the sphere can be dominated
+      // by a much larger co-loaded model (e.g. a landscape alongside a
+      // building) and land the pivot far from where the user clicked.
+      const cachedHit =
+        zoomHitCache &&
+        Math.hypot(
+          zoomHitCache.clientX - event.clientX,
+          zoomHitCache.clientY - event.clientY,
+        ) <= CACHE_PIXEL_TOLERANCE
+          ? zoomHitCache.point
+          : null;
       raycaster.setFromCamera(startNdc, camera);
-      const startHit = nearestModelHit(raycaster.ray.origin, raycaster.ray.direction);
-      anchorGesture(
-        startNdc,
-        startHit ? startHit.point : raySphereProject(startNdc, sphere.center, rotateRadius),
-      );
+      const startHit =
+        cachedHit ?? nearestModelHit(raycaster.ray.origin, raycaster.ray.direction)?.point;
+      anchorGesture(startNdc, startHit ?? raySphereProject(startNdc, sphere.center, rotateRadius));
 
       const pipeline = pipelineRef.current;
       if (pipeline) {

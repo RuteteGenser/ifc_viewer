@@ -256,6 +256,18 @@ export function useIfcViewer() {
       ONE: null, // single-finger drag is handled by the arcball rotation below too
       TWO: THREE.TOUCH.DOLLY_PAN,
     };
+    // OrbitControls has a documented, hardcoded modifier behavior for
+    // whichever button is bound to MOUSE.PAN: holding ctrl/meta/shift
+    // switches it to MOUSE.ROTATE for that drag instead — its own
+    // built-in orbit-the-camera-around-target rotation, entirely
+    // separate from (and incompatible with) the custom arcball
+    // model-rotation system below. Since rotation here is never meant
+    // to go through OrbitControls at all, disable it outright so
+    // shift+middle-click can't accidentally fall into that native path
+    // (this doesn't affect the custom rotation, which drives
+    // modelsGroup.quaternion directly via its own pointer listeners, or
+    // touch two-finger dolly/pan, which uses a separate code path).
+    controls.enableRotate = false;
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 

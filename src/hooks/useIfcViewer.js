@@ -1379,7 +1379,18 @@ export function useIfcViewer() {
       try {
         const buffer = await file.arrayBuffer();
         const data = new Uint8Array(buffer);
-        const model = await pipeline.ifcLoader.load(data, true, modelId);
+        const model = await pipeline.ifcLoader.load(data, true, modelId, {
+          // Some IFC exporters produce geometry with inconsistent winding
+          // (a face's front side doesn't reliably match its outward
+          // normal), which front-face-only rendering shows as missing or
+          // "inside-out" surfaces — visible from one side only, or only
+          // when looking at the model from an angle that happens to hit
+          // the actual front face. Render both faces so those surfaces
+          // are never invisible, at the cost of some fill-rate.
+          instanceCallback: (importer) => {
+            importer.doubleSidedMaterials = true;
+          },
+        });
 
         if (cameraRef.current) model.useCamera(cameraRef.current);
         modelsGroup.add(model.object);

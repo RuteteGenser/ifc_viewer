@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RenderedFaces } from "@thatopen/fragments";
 
 const IFC_EXTENSION = /\.ifc$/i;
 
@@ -69,6 +70,7 @@ export function useIfcViewer() {
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
+  const clearHighlightRef = useRef(() => {});
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
   const cameraClipDistanceRef = useRef(1);
@@ -851,6 +853,32 @@ export function useIfcViewer() {
       return null;
     };
 
+    // Tints the clicked element white on top of its existing material
+    // (preserveOriginalMaterial keeps everything else — textures, base
+    // color underneath the tint — rather than replacing it outright) so
+    // it reads as "selected" without hiding what it actually looks like.
+    // Double-sided so the overlay is visible from a cut cross-section
+    // too, matching how the model's own geometry is rendered.
+    const SELECTION_HIGHLIGHT_MATERIAL = {
+      color: new THREE.Color(0xffffff),
+      opacity: 0.5,
+      transparent: true,
+      renderedFaces: RenderedFaces.TWO,
+      preserveOriginalMaterial: true,
+    };
+    let highlightedItem = null; // { fragments: FragmentsModel, localId } | null
+    const clearHighlight = () => {
+      if (!highlightedItem) return;
+      const { fragments, localId } = highlightedItem;
+      highlightedItem = null;
+      fragments
+        .resetHighlight([localId])
+        .then(() => pipelineRef.current?.fragments.core.update(true))
+        .then(() => requestRender())
+        .catch(() => {});
+    };
+    clearHighlightRef.current = clearHighlight;
+
     const formatElementData = (data, modelName) => {
       const definitions = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
       const propertySets = definitions
@@ -906,6 +934,7 @@ export function useIfcViewer() {
 
     const selectElementFrom = async (raycastPromise) => {
       if (!raycastPromise) {
+        clearHighlight();
         setSelectedElement(null);
         return;
       }
@@ -913,9 +942,17 @@ export function useIfcViewer() {
       try {
         const hit = await raycastPromise;
         if (!hit) {
+          clearHighlight();
           setSelectedElement(null);
           return;
         }
+        clearHighlight();
+        highlightedItem = { fragments: hit.fragments, localId: hit.localId };
+        hit.fragments
+          .highlight([hit.localId], SELECTION_HIGHLIGHT_MATERIAL)
+          .then(() => pipelineRef.current?.fragments.core.update(true))
+          .then(() => requestRender())
+          .catch((err) => console.error("Highlight failed", err));
         const [data] = await hit.fragments.getItemsData([hit.localId], {
           attributesDefault: true,
           relations: {
@@ -985,6 +1022,14 @@ export function useIfcViewer() {
     let dragAxisWorld = null; // THREE.Vector3 | null — world-space plane normal at drag start
     let dragAxisPointWorld = null; // THREE.Vector3 | null — a world-space point on that axis line
     let dragStartLocalConstant = 0;
+    // The cursor's own axis-projection at the moment of grab — generally
+    // nonzero, since the click can land anywhere on the visible gizmo
+    // quad, not necessarily exactly on dragAxisPointWorld. Subtracting
+    // this baseline out of every subsequent move's delta is what makes
+    // the plane move *relative to where it was grabbed* instead of
+    // snapping to the cursor's absolute projected position on the very
+    // first move.
+    let dragStartDelta = 0;
 
     const onClipPlaneDragMove = (event) => {
       const entry = clipPlanesRuntime.find((p) => p.id === draggingClipPlaneId);
@@ -998,7 +1043,7 @@ export function useIfcViewer() {
       // rotation changes the normal's direction but not the relationship
       // between the plane and its own reference point, so this identity
       // holds regardless of modelsGroup's current orientation.
-      entry.localPlane.constant = dragStartLocalConstant - delta;
+      entry.localPlane.constant = dragStartLocalConstant - (delta - dragStartDelta);
       syncGizmoMesh(entry);
       requestRender();
     };
@@ -1035,11 +1080,16 @@ export function useIfcViewer() {
         .clone()
         .multiplyScalar(-entry.localPlane.constant);
       const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
+      // raycaster.ray is already the exact grab-time ray (set from the
+      // same ndc just used for the gizmo hit-test above), so this is the
+      // cursor's own starting axis-projection — see dragStartDelta.
+      const startDelta = projectRayOntoAxis(raycaster.ray, pointOnPlaneWorld, worldNormal) ?? 0;
 
       draggingClipPlaneId = entry.id;
       dragAxisWorld = worldNormal;
       dragAxisPointWorld = pointOnPlaneWorld;
       dragStartLocalConstant = entry.localPlane.constant;
+      dragStartDelta = startDelta;
 
       window.addEventListener("pointermove", onClipPlaneDragMove);
       window.addEventListener("pointerup", onClipPlaneDragEnd);
@@ -1356,6 +1406,13 @@ export function useIfcViewer() {
     const hit = await pending.promise;
     if (!hit || hit.localId == null) return;
     await hit.fragments.setVisible([hit.localId], false);
+    // setVisible resolving only means the worker accepted the change, not
+    // that the affected tiles have been rebuilt on the main thread yet —
+    // without forcing that to finish first, requestRender() below can
+    // fire before there's anything new to actually draw, so the element
+    // stays visible on screen until some unrelated render (e.g. the next
+    // camera move) happens to catch the update later.
+    await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
   }, []);
@@ -1363,6 +1420,7 @@ export function useIfcViewer() {
   const resetVisibility = useCallback(async () => {
     const entries = [...modelsRef.current.values()];
     await Promise.all(entries.map(({ model }) => model.resetVisible()));
+    await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
   }, []);
@@ -1490,7 +1548,10 @@ export function useIfcViewer() {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
-  const clearSelection = useCallback(() => setSelectedElement(null), []);
+  const clearSelection = useCallback(() => {
+    clearHighlightRef.current?.();
+    setSelectedElement(null);
+  }, []);
 
   return {
     containerRef,

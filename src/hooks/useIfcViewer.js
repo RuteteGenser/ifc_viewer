@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { RenderedFaces } from "@thatopen/fragments";
 
 const IFC_EXTENSION = /\.ifc$/i;
 
@@ -9,6 +8,31 @@ let uid = 0;
 function nextId() {
   uid += 1;
   return `model-${Date.now()}-${uid}`;
+}
+
+// A per-item worker-backed change (setVisible, highlight, ...) resolving
+// only means the request was accepted, not that the affected tiles have
+// actually been rebuilt and are ready to draw. That rebuild happens on
+// FragmentsModels' own internal update cycle, which is rate-limited to
+// once per `maxUpdateRate` (100ms) — including the animate loop's own
+// unconditional per-frame `core.update()` call, which means calling
+// `core.update(true)` ourselves right after the change is usually a
+// no-op (it hits the exact same rate limit and gets silently skipped).
+// Neither awaiting that call nor waiting for the model's `onViewUpdated`
+// event (confirmed by testing against a production build: both still
+// sometimes left the stale frame on screen, needing an unrelated later
+// interaction to finally show the change) reliably catches the moment
+// the rebuild actually lands. Rendering on every frame for a short
+// window instead guarantees the very next frame after whichever
+// natural ~100ms cycle picks up the change also gets drawn, without
+// needing to know exactly when that happens.
+function renderForAWhile(requestRender, durationMs = 1000) {
+  const deadline = performance.now() + durationMs;
+  const tick = () => {
+    requestRender();
+    if (performance.now() < deadline) requestAnimationFrame(tick);
+  };
+  tick();
 }
 
 // `object` reflects the *current* world transform (including any rotation
@@ -853,31 +877,60 @@ export function useIfcViewer() {
       return null;
     };
 
-    // Tints the clicked element white on top of its existing material
-    // (preserveOriginalMaterial keeps everything else — textures, base
-    // color underneath the tint — rather than replacing it outright) so
-    // it reads as "selected" without hiding what it actually looks like.
-    // Double-sided so the overlay is visible from a cut cross-section
-    // too, matching how the model's own geometry is rendered.
-    const SELECTION_HIGHLIGHT_MATERIAL = {
-      color: new THREE.Color(0xffffff),
-      opacity: 0.5,
-      transparent: true,
-      renderedFaces: RenderedFaces.TWO,
-      preserveOriginalMaterial: true,
-    };
-    let highlightedItem = null; // { fragments: FragmentsModel, localId } | null
+    // A per-item material tint via FragmentsModel.highlight() proved
+    // unreliable in practice: a rigorous same-element before/after
+    // comparison against a production build showed the material was
+    // registered (confirmed via getHighlight()) but never visibly
+    // rendered, regardless of color, opacity, blend mode, forcing a
+    // core update, waiting for onViewUpdated, continuous rendering for a
+    // full second, or forcing full (non-LOD) geometry — the change
+    // simply never reached the screen. Rather than depend on that path,
+    // draw our own box outline around the selected element directly —
+    // the same self-contained approach already used for the pivot
+    // marker and clip-plane gizmos, which reliably render because
+    // nothing about them depends on the fragments library's per-item
+    // material pipeline.
+    const HIGHLIGHT_BOX_COLOR = new THREE.Color(0xff0000);
+    let highlightBoxHelper = null; // THREE.Box3Helper | null
     const clearHighlight = () => {
-      if (!highlightedItem) return;
-      const { fragments, localId } = highlightedItem;
-      highlightedItem = null;
-      fragments
-        .resetHighlight([localId])
-        .then(() => pipelineRef.current?.fragments.core.update(true))
-        .then(() => requestRender())
-        .catch(() => {});
+      if (!highlightBoxHelper) return;
+      modelsGroup.remove(highlightBoxHelper);
+      highlightBoxHelper.geometry.dispose();
+      highlightBoxHelper.material.dispose();
+      highlightBoxHelper = null;
+      requestRender();
     };
     clearHighlightRef.current = clearHighlight;
+    const showHighlightBox = async (hit) => {
+      const pipeline = pipelineRef.current;
+      if (!pipeline) return;
+      const itemMap = { [hit.fragments.modelId]: new Set([hit.localId]) };
+      const [worldBox] = await pipeline.fragments.getBBoxes(itemMap);
+      if (!worldBox) return;
+      // getBBoxes returns a world-space box; re-express it in
+      // modelsGroup-local space (transforming all 8 corners, since an
+      // axis-aligned box's corners don't map to another axis-aligned
+      // box under an arbitrary rotation) so the outline is parented
+      // under modelsGroup and rotates together with the model, exactly
+      // like the clip-plane gizmo meshes.
+      modelsGroup.updateMatrixWorld(true);
+      const corners = [
+        [worldBox.min.x, worldBox.min.y, worldBox.min.z],
+        [worldBox.min.x, worldBox.min.y, worldBox.max.z],
+        [worldBox.min.x, worldBox.max.y, worldBox.min.z],
+        [worldBox.min.x, worldBox.max.y, worldBox.max.z],
+        [worldBox.max.x, worldBox.min.y, worldBox.min.z],
+        [worldBox.max.x, worldBox.min.y, worldBox.max.z],
+        [worldBox.max.x, worldBox.max.y, worldBox.min.z],
+        [worldBox.max.x, worldBox.max.y, worldBox.max.z],
+      ].map(([x, y, z]) => modelsGroup.worldToLocal(new THREE.Vector3(x, y, z)));
+      const localBox = new THREE.Box3().setFromPoints(corners);
+      highlightBoxHelper = new THREE.Box3Helper(localBox, HIGHLIGHT_BOX_COLOR);
+      highlightBoxHelper.material.depthTest = false;
+      highlightBoxHelper.renderOrder = 999;
+      modelsGroup.add(highlightBoxHelper);
+      requestRender();
+    };
 
     const formatElementData = (data, modelName) => {
       const definitions = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
@@ -947,12 +1000,7 @@ export function useIfcViewer() {
           return;
         }
         clearHighlight();
-        highlightedItem = { fragments: hit.fragments, localId: hit.localId };
-        hit.fragments
-          .highlight([hit.localId], SELECTION_HIGHLIGHT_MATERIAL)
-          .then(() => pipelineRef.current?.fragments.core.update(true))
-          .then(() => requestRender())
-          .catch((err) => console.error("Highlight failed", err));
+        showHighlightBox(hit).catch((err) => console.error("Highlight box failed", err));
         const [data] = await hit.fragments.getItemsData([hit.localId], {
           attributesDefault: true,
           relations: {
@@ -1405,13 +1453,12 @@ export function useIfcViewer() {
     if (!pending) return;
     const hit = await pending.promise;
     if (!hit || hit.localId == null) return;
+    renderForAWhile(() => requestRenderRef.current());
     await hit.fragments.setVisible([hit.localId], false);
     // setVisible resolving only means the worker accepted the change, not
     // that the affected tiles have been rebuilt on the main thread yet —
-    // without forcing that to finish first, requestRender() below can
-    // fire before there's anything new to actually draw, so the element
-    // stays visible on screen until some unrelated render (e.g. the next
-    // camera move) happens to catch the update later.
+    // forcing that to finish is a best effort (see renderForAWhile above
+    // for the actual guarantee).
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
@@ -1419,6 +1466,7 @@ export function useIfcViewer() {
 
   const resetVisibility = useCallback(async () => {
     const entries = [...modelsRef.current.values()];
+    renderForAWhile(() => requestRenderRef.current());
     await Promise.all(entries.map(({ model }) => model.resetVisible()));
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();

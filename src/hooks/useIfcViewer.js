@@ -905,7 +905,16 @@ export function useIfcViewer() {
       depthTest: false,
     };
     let highlightOverlays = []; // THREE.Mesh[]
+    let stopWatchingHighlightTiles = null;
+    // Bumped on every clear/rebuild so an in-flight showHighlightFill
+    // (including one triggered asynchronously by a tile-rebuild watcher,
+    // below) can tell it's been superseded and discard its result
+    // instead of resurrecting overlays after the user already moved on.
+    let highlightGeneration = 0;
     const clearHighlight = () => {
+      highlightGeneration++;
+      stopWatchingHighlightTiles?.();
+      stopWatchingHighlightTiles = null;
       if (highlightOverlays.length === 0) return;
       for (const overlay of highlightOverlays) {
         overlay.parent?.remove(overlay);
@@ -920,10 +929,49 @@ export function useIfcViewer() {
       requestRender();
     };
     clearHighlightRef.current = clearHighlight;
+    const MAX_DRAW_CHUNK_ATTEMPTS = 3;
+    // getItemDrawChunks computes byte offsets against whichever tile
+    // geometry exists in the worker at call time. Tiles are batched by
+    // (class, material, lod), so many same-type elements share one
+    // tile's buffers — if that tile gets deleted and rebuilt (LOD/
+    // visibility-driven regeneration) before we read it a tick later,
+    // tiles.get(tileId) silently returns a *different* geometry and the
+    // old offsets land on unrelated triangles, visible as "many
+    // same-type elements highlighted". Watch tiles.onItemSet/
+    // onBeforeDelete for churn on the tileIds our chunks reference and
+    // retry if any occurred mid-flight.
+    const fetchStableDrawChunks = async (hit) => {
+      const { tiles } = hit.fragments;
+      for (let attempt = 0; attempt < MAX_DRAW_CHUNK_ATTEMPTS; attempt++) {
+        const touchedTileIds = new Set();
+        const onTouch = ({ key }) => touchedTileIds.add(key);
+        tiles.onItemSet.add(onTouch);
+        tiles.onBeforeDelete.add(onTouch);
+        let chunks;
+        try {
+          chunks = await hit.fragments.getItemDrawChunks([hit.localId]);
+        } finally {
+          tiles.onItemSet.remove(onTouch);
+          tiles.onBeforeDelete.remove(onTouch);
+        }
+        if (!chunks.some((c) => touchedTileIds.has(c.tileId))) return chunks;
+        if (attempt === MAX_DRAW_CHUNK_ATTEMPTS - 1) {
+          console.warn("Highlight fill: tile geometry kept changing; using last result");
+          return chunks;
+        }
+      }
+      return [];
+    };
     const showHighlightFill = async (hit) => {
-      const chunks = await hit.fragments.getItemDrawChunks([hit.localId]);
+      stopWatchingHighlightTiles?.();
+      stopWatchingHighlightTiles = null;
+      const myGeneration = ++highlightGeneration;
+      const chunks = await fetchStableDrawChunks(hit);
+      if (myGeneration !== highlightGeneration) return; // superseded while awaiting
       const overlays = [];
+      const usedTileIds = new Set();
       for (const chunk of chunks) {
+        usedTileIds.add(chunk.tileId);
         const tileMesh = hit.fragments.tiles.get(chunk.tileId);
         if (!tileMesh) continue;
         const geometry = new THREE.BufferGeometry();
@@ -968,6 +1016,22 @@ export function useIfcViewer() {
       }
       highlightOverlays = overlays;
       requestRender();
+      // The overlay's geometry shares its buffers with the tile mesh it
+      // was built from, not copies of them. If that tile is later
+      // rebuilt (e.g. further LOD/visibility streaming while the
+      // highlight is still shown), the library's own tiles.onBeforeDelete
+      // handler disposes the *old* mesh's geometry — which deletes the
+      // GPU buffers for those shared BufferAttribute objects out from
+      // under our still-displayed overlay, leaving it broken. Watch for
+      // exactly that and rebuild the highlight against the fresh tile
+      // rather than leave a dangling overlay.
+      const { tiles } = hit.fragments;
+      const onTileRebuilt = ({ key }) => {
+        if (!usedTileIds.has(key)) return;
+        showHighlightFill(hit).catch((err) => console.error("Highlight rebuild failed", err));
+      };
+      tiles.onBeforeDelete.add(onTileRebuilt);
+      stopWatchingHighlightTiles = () => tiles.onBeforeDelete.remove(onTileRebuilt);
     };
 
     const formatElementData = (data, modelName) => {

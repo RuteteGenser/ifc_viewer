@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 import CameraClipControl from "./CameraClipControl";
+import MeasureControl from "./MeasureControl";
 
 function ModelRow({ model, onToggleVisible, onRemove }) {
   return (
@@ -47,6 +48,10 @@ export default function Sidebar({
   onSetCameraClipEnabled,
   cameraClipDistance,
   onSetCameraClipDistance,
+  measurements,
+  onRemoveMeasurement,
+  measureModeActive,
+  onToggleMeasureMode,
 }) {
   const fileInputRef = useRef(null);
 
@@ -71,6 +76,15 @@ export default function Sidebar({
           title="Reset to the default view"
         >
           Home
+        </button>
+        <button
+          type="button"
+          className={`sidebar__measure-button${measureModeActive ? " sidebar__measure-button--active" : ""}`}
+          onClick={onToggleMeasureMode}
+          disabled={models.length === 0}
+          title="Click two points in the view to measure between them"
+        >
+          Measure
         </button>
       </div>
       <input
@@ -131,6 +145,11 @@ export default function Sidebar({
         cameraClipDistance={cameraClipDistance}
         onSetCameraClipDistance={onSetCameraClipDistance}
         disabled={models.length === 0}
+      />
+
+      <MeasureControl
+        measurements={measurements}
+        onRemoveMeasurement={onRemoveMeasurement}
       />
     </aside>
   );

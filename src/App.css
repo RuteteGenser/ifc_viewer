@@ -95,6 +95,32 @@
   cursor: not-allowed;
 }
 
+.sidebar__measure-button {
+  background: #22262e;
+  color: #e8eaed;
+  border: 1px solid #3a3f4a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sidebar__measure-button:hover:not(:disabled) {
+  background: #2a2f38;
+}
+
+.sidebar__measure-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sidebar__measure-button--active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
 .sidebar__reset-visibility-button {
   background: #22262e;
   color: #e8eaed;
@@ -264,6 +290,24 @@
   color: #9aa0aa;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+/* ---------- Measure control ---------- */
+
+.measure-control {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #2b2f38;
+}
+
+.measure-control__values {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Context menu ---------- */

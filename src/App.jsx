@@ -37,6 +37,10 @@ function App() {
     selectedElement,
     selectedElementLoading,
     clearSelection,
+    measurements,
+    measureModeActive,
+    toggleMeasureMode,
+    removeMeasurement,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -113,6 +117,10 @@ function App() {
         onSetCameraClipEnabled={setCameraClipEnabled}
         cameraClipDistance={cameraClipDistance}
         onSetCameraClipDistance={setCameraClipDistance}
+        measurements={measurements}
+        onRemoveMeasurement={removeMeasurement}
+        measureModeActive={measureModeActive}
+        onToggleMeasureMode={toggleMeasureMode}
       />
 
       <div

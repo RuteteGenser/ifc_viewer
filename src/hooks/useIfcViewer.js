@@ -98,6 +98,8 @@ export function useIfcViewer() {
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
   const cameraClipDistanceRef = useRef(1);
+  const measureManagerRef = useRef(null); // { addPoint, cancelPending, remove, list } | null
+  const measureModeActiveRef = useRef(false);
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -110,6 +112,8 @@ export function useIfcViewer() {
   const [cameraClipDistance, setCameraClipDistanceState] = useState(1);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
+  const [measureModeActive, setMeasureModeActiveState] = useState(false);
+  const [measurements, setMeasurements] = useState([]); // [{ id, dx, dy, dz }]
 
   useEffect(() => {
     const container = containerRef.current;
@@ -451,6 +455,106 @@ export function useIfcViewer() {
     };
     clipPlaneManagerRef.current = clipPlaneManager;
 
+    // Measure tool: click point A, then point B, and record the local-space
+    // (modelsGroup frame) difference between them. Points/line/markers are
+    // parented under modelsGroup (like the clip-plane gizmos above) so they
+    // inherit model rotation for free instead of needing per-frame transform
+    // math the way the transient, world-fixed pivotMarker does.
+    const measurementsRuntime = []; // { id, markerA, markerB, line, dx, dy, dz }
+    const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
+    const MEASURE_MARKER_PIXELS = 5;
+    let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
+    let measurePendingMarker = null; // THREE.Mesh | null
+    let measureUid = 0;
+
+    const createMeasureMarker = () => {
+      const marker = new THREE.Mesh(
+        measureMarkerGeometry,
+        new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }),
+      );
+      marker.renderOrder = 999;
+      modelsGroup.add(marker);
+      return marker;
+    };
+
+    const measureManager = {
+      // Returns "started" after recording point A, "completed" after B
+      // finishes a measurement.
+      addPoint: (localPoint) => {
+        if (measurePendingPoint === null) {
+          measurePendingPoint = localPoint;
+          measurePendingMarker = createMeasureMarker();
+          measurePendingMarker.position.copy(localPoint);
+          requestRender();
+          return "started";
+        }
+        const a = measurePendingPoint;
+        const b = localPoint;
+        const markerA = measurePendingMarker;
+        const markerB = createMeasureMarker();
+        markerB.position.copy(b);
+        const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+        const line = new THREE.Line(geometry, material);
+        line.renderOrder = 999;
+        modelsGroup.add(line);
+        measurementsRuntime.push({
+          id: `measure-${++measureUid}`,
+          markerA,
+          markerB,
+          line,
+          dx: b.x - a.x,
+          dy: b.y - a.y,
+          dz: b.z - a.z,
+        });
+        measurePendingPoint = null;
+        measurePendingMarker = null;
+        requestRender();
+        return "completed";
+      },
+      cancelPending: () => {
+        if (measurePendingMarker) {
+          modelsGroup.remove(measurePendingMarker);
+          measurePendingMarker.material.dispose();
+          measurePendingMarker = null;
+        }
+        measurePendingPoint = null;
+        requestRender();
+      },
+      remove: (id) => {
+        const index = measurementsRuntime.findIndex((m) => m.id === id);
+        if (index === -1) return;
+        const [entry] = measurementsRuntime.splice(index, 1);
+        modelsGroup.remove(entry.markerA, entry.markerB, entry.line);
+        entry.markerA.material.dispose();
+        entry.markerB.material.dispose();
+        entry.line.geometry.dispose();
+        entry.line.material.dispose();
+        requestRender();
+      },
+      list: () => measurementsRuntime.map((m) => ({ id: m.id, dx: m.dx, dy: m.dy, dz: m.dz })),
+    };
+    measureManagerRef.current = measureManager;
+
+    // Constant on-screen size for measurement markers (same technique as
+    // scalePivotMarker below), since — unlike the transient pivot marker —
+    // these persist and need to stay a sane size at any zoom level.
+    const measureScratchVec3 = new THREE.Vector3();
+    const scaleMeasureMarkers = () => {
+      const scaleOne = (marker) => {
+        const distance = camera.position.distanceTo(marker.getWorldPosition(measureScratchVec3));
+        const worldPerPixel =
+          (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) /
+          renderer.domElement.clientHeight;
+        marker.scale.setScalar(worldPerPixel * MEASURE_MARKER_PIXELS);
+      };
+      if (measurePendingMarker) scaleOne(measurePendingMarker);
+      for (const entry of measurementsRuntime) {
+        scaleOne(entry.markerA);
+        scaleOne(entry.markerB);
+      }
+    };
+
     // Suppress the browser's native middle-click autoscroll (the little
     // scroll-icon drag mode most browsers activate on a middle-button
     // mousedown) — it fights with OrbitControls' own middle-button pan for
@@ -516,6 +620,20 @@ export function useIfcViewer() {
       setContextMenu({ x: event.clientX, y: event.clientY });
     };
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
+
+    // Escape while measuring: cancel just the pending point A if one's
+    // been placed (so the tool stays armed for a fresh A), otherwise exit
+    // measure mode entirely.
+    const onMeasureKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (measurePendingPoint !== null) {
+        measureManager.cancelPending();
+      } else if (measureModeActiveRef.current) {
+        measureModeActiveRef.current = false;
+        setMeasureModeActiveState(false);
+      }
+    };
+    window.addEventListener("keydown", onMeasureKeyDown);
 
     // Ctrl+scroll used to move the (single) clip plane along its own
     // normal; that's now done by shift+dragging its gizmo instead (see
@@ -1120,6 +1238,17 @@ export function useIfcViewer() {
       }
     };
 
+    const handleMeasureClick = async (raycastPromise) => {
+      if (!raycastPromise) return;
+      const hit = await raycastPromise;
+      if (!hit) return;
+      modelsGroup.updateMatrixWorld(true);
+      const localPoint = modelsGroup.worldToLocal(hit.point.clone());
+      if (measureManager.addPoint(localPoint) === "completed") {
+        setMeasurements(measureManager.list());
+      }
+    };
+
     let activePointerId = null;
     let gestureSeq = 0;
     // True from mousedown until the pivot raycast below resolves (or the
@@ -1145,7 +1274,11 @@ export function useIfcViewer() {
       if (typeof event.clientX === "number" && typeof event.clientY === "number") {
         const moved = Math.hypot(event.clientX - downClientX, event.clientY - downClientY);
         if (moved < CLICK_MOVE_THRESHOLD) {
-          selectElementFrom(pivotRaycastPromise);
+          if (measureModeActiveRef.current) {
+            handleMeasureClick(pivotRaycastPromise);
+          } else {
+            selectElementFrom(pivotRaycastPromise);
+          }
         }
       }
     };
@@ -1346,6 +1479,7 @@ export function useIfcViewer() {
       if (!needsRender) return;
       needsRender = false;
       scalePivotMarker();
+      scaleMeasureMarkers();
       if (clipPlanesRuntime.length > 0) {
         // Each plane is authored in modelsGroup's local frame so it
         // rotates together with the model instead of staying fixed in
@@ -1434,6 +1568,7 @@ export function useIfcViewer() {
         suppressMiddleClickAutoscroll,
       );
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("keydown", onMeasureKeyDown);
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
       renderer.domElement.removeEventListener("pointermove", onZoomHoverMove);
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
@@ -1533,6 +1668,20 @@ export function useIfcViewer() {
     if (!manager) return;
     manager.remove(id);
     setClipPlanes(manager.list());
+  }, []);
+
+  const toggleMeasureMode = useCallback(() => {
+    const next = !measureModeActiveRef.current;
+    measureModeActiveRef.current = next;
+    setMeasureModeActiveState(next);
+    if (!next) measureManagerRef.current?.cancelPending();
+  }, []);
+
+  const removeMeasurement = useCallback((id) => {
+    const manager = measureManagerRef.current;
+    if (!manager) return;
+    manager.remove(id);
+    setMeasurements(manager.list());
   }, []);
 
   const setClipPlaneEnabled = useCallback((id, enabled) => {
@@ -1732,5 +1881,9 @@ export function useIfcViewer() {
     selectedElement,
     selectedElementLoading,
     clearSelection,
+    measurements,
+    measureModeActive,
+    toggleMeasureMode,
+    removeMeasurement,
   };
 }

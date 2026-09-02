@@ -884,51 +884,89 @@ export function useIfcViewer() {
     // rendered, regardless of color, opacity, blend mode, forcing a
     // core update, waiting for onViewUpdated, continuous rendering for a
     // full second, or forcing full (non-LOD) geometry — the change
-    // simply never reached the screen. Rather than depend on that path,
-    // draw our own box outline around the selected element directly —
-    // the same self-contained approach already used for the pivot
-    // marker and clip-plane gizmos, which reliably render because
-    // nothing about them depends on the fragments library's per-item
-    // material pipeline.
-    const HIGHLIGHT_BOX_COLOR = new THREE.Color(0xff0000);
-    let highlightBoxHelper = null; // THREE.Box3Helper | null
+    // simply never reached the screen. A bounding-box outline was a
+    // working stopgap, but doesn't match the element's actual shape.
+    // getItemDrawChunks + the tile's own live mesh does: it's a
+    // read-only RPC (same kind as the already-working getBBoxes/
+    // getItemsData below, not the broken *mutation* RPC family above),
+    // and it returns exactly which index-buffer ranges of which
+    // currently-rendered tile mesh belong to this item — so the overlay
+    // can share that tile's real position/normal/index buffers and
+    // limit itself to just those ranges via geometry.addGroup, with no
+    // coordinate-space math needed (it inherits the tile mesh's own
+    // matrix directly).
+    const HIGHLIGHT_FILL_MATERIAL_PROPS = {
+      color: new THREE.Color(0xff0000),
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+      // The overlay coincides exactly with the base geometry's depth
+      // (same vertices), which would otherwise z-fight against it.
+      depthTest: false,
+    };
+    let highlightOverlays = []; // THREE.Mesh[]
     const clearHighlight = () => {
-      if (!highlightBoxHelper) return;
-      modelsGroup.remove(highlightBoxHelper);
-      highlightBoxHelper.geometry.dispose();
-      highlightBoxHelper.material.dispose();
-      highlightBoxHelper = null;
+      if (highlightOverlays.length === 0) return;
+      for (const overlay of highlightOverlays) {
+        overlay.parent?.remove(overlay);
+        // Don't dispose the wrapper geometry: its position/normal/index
+        // BufferAttributes are the *same* objects the live tile mesh is
+        // rendering with (shared, not copied), so disposing them here
+        // would release their GPU buffers out from under that mesh.
+        // Only the overlay's own material is actually ours to dispose.
+        overlay.material.dispose();
+      }
+      highlightOverlays = [];
       requestRender();
     };
     clearHighlightRef.current = clearHighlight;
-    const showHighlightBox = async (hit) => {
-      const pipeline = pipelineRef.current;
-      if (!pipeline) return;
-      const itemMap = { [hit.fragments.modelId]: new Set([hit.localId]) };
-      const [worldBox] = await pipeline.fragments.getBBoxes(itemMap);
-      if (!worldBox) return;
-      // getBBoxes returns a world-space box; re-express it in
-      // modelsGroup-local space (transforming all 8 corners, since an
-      // axis-aligned box's corners don't map to another axis-aligned
-      // box under an arbitrary rotation) so the outline is parented
-      // under modelsGroup and rotates together with the model, exactly
-      // like the clip-plane gizmo meshes.
-      modelsGroup.updateMatrixWorld(true);
-      const corners = [
-        [worldBox.min.x, worldBox.min.y, worldBox.min.z],
-        [worldBox.min.x, worldBox.min.y, worldBox.max.z],
-        [worldBox.min.x, worldBox.max.y, worldBox.min.z],
-        [worldBox.min.x, worldBox.max.y, worldBox.max.z],
-        [worldBox.max.x, worldBox.min.y, worldBox.min.z],
-        [worldBox.max.x, worldBox.min.y, worldBox.max.z],
-        [worldBox.max.x, worldBox.max.y, worldBox.min.z],
-        [worldBox.max.x, worldBox.max.y, worldBox.max.z],
-      ].map(([x, y, z]) => modelsGroup.worldToLocal(new THREE.Vector3(x, y, z)));
-      const localBox = new THREE.Box3().setFromPoints(corners);
-      highlightBoxHelper = new THREE.Box3Helper(localBox, HIGHLIGHT_BOX_COLOR);
-      highlightBoxHelper.material.depthTest = false;
-      highlightBoxHelper.renderOrder = 999;
-      modelsGroup.add(highlightBoxHelper);
+    const showHighlightFill = async (hit) => {
+      const chunks = await hit.fragments.getItemDrawChunks([hit.localId]);
+      const overlays = [];
+      for (const chunk of chunks) {
+        const tileMesh = hit.fragments.tiles.get(chunk.tileId);
+        if (!tileMesh) continue;
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", tileMesh.geometry.attributes.position);
+        if (tileMesh.geometry.attributes.normal) {
+          geometry.setAttribute("normal", tileMesh.geometry.attributes.normal);
+        }
+        geometry.setIndex(tileMesh.geometry.index);
+        for (let i = 0; i < chunk.position.length; i++) {
+          geometry.addGroup(chunk.position[i], chunk.size[i], 0);
+        }
+        // The wrapper geometry has no precomputed bounding volume, and
+        // the fragments library appears to free the shared position
+        // attribute's CPU-side array after it's uploaded to the GPU (a
+        // memory optimization for large models) — computing one lazily
+        // (which three.js does both for frustum culling and, since this
+        // material is transparent, for back-to-front depth sorting)
+        // then throws trying to read that freed array. Reuse the tile
+        // mesh's own bounding volume instead — it was already computed
+        // before the array was freed, and being a superset of our
+        // subset of its triangles is perfectly fine here.
+        if (tileMesh.geometry.boundingSphere) {
+          geometry.boundingSphere = tileMesh.geometry.boundingSphere.clone();
+        }
+        if (tileMesh.geometry.boundingBox) {
+          geometry.boundingBox = tileMesh.geometry.boundingBox.clone();
+        }
+        const overlay = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial(HIGHLIGHT_FILL_MATERIAL_PROPS));
+        overlay.renderOrder = 999;
+        overlay.matrix.copy(tileMesh.matrix);
+        overlay.matrixAutoUpdate = false;
+        // Belt-and-braces: skip frustum culling too, in case something
+        // else ever tries to recompute the bounding sphere later (e.g.
+        // if the tile mesh's own bounding volume weren't set yet at
+        // this point). The overlay is small and short-lived, so always
+        // rendering it is cheap.
+        overlay.frustumCulled = false;
+        // Same parent as the tile mesh => identical placement, with no
+        // transform math of our own needed.
+        tileMesh.parent.add(overlay);
+        overlays.push(overlay);
+      }
+      highlightOverlays = overlays;
       requestRender();
     };
 
@@ -1000,7 +1038,7 @@ export function useIfcViewer() {
           return;
         }
         clearHighlight();
-        showHighlightBox(hit).catch((err) => console.error("Highlight box failed", err));
+        showHighlightFill(hit).catch((err) => console.error("Highlight fill failed", err));
         const [data] = await hit.fragments.getItemsData([hit.localId], {
           attributesDefault: true,
           relations: {

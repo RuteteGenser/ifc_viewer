@@ -101,6 +101,8 @@ export function useIfcViewer() {
   const cameraClipDistanceRef = useRef(1);
   const measureManagerRef = useRef(null); // { addPoint, cancelPending, remove, list } | null
   const measureModeActiveRef = useRef(false);
+  const showMeasureDeletePopupRef = useRef(() => {});
+  const measureDeletePopupRef = useRef(null); // mirrors measureDeletePopup state, for the imperative animate() loop
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -115,6 +117,10 @@ export function useIfcViewer() {
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
   const [measurements, setMeasurements] = useState([]); // [{ id, dx, dy, dz }]
+  const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]); // { key, modelId, localId, name, category, modelName }[]
+  const [isolatedKeys, setIsolatedKeys] = useState(() => new Set()); // `${modelId}::${localId}`
 
   useEffect(() => {
     const container = containerRef.current;
@@ -447,13 +453,15 @@ export function useIfcViewer() {
         const entry = clipPlanesRuntime.find((p) => p.id === id);
         if (!entry) return;
         entry.gizmoVisible = visible;
-        // The mesh itself stays visible: THREE.Raycaster skips any
-        // object with visible === false, so if the mesh were hidden
-        // that way it would become structurally un-hittable — breaking
-        // middle-mouse+scroll (see tryMiddleScrollClipPlane), which is
-        // meant to keep working even with the handle turned off.
-        // material.visible controls rendering without affecting
-        // raycastability, so it's the right knob for "show/hide" here.
+        // The mesh's own Object3D.visible stays true unconditionally;
+        // only material.visible toggles rendering. This is what lets
+        // tryMiddleScrollClipPlane (below) hit-test every plane's mesh
+        // regardless of whether its handle is currently shown, since it
+        // deliberately raycasts against all meshes rather than filtering
+        // by `gizmoVisible` the way the shift+scroll/shift+drag gestures
+        // do. (Which gestures react to a hidden gizmo is controlled by
+        // the `gizmoVisible` filters at those call sites, not by this
+        // visibility mechanism itself.)
         entry.mesh.material.visible = visible;
         requestRender();
       },
@@ -471,8 +479,7 @@ export function useIfcViewer() {
     const measurementsRuntime = []; // { id, markerA, markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel, dx, dy, dz, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
-    const MEASURE_LABEL_PIXEL_HEIGHT = 40;
-    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30;
+    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30; // shared by the main label and the three per-leg labels
     let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
     let measurePendingMarker = null; // THREE.Mesh | null
     let measureUid = 0;
@@ -500,12 +507,14 @@ export function useIfcViewer() {
       return leg;
     };
 
-    // A billboard-style text label showing a measurement's length and
-    // ΔX/ΔY/ΔZ (colored to match the sidebar), drawn onto one shared canvas
-    // per measurement and rescaled per frame like the markers above.
-    // THREE.Sprite auto-faces the camera, so no projection math is
-    // needed. Dragging an endpoint (below) redraws this same canvas in
-    // place via updateMeasureLabelText rather than recreating it.
+    // A billboard-style text label showing a measurement's length, drawn
+    // onto one shared canvas per measurement/leg and rescaled per frame
+    // like the markers above. THREE.Sprite auto-faces the camera, so no
+    // projection math is needed. Dragging an endpoint (below) redraws
+    // this same canvas in place via updateMeasureLabelText rather than
+    // recreating it. The per-axis ΔX/ΔY/ΔZ breakdown lives on the three
+    // dogleg leg labels instead (see createMeasureLeg usage in addPoint),
+    // so this main label stays length-only.
     const drawMeasureLabelCanvas = (canvas, ctx, lines) => {
       const font = "600 36px sans-serif";
       const lineHeight = 44;
@@ -548,11 +557,8 @@ export function useIfcViewer() {
       sprite.userData.aspect = sprite.userData.canvas.width / sprite.userData.canvas.height;
       sprite.material.map.needsUpdate = true;
     };
-    const measureLabelLines = (dx, dy, dz, length) => [
+    const measureLabelLines = (length) => [
       { text: `${length.toFixed(3)} m`, color: "#e8eaed" },
-      { text: `ΔX: ${dx.toFixed(3)} m`, color: "#ef4444" },
-      { text: `ΔY: ${dy.toFixed(3)} m`, color: "#22c55e" },
-      { text: `ΔZ: ${dz.toFixed(3)} m`, color: "#3b82f6" },
     ];
 
     const measureManager = {
@@ -588,7 +594,7 @@ export function useIfcViewer() {
         const dx = Math.abs(b.x - a.x);
         const dy = Math.abs(b.y - a.y);
         const dz = Math.abs(b.z - a.z);
-        const label = createMeasureLabel(measureLabelLines(dx, dy, dz, length));
+        const label = createMeasureLabel(measureLabelLines(length));
         label.position.copy(a).add(b).multiplyScalar(0.5);
         // One small single-line label per leg, at that leg's own
         // midpoint, showing just that axis's own distance.
@@ -686,10 +692,8 @@ export function useIfcViewer() {
       const scaleOne = (marker) => {
         marker.scale.setScalar(worldPerPixelAt(marker) * MEASURE_MARKER_PIXELS);
       };
-      const scaleLabel = (label) => {
-        const height = worldPerPixelAt(label) * MEASURE_LABEL_PIXEL_HEIGHT;
-        label.scale.set(height * label.userData.aspect, height, 1);
-      };
+      // Same size for the main label and the three per-leg labels — all
+      // are single-line now, so there's no reason for one to be bigger.
       const scaleLegLabel = (label) => {
         const height = worldPerPixelAt(label) * MEASURE_LEG_LABEL_PIXEL_HEIGHT;
         label.scale.set(height * label.userData.aspect, height, 1);
@@ -698,7 +702,7 @@ export function useIfcViewer() {
       for (const entry of measurementsRuntime) {
         scaleOne(entry.markerA);
         scaleOne(entry.markerB);
-        scaleLabel(entry.label);
+        scaleLegLabel(entry.label);
         scaleLegLabel(entry.legXLabel);
         scaleLegLabel(entry.legYLabel);
         scaleLegLabel(entry.legZLabel);
@@ -717,6 +721,28 @@ export function useIfcViewer() {
       "mousedown",
       suppressMiddleClickAutoscroll,
     );
+
+    // Explicit middle-button-held tracking for tryMiddleScrollClipPlane
+    // (see onZoomWheel below) — WheelEvent.buttons is unreliable across
+    // real browsers/input devices/trackpad-middle-click emulation for a
+    // "physically hold the button, then scroll" gesture, even though it
+    // works fine in an automated test that hardcodes the property. This
+    // tracks the real mousedown/mouseup state instead.
+    let middleButtonHeld = false;
+    const onMiddleButtonDown = (event) => {
+      if (event.button === 1) middleButtonHeld = true;
+    };
+    const onMiddleButtonUp = (event) => {
+      if (event.button === 1) middleButtonHeld = false;
+    };
+    // Covers the button being released outside the window entirely (e.g.
+    // alt-tabbing away while holding it), where no mouseup ever fires.
+    const onMiddleButtonReset = () => {
+      middleButtonHeld = false;
+    };
+    window.addEventListener("mousedown", onMiddleButtonDown);
+    window.addEventListener("mouseup", onMiddleButtonUp);
+    window.addEventListener("blur", onMiddleButtonReset);
 
     // Clipping planes only discard pixels at render time — the mesh/BVH
     // data a raycast walks is completely untouched by them. Without this,
@@ -894,6 +920,17 @@ export function useIfcViewer() {
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       );
     };
+    // The reverse of getNdc: a world-space point to client (page) coords,
+    // for anchoring HTML overlays (like the measure-delete popup below)
+    // to a 3D position.
+    const worldToClient = (worldPos) => {
+      const ndc = worldPos.clone().project(camera);
+      const rect = renderer.domElement.getBoundingClientRect();
+      return {
+        x: rect.left + (ndc.x * 0.5 + 0.5) * rect.width,
+        y: rect.top + (-ndc.y * 0.5 + 0.5) * rect.height,
+      };
+    };
 
     // Provisional pivot used for the first frames of a drag, until the
     // (async, worker-backed) geometry raycast comes back with the real
@@ -977,12 +1014,14 @@ export function useIfcViewer() {
         // Shift held but the cursor isn't over any clip-plane gizmo —
         // fall through to normal zoom below.
       }
-      if (event.buttons & 4) {
-        // Middle mouse button currently held (bit 4 of the wheel event's
-        // own `buttons` bitmask) — try moving a plane before falling
-        // through to zoom. A stationary middle-button hold doesn't
-        // trigger OrbitControls' own middle-drag pan (that only engages
-        // on pointer movement), so this doesn't conflict with it.
+      if (middleButtonHeld || (event.buttons & 4)) {
+        // Middle mouse button currently held — tracked explicitly via
+        // mousedown/mouseup above (event.buttons is kept as a harmless
+        // secondary signal for browsers where it happens to work) — try
+        // moving a plane before falling through to zoom. A stationary
+        // middle-button hold doesn't trigger OrbitControls' own
+        // middle-drag pan (that only engages on pointer movement), so
+        // this doesn't conflict with it.
         if (tryMiddleScrollClipPlane(event)) {
           event.preventDefault();
           event.stopPropagation();
@@ -1423,6 +1462,7 @@ export function useIfcViewer() {
     let measureDragGeneration = 0; // invalidates a stale in-flight raycast
     let measureDragPendingClient = null; // { clientX, clientY } | null
     let measureDragRaycastBusy = false; // single-flight guard
+    let measureDragStartClient = null; // {clientX, clientY} at pointerdown, to tell a click from a drag
 
     const applyMeasureMarkerDrag = (hit) => {
       const entry = measurementsRuntime.find((m) => m.id === draggingMeasurePoint.entryId);
@@ -1457,7 +1497,7 @@ export function useIfcViewer() {
       entry.dz = Math.abs(b.z - a.z);
       entry.length = a.distanceTo(b);
       entry.label.position.copy(a).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.label, measureLabelLines(entry.dx, entry.dy, entry.dz, entry.length));
+      updateMeasureLabelText(entry.label, measureLabelLines(entry.length));
 
       entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
       updateMeasureLabelText(entry.legXLabel, [{ text: `${entry.dx.toFixed(3)} m`, color: "#ef4444" }]);
@@ -1473,12 +1513,21 @@ export function useIfcViewer() {
       if (!draggingMeasurePoint) return;
       measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
     };
-    const onMeasureMarkerDragEnd = () => {
+    const onMeasureMarkerDragEnd = (event) => {
+      const wasClick =
+        measureDragStartClient &&
+        Math.hypot(
+          event.clientX - measureDragStartClient.clientX,
+          event.clientY - measureDragStartClient.clientY,
+        ) < CLICK_MOVE_THRESHOLD;
+      const clicked = wasClick ? draggingMeasurePoint : null;
       draggingMeasurePoint = null;
+      measureDragStartClient = null;
       measureDragPendingClient = null;
       measureDragGeneration++; // discard any raycast still in flight from this drag
       window.removeEventListener("pointermove", onMeasureMarkerDragMove);
       window.removeEventListener("pointerup", onMeasureMarkerDragEnd);
+      if (clicked) showMeasureDeletePopupRef.current(clicked.entryId, clicked.which);
       requestRender();
     };
     // Returns true if a drag was started (caller should not also start a
@@ -1503,13 +1552,22 @@ export function useIfcViewer() {
 
       event.preventDefault();
       event.stopPropagation();
+      setMeasureDeletePopup(null); // don't leave a stale popup from a previous click open
       draggingMeasurePoint = { entryId: hit.entry.id, which: hit.which };
       measureDragGeneration++;
+      measureDragStartClient = { clientX: event.clientX, clientY: event.clientY };
       measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
       measureDragRaycastBusy = false;
       window.addEventListener("pointermove", onMeasureMarkerDragMove);
       window.addEventListener("pointerup", onMeasureMarkerDragEnd);
       return true;
+    };
+    showMeasureDeletePopupRef.current = (entryId, which) => {
+      const entry = measurementsRuntime.find((m) => m.id === entryId);
+      if (!entry) return;
+      const marker = which === "A" ? entry.markerA : entry.markerB;
+      const client = worldToClient(marker.getWorldPosition(new THREE.Vector3()));
+      setMeasureDeletePopup({ entryId, which, x: client.x, y: client.y });
     };
 
     let draggingClipPlaneId = null;
@@ -1629,10 +1687,8 @@ export function useIfcViewer() {
       moveClipPlaneUnderCursor(event, clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh));
     // Middle-mouse+scroll works even with the handle turned off —
     // intentionally does NOT filter by gizmoVisible, since the whole
-    // point is to move a plane you can't see a handle for. This relies
-    // on the gizmo mesh itself staying `visible = true` always (see
-    // setGizmoVisible above, which now hides it via material.visible
-    // instead) so it stays raycastable.
+    // point is to move a plane you can't see a handle for (unlike
+    // shift+scroll above, which requires a visible handle).
     const tryMiddleScrollClipPlane = (event) =>
       moveClipPlaneUnderCursor(event, clipPlanesRuntime.map((p) => p.mesh));
 
@@ -1755,6 +1811,23 @@ export function useIfcViewer() {
             console.error("Measure drag raycast failed", err);
           });
       }
+      // The delete popup is an HTML overlay anchored to a 3D point, so
+      // (unlike the 3D sprites) its screen position needs recomputing
+      // every frame the camera could have moved, not just when the
+      // marker itself moves.
+      if (measureDeletePopupRef.current) {
+        const { entryId, which } = measureDeletePopupRef.current;
+        const entry = measurementsRuntime.find((m) => m.id === entryId);
+        if (!entry) {
+          setMeasureDeletePopup(null); // measurement was deleted from elsewhere (e.g. the sidebar)
+        } else {
+          const marker = which === "A" ? entry.markerA : entry.markerB;
+          const client = worldToClient(marker.getWorldPosition(new THREE.Vector3()));
+          if (client.x !== measureDeletePopupRef.current.x || client.y !== measureDeletePopupRef.current.y) {
+            setMeasureDeletePopup({ entryId, which, x: client.x, y: client.y });
+          }
+        }
+      }
       controls.update();
       pipelineRef.current?.fragments.core.update();
       if (!needsRender) return;
@@ -1848,6 +1921,9 @@ export function useIfcViewer() {
         "mousedown",
         suppressMiddleClickAutoscroll,
       );
+      window.removeEventListener("mousedown", onMiddleButtonDown);
+      window.removeEventListener("mouseup", onMiddleButtonUp);
+      window.removeEventListener("blur", onMiddleButtonReset);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onMeasureKeyDown);
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
@@ -1895,6 +1971,10 @@ export function useIfcViewer() {
     modelNamesRef.current = new Map(models.map((m) => [m.id, m.name]));
   }, [models]);
 
+  useEffect(() => {
+    measureDeletePopupRef.current = measureDeletePopup;
+  }, [measureDeletePopup]);
+
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
       // The kept region is whatever lies *beyond* cameraClipDistance
@@ -1914,6 +1994,7 @@ export function useIfcViewer() {
   }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeMeasureDeletePopup = useCallback(() => setMeasureDeletePopup(null), []);
 
   const createClipPlaneHere = useCallback(async () => {
     const pending = pendingSurfacePickRef.current;
@@ -2008,6 +2089,10 @@ export function useIfcViewer() {
   }, []);
 
   const resetVisibility = useCallback(async () => {
+    // Also exits isolate mode — otherwise the search checkboxes would
+    // stay checked while a subsequent toggle silently re-applies the
+    // stale isolation set, undoing this reset.
+    setIsolatedKeys(new Set());
     const entries = [...modelsRef.current.values()];
     renderForAWhile(() => requestRenderRef.current());
     await Promise.all(entries.map(({ model }) => model.resetVisible()));
@@ -2015,6 +2100,93 @@ export function useIfcViewer() {
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
   }, []);
+
+  // Recomputes every loaded model's visibility from scratch based on the
+  // given isolated-keys set: hide everything, then re-show just the
+  // isolated subset per model. An empty set means "not isolating" —
+  // falls back to a plain full reset.
+  const applyIsolation = useCallback(async (keys) => {
+    if (keys.size === 0) {
+      await resetVisibility();
+      return;
+    }
+    renderForAWhile(() => requestRenderRef.current());
+    const entries = [...modelsRef.current.entries()];
+    await Promise.all(
+      entries.map(async ([modelId, { model }]) => {
+        const idsToShow = [];
+        for (const key of keys) {
+          const sep = key.lastIndexOf("::");
+          if (key.slice(0, sep) === modelId) idsToShow.push(Number(key.slice(sep + 2)));
+        }
+        await model.setVisible(undefined, false);
+        if (idsToShow.length > 0) await model.setVisible(idsToShow, true);
+      }),
+    );
+    await pipelineRef.current?.fragments.core.update(true);
+    invalidateGroupSphereRef.current();
+    requestRenderRef.current();
+  }, [resetVisibility]);
+
+  const toggleIsolate = useCallback(
+    (key) => {
+      setIsolatedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        applyIsolation(next);
+        return next;
+      });
+    },
+    [applyIsolation],
+  );
+
+  const clearIsolation = useCallback(() => {
+    setIsolatedKeys(new Set());
+    resetVisibility();
+  }, [resetVisibility]);
+
+  const runSearch = useCallback(async (query) => {
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const valueRegex = new RegExp(escaped, "i");
+    const rows = [];
+    for (const [modelId, { model }] of modelsRef.current) {
+      if (rows.length >= 50) break;
+      let ids;
+      try {
+        ids = await model.getItemsByQuery({ attributes: { queries: [{ name: /^Name$/, value: valueRegex }] } });
+      } catch (err) {
+        console.error("Search query failed", err);
+        continue;
+      }
+      if (!ids || ids.length === 0) continue;
+      const capped = ids.slice(0, 50 - rows.length);
+      const items = await model.getItemsData(capped, { attributesDefault: true });
+      const modelName = modelNamesRef.current.get(modelId);
+      for (let i = 0; i < capped.length; i++) {
+        rows.push({
+          key: `${modelId}::${capped[i]}`,
+          modelId,
+          localId: capped[i],
+          name: items[i]?.Name?.value ?? "(unnamed)",
+          category: items[i]?._category?.value ?? "",
+          modelName,
+        });
+      }
+    }
+    setSearchResults(rows);
+  }, []);
+
+  useEffect(() => {
+    // Stale results left in state when the query drops below 2 chars are
+    // harmless — SearchBar itself only renders the dropdown once the
+    // (trimmed) query is at least 2 characters, so there's nothing to
+    // clear here; that avoids a synchronous setState during the effect.
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) return;
+    const handle = setTimeout(() => runSearch(trimmed), 250);
+    return () => clearTimeout(handle);
+  }, [searchQuery, runSearch]);
 
   const loadFiles = useCallback(async (fileList) => {
     const pipeline = pipelineRef.current;
@@ -2123,6 +2295,11 @@ export function useIfcViewer() {
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
     setModels((prev) => prev.filter((m) => m.id !== modelId));
+    setSearchResults((prev) => prev.filter((r) => r.modelId !== modelId));
+    setIsolatedKeys((prev) => {
+      const next = new Set([...prev].filter((key) => !key.startsWith(`${modelId}::`)));
+      return next.size === prev.size ? prev : next;
+    });
 
     try {
       await pipeline?.fragments.core.disposeModel(modelId);
@@ -2186,5 +2363,13 @@ export function useIfcViewer() {
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,
+    measureDeletePopup,
+    closeMeasureDeletePopup,
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    isolatedKeys,
+    toggleIsolate,
+    clearIsolation,
   };
 }

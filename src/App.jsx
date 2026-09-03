@@ -6,6 +6,8 @@ import DropOverlay from "./components/DropOverlay";
 import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
 import ElementInfoPanel from "./components/ElementInfoPanel";
+import MeasureDeleteButton from "./components/MeasureDeleteButton";
+import SearchBar from "./components/SearchBar";
 import "./App.css";
 
 function App() {
@@ -41,6 +43,14 @@ function App() {
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,
+    measureDeletePopup,
+    closeMeasureDeletePopup,
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    isolatedKeys,
+    toggleIsolate,
+    clearIsolation,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -138,6 +148,14 @@ function App() {
           error={error}
           onDismissError={clearError}
         />
+        <SearchBar
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          results={searchResults}
+          isolatedKeys={isolatedKeys}
+          onToggleIsolate={toggleIsolate}
+          onClearIsolation={clearIsolation}
+        />
       </div>
 
       {contextMenu && (
@@ -155,6 +173,18 @@ function App() {
         loading={selectedElementLoading}
         onClose={clearSelection}
       />
+
+      {measureDeletePopup && (
+        <MeasureDeleteButton
+          x={measureDeletePopup.x}
+          y={measureDeletePopup.y}
+          onDelete={() => {
+            removeMeasurement(measureDeletePopup.entryId);
+            closeMeasureDeletePopup();
+          }}
+          onClose={closeMeasureDeletePopup}
+        />
+      )}
     </div>
   );
 }

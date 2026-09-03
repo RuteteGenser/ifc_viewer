@@ -12,11 +12,11 @@ export default function MeasureControl({ measurements, onRemoveMeasurement }) {
       ) : (
         measurements.map((m) => (
           <div className="clip-control__plane" key={m.id}>
-            <div className="measure-control__length">Length: {m.length.toFixed(3)}</div>
+            <div className="measure-control__length">Length: {m.length.toFixed(3)} m</div>
             <div className="measure-control__values">
-              <span style={{ color: "#ef4444" }}>ΔX: {m.dx.toFixed(3)}</span>
-              <span style={{ color: "#22c55e" }}>ΔY: {m.dy.toFixed(3)}</span>
-              <span style={{ color: "#3b82f6" }}>ΔZ: {m.dz.toFixed(3)}</span>
+              <span style={{ color: "#ef4444" }}>ΔX: {m.dx.toFixed(3)} m</span>
+              <span style={{ color: "#22c55e" }}>ΔY: {m.dy.toFixed(3)} m</span>
+              <span style={{ color: "#3b82f6" }}>ΔZ: {m.dz.toFixed(3)} m</span>
             </div>
             <div className="clip-control__buttons">
               <button

@@ -478,20 +478,21 @@ export function useIfcViewer() {
       return marker;
     };
 
-    // A billboard-style text label for a measurement's length, drawn once
-    // at creation (the two points never move afterward, so the text never
-    // needs to change) and rescaled per frame like the markers above.
-    // THREE.Sprite auto-faces the camera, so no projection math is needed.
-    const createMeasureLabel = (text) => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      const font = "600 40px sans-serif";
-      ctx.font = font;
+    // A billboard-style text label showing a measurement's length and
+    // ΔX/ΔY (colored to match the sidebar), drawn onto one shared canvas
+    // per measurement and rescaled per frame like the markers above.
+    // THREE.Sprite auto-faces the camera, so no projection math is
+    // needed. Dragging an endpoint (below) redraws this same canvas in
+    // place via updateMeasureLabelText rather than recreating it.
+    const drawMeasureLabelCanvas = (canvas, ctx, lines) => {
+      const font = "600 26px sans-serif";
+      const lineHeight = 32;
       const paddingX = 20;
-      const paddingY = 14;
-      const textWidth = ctx.measureText(text).width;
-      canvas.width = Math.ceil(textWidth + paddingX * 2);
-      canvas.height = Math.ceil(40 + paddingY * 2);
+      const paddingY = 12;
+      ctx.font = font;
+      const width = Math.max(...lines.map((l) => ctx.measureText(l.text).width));
+      canvas.width = Math.ceil(width + paddingX * 2);
+      canvas.height = Math.ceil(lineHeight * lines.length + paddingY * 2);
       // Resizing the canvas resets all context state, so font/fill/etc.
       // must be re-applied below.
       ctx.font = font;
@@ -499,20 +500,37 @@ export function useIfcViewer() {
       ctx.beginPath();
       ctx.roundRect(0, 0, canvas.width, canvas.height, 10);
       ctx.fill();
-      ctx.fillStyle = "#e8eaed";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+      lines.forEach((line, i) => {
+        ctx.fillStyle = line.color;
+        ctx.fillText(line.text, canvas.width / 2, paddingY + lineHeight * (i + 0.5));
+      });
+    };
+    const createMeasureLabel = (lines) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      drawMeasureLabelCanvas(canvas, ctx, lines);
 
       const texture = new THREE.CanvasTexture(canvas);
       texture.minFilter = THREE.LinearFilter;
       const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
       const sprite = new THREE.Sprite(material);
       sprite.renderOrder = 1000;
-      sprite.userData.aspect = canvas.width / canvas.height;
+      sprite.userData = { canvas, ctx, aspect: canvas.width / canvas.height };
       modelsGroup.add(sprite);
       return sprite;
     };
+    const updateMeasureLabelText = (sprite, lines) => {
+      drawMeasureLabelCanvas(sprite.userData.canvas, sprite.userData.ctx, lines);
+      sprite.userData.aspect = sprite.userData.canvas.width / sprite.userData.canvas.height;
+      sprite.material.map.needsUpdate = true;
+    };
+    const measureLabelLines = (dx, dy, length) => [
+      { text: `${length.toFixed(3)} m`, color: "#e8eaed" },
+      { text: `ΔX: ${dx.toFixed(3)} m`, color: "#ef4444" },
+      { text: `ΔY: ${dy.toFixed(3)} m`, color: "#22c55e" },
+    ];
 
     const measureManager = {
       // Returns "started" after recording point A, "completed" after B
@@ -536,7 +554,10 @@ export function useIfcViewer() {
         line.renderOrder = 999;
         modelsGroup.add(line);
         const length = a.distanceTo(b);
-        const label = createMeasureLabel(length.toFixed(3));
+        const dx = Math.abs(b.x - a.x);
+        const dy = Math.abs(b.y - a.y);
+        const dz = Math.abs(b.z - a.z);
+        const label = createMeasureLabel(measureLabelLines(dx, dy, length));
         label.position.copy(a).add(b).multiplyScalar(0.5);
         measurementsRuntime.push({
           id: `measure-${++measureUid}`,
@@ -544,9 +565,9 @@ export function useIfcViewer() {
           markerB,
           line,
           label,
-          dx: Math.abs(b.x - a.x),
-          dy: Math.abs(b.y - a.y),
-          dz: Math.abs(b.z - a.z),
+          dx,
+          dy,
+          dz,
           length,
         });
         measurePendingPoint = null;
@@ -1281,6 +1302,86 @@ export function useIfcViewer() {
       return axisDir.dot(hitPoint.sub(axisPoint));
     };
 
+    // Dragging an existing measurement's endpoint marker: unlike the
+    // clip-plane gizmo's axis-projection math below, this re-raycasts the
+    // actual model surface (via the async, worker-backed raycastVisible)
+    // so the corrected point stays snapped to real geometry, the same way
+    // the point was originally placed. A plain drag (no modifier key) is
+    // fine here — markers are small, precise targets, not a large disc
+    // that needs shift as an accident-guard.
+    let draggingMeasurePoint = null; // { entryId, which: 'A' | 'B' } | null
+    let measureDragGeneration = 0; // invalidates a stale in-flight raycast
+    let measureDragPendingClient = null; // { clientX, clientY } | null
+    let measureDragRaycastBusy = false; // single-flight guard
+
+    const applyMeasureMarkerDrag = (hit) => {
+      const entry = measurementsRuntime.find((m) => m.id === draggingMeasurePoint.entryId);
+      if (!entry) return; // measurement was deleted mid-drag
+      modelsGroup.updateMatrixWorld(true);
+      const marker = draggingMeasurePoint.which === "A" ? entry.markerA : entry.markerB;
+      marker.position.copy(modelsGroup.worldToLocal(hit.point.clone()));
+
+      const a = entry.markerA.position;
+      const b = entry.markerB.position;
+      const pos = entry.line.geometry.attributes.position;
+      pos.setXYZ(0, a.x, a.y, a.z);
+      pos.setXYZ(1, b.x, b.y, b.z);
+      pos.needsUpdate = true;
+      entry.line.geometry.computeBoundingSphere();
+
+      entry.dx = Math.abs(b.x - a.x);
+      entry.dy = Math.abs(b.y - a.y);
+      entry.dz = Math.abs(b.z - a.z);
+      entry.length = a.distanceTo(b);
+      entry.label.position.copy(a).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.label, measureLabelLines(entry.dx, entry.dy, entry.length));
+
+      setMeasurements(measureManager.list());
+      requestRender();
+    };
+    const onMeasureMarkerDragMove = (event) => {
+      if (!draggingMeasurePoint) return;
+      measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
+    };
+    const onMeasureMarkerDragEnd = () => {
+      draggingMeasurePoint = null;
+      measureDragPendingClient = null;
+      measureDragGeneration++; // discard any raycast still in flight from this drag
+      window.removeEventListener("pointermove", onMeasureMarkerDragMove);
+      window.removeEventListener("pointerup", onMeasureMarkerDragEnd);
+      requestRender();
+    };
+    // Returns true if a drag was started (caller should not also start a
+    // rotate gesture, or the measure tool's click-to-place, for this
+    // same pointerdown).
+    const tryStartMeasureMarkerDrag = (event) => {
+      if (event.button !== 0 || measurementsRuntime.length === 0) return false;
+      const owner = new Map();
+      const hittable = [];
+      for (const entry of measurementsRuntime) {
+        hittable.push(entry.markerA);
+        owner.set(entry.markerA, { entry, which: "A" });
+        hittable.push(entry.markerB);
+        owner.set(entry.markerB, { entry, which: "B" });
+      }
+      const ndc = getNdc(event);
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(hittable, false);
+      if (hits.length === 0) return false;
+      const hit = owner.get(hits[0].object);
+      if (!hit) return false;
+
+      event.preventDefault();
+      event.stopPropagation();
+      draggingMeasurePoint = { entryId: hit.entry.id, which: hit.which };
+      measureDragGeneration++;
+      measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
+      measureDragRaycastBusy = false;
+      window.addEventListener("pointermove", onMeasureMarkerDragMove);
+      window.addEventListener("pointerup", onMeasureMarkerDragEnd);
+      return true;
+    };
+
     let draggingClipPlaneId = null;
     let dragAxisWorld = null; // THREE.Vector3 | null — world-space plane normal at drag start
     let dragAxisPointWorld = null; // THREE.Vector3 | null — a world-space point on that axis line
@@ -1360,6 +1461,7 @@ export function useIfcViewer() {
     };
 
     const onRotateStart = (event) => {
+      if (tryStartMeasureMarkerDrag(event)) return;
       if (tryStartClipPlaneDrag(event)) return;
       // A second touch point landing mid-drag means the gesture just
       // became a pinch/two-finger pan — hand off to OrbitControls' own
@@ -1453,6 +1555,29 @@ export function useIfcViewer() {
       if (rotating && pendingNdc) {
         applyRotation(pendingNdc);
         requestRender();
+      }
+      // Re-raycasting the model surface is async (worker-backed), unlike
+      // rotation's synchronous math above, so only the cheap cursor
+      // position is stashed on each pointermove (onMeasureMarkerDragMove);
+      // the actual raycast is kicked off here, once per frame, gated by a
+      // single-flight guard so overlapping/out-of-order results can't
+      // corrupt the drag — always using whichever position is latest once
+      // the previous raycast clears.
+      if (draggingMeasurePoint && measureDragPendingClient && !measureDragRaycastBusy) {
+        const { clientX, clientY } = measureDragPendingClient;
+        measureDragPendingClient = null;
+        measureDragRaycastBusy = true;
+        const myGeneration = measureDragGeneration;
+        raycastVisible(clientX, clientY)
+          .then((hit) => {
+            measureDragRaycastBusy = false;
+            if (myGeneration !== measureDragGeneration || !hit) return;
+            applyMeasureMarkerDrag(hit);
+          })
+          .catch((err) => {
+            measureDragRaycastBusy = false;
+            console.error("Measure drag raycast failed", err);
+          });
       }
       controls.update();
       pipelineRef.current?.fragments.core.update();
@@ -1556,6 +1681,8 @@ export function useIfcViewer() {
       window.removeEventListener("pointerup", onRotateEnd);
       window.removeEventListener("pointermove", onClipPlaneDragMove);
       window.removeEventListener("pointerup", onClipPlaneDragEnd);
+      window.removeEventListener("pointermove", onMeasureMarkerDragMove);
+      window.removeEventListener("pointerup", onMeasureMarkerDragEnd);
       for (const entry of clipPlanesRuntime) {
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();

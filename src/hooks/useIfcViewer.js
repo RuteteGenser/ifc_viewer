@@ -95,6 +95,7 @@ export function useIfcViewer() {
   const requestRenderRef = useRef(() => {});
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
   const clearHighlightRef = useRef(() => {});
+  const selectedHitRef = useRef(null); // { modelId, localId } | null — identifies the current selection
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
   const cameraClipDistanceRef = useRef(1);
@@ -446,7 +447,14 @@ export function useIfcViewer() {
         const entry = clipPlanesRuntime.find((p) => p.id === id);
         if (!entry) return;
         entry.gizmoVisible = visible;
-        entry.mesh.visible = visible;
+        // The mesh itself stays visible: THREE.Raycaster skips any
+        // object with visible === false, so if the mesh were hidden
+        // that way it would become structurally un-hittable — breaking
+        // middle-mouse+scroll (see tryMiddleScrollClipPlane), which is
+        // meant to keep working even with the handle turned off.
+        // material.visible controls rendering without affecting
+        // raycastability, so it's the right knob for "show/hide" here.
+        entry.mesh.material.visible = visible;
         requestRender();
       },
       list: () =>
@@ -460,10 +468,11 @@ export function useIfcViewer() {
     // parented under modelsGroup (like the clip-plane gizmos above) so they
     // inherit model rotation for free instead of needing per-frame transform
     // math the way the transient, world-fixed pivotMarker does.
-    const measurementsRuntime = []; // { id, markerA, markerB, line, legX, legY, legZ, label, dx, dy, dz, length }
+    const measurementsRuntime = []; // { id, markerA, markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel, dx, dy, dz, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
-    const MEASURE_LABEL_PIXEL_HEIGHT = 28;
+    const MEASURE_LABEL_PIXEL_HEIGHT = 40;
+    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30;
     let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
     let measurePendingMarker = null; // THREE.Mesh | null
     let measureUid = 0;
@@ -498,10 +507,10 @@ export function useIfcViewer() {
     // needed. Dragging an endpoint (below) redraws this same canvas in
     // place via updateMeasureLabelText rather than recreating it.
     const drawMeasureLabelCanvas = (canvas, ctx, lines) => {
-      const font = "600 26px sans-serif";
-      const lineHeight = 32;
-      const paddingX = 20;
-      const paddingY = 12;
+      const font = "600 36px sans-serif";
+      const lineHeight = 44;
+      const paddingX = 28;
+      const paddingY = 16;
       ctx.font = font;
       const width = Math.max(...lines.map((l) => ctx.measureText(l.text).width));
       canvas.width = Math.ceil(width + paddingX * 2);
@@ -581,6 +590,14 @@ export function useIfcViewer() {
         const dz = Math.abs(b.z - a.z);
         const label = createMeasureLabel(measureLabelLines(dx, dy, dz, length));
         label.position.copy(a).add(b).multiplyScalar(0.5);
+        // One small single-line label per leg, at that leg's own
+        // midpoint, showing just that axis's own distance.
+        const legXLabel = createMeasureLabel([{ text: `${dx.toFixed(3)} m`, color: "#ef4444" }]);
+        legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
+        const legYLabel = createMeasureLabel([{ text: `${dy.toFixed(3)} m`, color: "#22c55e" }]);
+        legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
+        const legZLabel = createMeasureLabel([{ text: `${dz.toFixed(3)} m`, color: "#3b82f6" }]);
+        legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
         measurementsRuntime.push({
           id: `measure-${++measureUid}`,
           markerA,
@@ -590,6 +607,9 @@ export function useIfcViewer() {
           legY,
           legZ,
           label,
+          legXLabel,
+          legYLabel,
+          legZLabel,
           dx,
           dy,
           dz,
@@ -621,6 +641,9 @@ export function useIfcViewer() {
           entry.legY,
           entry.legZ,
           entry.label,
+          entry.legXLabel,
+          entry.legYLabel,
+          entry.legZLabel,
         );
         entry.markerA.material.dispose();
         entry.markerB.material.dispose();
@@ -632,11 +655,18 @@ export function useIfcViewer() {
         entry.legY.material.dispose();
         entry.legZ.geometry.dispose();
         entry.legZ.material.dispose();
-        // Not entry.label.geometry: THREE.Sprite shares one module-level
-        // geometry singleton across every sprite instance in the app —
-        // disposing it here would break every other sprite too.
+        // Not entry.label.geometry (or legXLabel/legYLabel/legZLabel's):
+        // THREE.Sprite shares one module-level geometry singleton across
+        // every sprite instance in the app — disposing it here would
+        // break every other sprite too.
         entry.label.material.map.dispose();
         entry.label.material.dispose();
+        entry.legXLabel.material.map.dispose();
+        entry.legXLabel.material.dispose();
+        entry.legYLabel.material.map.dispose();
+        entry.legYLabel.material.dispose();
+        entry.legZLabel.material.map.dispose();
+        entry.legZLabel.material.dispose();
         requestRender();
       },
       list: () =>
@@ -660,11 +690,18 @@ export function useIfcViewer() {
         const height = worldPerPixelAt(label) * MEASURE_LABEL_PIXEL_HEIGHT;
         label.scale.set(height * label.userData.aspect, height, 1);
       };
+      const scaleLegLabel = (label) => {
+        const height = worldPerPixelAt(label) * MEASURE_LEG_LABEL_PIXEL_HEIGHT;
+        label.scale.set(height * label.userData.aspect, height, 1);
+      };
       if (measurePendingMarker) scaleOne(measurePendingMarker);
       for (const entry of measurementsRuntime) {
         scaleOne(entry.markerA);
         scaleOne(entry.markerB);
         scaleLabel(entry.label);
+        scaleLegLabel(entry.legXLabel);
+        scaleLegLabel(entry.legYLabel);
+        scaleLegLabel(entry.legZLabel);
       }
     };
 
@@ -939,6 +976,18 @@ export function useIfcViewer() {
         }
         // Shift held but the cursor isn't over any clip-plane gizmo —
         // fall through to normal zoom below.
+      }
+      if (event.buttons & 4) {
+        // Middle mouse button currently held (bit 4 of the wheel event's
+        // own `buttons` bitmask) — try moving a plane before falling
+        // through to zoom. A stationary middle-button hold doesn't
+        // trigger OrbitControls' own middle-drag pan (that only engages
+        // on pointer movement), so this doesn't conflict with it.
+        if (tryMiddleScrollClipPlane(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
       }
       event.preventDefault();
       event.stopPropagation();
@@ -1267,6 +1316,7 @@ export function useIfcViewer() {
     const selectElementFrom = async (raycastPromise) => {
       if (!raycastPromise) {
         clearHighlight();
+        selectedHitRef.current = null;
         setSelectedElement(null);
         return;
       }
@@ -1275,11 +1325,13 @@ export function useIfcViewer() {
         const hit = await raycastPromise;
         if (!hit) {
           clearHighlight();
+          selectedHitRef.current = null;
           setSelectedElement(null);
           return;
         }
         clearHighlight();
         showHighlightFill(hit).catch((err) => console.error("Highlight fill failed", err));
+        selectedHitRef.current = { modelId: hit.fragments.modelId, localId: hit.localId };
         const [data] = await hit.fragments.getItemsData([hit.localId], {
           attributesDefault: true,
           relations: {
@@ -1407,6 +1459,13 @@ export function useIfcViewer() {
       entry.label.position.copy(a).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.label, measureLabelLines(entry.dx, entry.dy, entry.dz, entry.length));
 
+      entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legXLabel, [{ text: `${entry.dx.toFixed(3)} m`, color: "#ef4444" }]);
+      entry.legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legYLabel, [{ text: `${entry.dy.toFixed(3)} m`, color: "#22c55e" }]);
+      entry.legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legZLabel, [{ text: `${entry.dz.toFixed(3)} m`, color: "#3b82f6" }]);
+
       setMeasurements(measureManager.list());
       requestRender();
     };
@@ -1533,14 +1592,10 @@ export function useIfcViewer() {
 
     const CLIP_PLANE_SCROLL_SENSITIVITY = 0.00025; // fraction of model radius moved per deltaY unit
     const CLIP_PLANE_SCROLL_MAX_STEP = 0.005; // cap: max fraction of model radius per single wheel event
-    // Shift+scroll moves whichever clip plane's gizmo is currently under
-    // the cursor along its own normal — same disambiguation as the
-    // shift+drag gesture above (hit-test the gizmo actually being
-    // pointed at), since with multiple planes there's no single
-    // unambiguous "the" plane a keyboard-modified scroll could target
-    // otherwise (see the removed ctrl+scroll comment near onCtrlWheel).
-    const tryShiftScrollClipPlane = (event) => {
-      const hittable = clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh);
+    // Shared by both scroll-to-move gestures below: raycasts `hittable`
+    // (a caller-chosen subset of clip-plane meshes) and, on a hit, nudges
+    // that plane along its own normal by a capped, gentle amount.
+    const moveClipPlaneUnderCursor = (event, hittable) => {
       if (hittable.length === 0) return false;
       raycaster.setFromCamera(getNdc(event), camera);
       const hits = raycaster.intersectObjects(hittable, false);
@@ -1563,6 +1618,23 @@ export function useIfcViewer() {
       requestRender();
       return true;
     };
+    // Shift+scroll moves whichever clip plane's gizmo is currently under
+    // the cursor along its own normal — same disambiguation as the
+    // shift+drag gesture above (hit-test the gizmo actually being
+    // pointed at), since with multiple planes there's no single
+    // unambiguous "the" plane a keyboard-modified scroll could target
+    // otherwise (see the removed ctrl+scroll comment near onCtrlWheel).
+    // Only reacts to *visible* handles, matching shift+drag.
+    const tryShiftScrollClipPlane = (event) =>
+      moveClipPlaneUnderCursor(event, clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh));
+    // Middle-mouse+scroll works even with the handle turned off —
+    // intentionally does NOT filter by gizmoVisible, since the whole
+    // point is to move a plane you can't see a handle for. This relies
+    // on the gizmo mesh itself staying `visible = true` always (see
+    // setGizmoVisible above, which now hides it via material.visible
+    // instead) so it stays raycastable.
+    const tryMiddleScrollClipPlane = (event) =>
+      moveClipPlaneUnderCursor(event, clipPlanesRuntime.map((p) => p.mesh));
 
     const onRotateStart = (event) => {
       if (tryStartMeasureMarkerDrag(event)) return;
@@ -1923,6 +1995,15 @@ export function useIfcViewer() {
     // for the actual guarantee).
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
+    // The hidden element may be the one currently selected/highlighted —
+    // if so, clear the selection instead of leaving a highlight/panel
+    // pointing at something no longer visible.
+    const sel = selectedHitRef.current;
+    if (sel && sel.modelId === hit.fragments.modelId && sel.localId === hit.localId) {
+      clearHighlightRef.current?.();
+      selectedHitRef.current = null;
+      setSelectedElement(null);
+    }
     requestRenderRef.current();
   }, []);
 
@@ -2016,6 +2097,14 @@ export function useIfcViewer() {
       const entry = modelsRef.current.get(modelId);
       if (entry) entry.object.visible = visible;
       invalidateGroupSphereRef.current();
+      // Hiding a whole model whose element is currently selected leaves
+      // the same kind of stale highlight/panel as hiding just that one
+      // element does — clear it the same way.
+      if (!visible && selectedHitRef.current?.modelId === modelId) {
+        clearHighlightRef.current?.();
+        selectedHitRef.current = null;
+        setSelectedElement(null);
+      }
       requestRenderRef.current();
       setModels((prev) =>
         prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
@@ -2060,6 +2149,7 @@ export function useIfcViewer() {
   const clearError = useCallback(() => setError(null), []);
   const clearSelection = useCallback(() => {
     clearHighlightRef.current?.();
+    selectedHitRef.current = null;
     setSelectedElement(null);
   }, []);
 

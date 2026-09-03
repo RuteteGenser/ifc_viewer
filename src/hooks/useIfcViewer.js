@@ -460,7 +460,7 @@ export function useIfcViewer() {
     // parented under modelsGroup (like the clip-plane gizmos above) so they
     // inherit model rotation for free instead of needing per-frame transform
     // math the way the transient, world-fixed pivotMarker does.
-    const measurementsRuntime = []; // { id, markerA, markerB, line, label, dx, dy, dz, length }
+    const measurementsRuntime = []; // { id, markerA, markerB, line, legX, legY, legZ, label, dx, dy, dz, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
     const MEASURE_LABEL_PIXEL_HEIGHT = 28;
@@ -478,8 +478,21 @@ export function useIfcViewer() {
       return marker;
     };
 
+    // One two-point line per axis leg of the Pythagoras-style dogleg
+    // (see addPoint below) — a right-angle path between the two measured
+    // points, colored to match the existing ΔX/ΔY/ΔZ convention, drawn
+    // alongside (not instead of) the straight hypotenuse line.
+    const createMeasureLeg = (p1, p2, color) => {
+      const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      const material = new THREE.LineBasicMaterial({ color, depthTest: false });
+      const leg = new THREE.Line(geometry, material);
+      leg.renderOrder = 999;
+      modelsGroup.add(leg);
+      return leg;
+    };
+
     // A billboard-style text label showing a measurement's length and
-    // ΔX/ΔY (colored to match the sidebar), drawn onto one shared canvas
+    // ΔX/ΔY/ΔZ (colored to match the sidebar), drawn onto one shared canvas
     // per measurement and rescaled per frame like the markers above.
     // THREE.Sprite auto-faces the camera, so no projection math is
     // needed. Dragging an endpoint (below) redraws this same canvas in
@@ -526,10 +539,11 @@ export function useIfcViewer() {
       sprite.userData.aspect = sprite.userData.canvas.width / sprite.userData.canvas.height;
       sprite.material.map.needsUpdate = true;
     };
-    const measureLabelLines = (dx, dy, length) => [
+    const measureLabelLines = (dx, dy, dz, length) => [
       { text: `${length.toFixed(3)} m`, color: "#e8eaed" },
       { text: `ΔX: ${dx.toFixed(3)} m`, color: "#ef4444" },
       { text: `ΔY: ${dy.toFixed(3)} m`, color: "#22c55e" },
+      { text: `ΔZ: ${dz.toFixed(3)} m`, color: "#3b82f6" },
     ];
 
     const measureManager = {
@@ -553,17 +567,28 @@ export function useIfcViewer() {
         const line = new THREE.Line(geometry, material);
         line.renderOrder = 999;
         modelsGroup.add(line);
+        // Right-angle "dogleg" path from a to b via two corners, visually
+        // breaking the straight-line hypotenuse above into its X/Y/Z
+        // axis contributions (each leg's own length equals dx/dy/dz).
+        const cornerX = new THREE.Vector3(b.x, a.y, a.z);
+        const cornerXY = new THREE.Vector3(b.x, b.y, a.z);
+        const legX = createMeasureLeg(a, cornerX, 0xef4444);
+        const legY = createMeasureLeg(cornerX, cornerXY, 0x22c55e);
+        const legZ = createMeasureLeg(cornerXY, b, 0x3b82f6);
         const length = a.distanceTo(b);
         const dx = Math.abs(b.x - a.x);
         const dy = Math.abs(b.y - a.y);
         const dz = Math.abs(b.z - a.z);
-        const label = createMeasureLabel(measureLabelLines(dx, dy, length));
+        const label = createMeasureLabel(measureLabelLines(dx, dy, dz, length));
         label.position.copy(a).add(b).multiplyScalar(0.5);
         measurementsRuntime.push({
           id: `measure-${++measureUid}`,
           markerA,
           markerB,
           line,
+          legX,
+          legY,
+          legZ,
           label,
           dx,
           dy,
@@ -588,11 +613,25 @@ export function useIfcViewer() {
         const index = measurementsRuntime.findIndex((m) => m.id === id);
         if (index === -1) return;
         const [entry] = measurementsRuntime.splice(index, 1);
-        modelsGroup.remove(entry.markerA, entry.markerB, entry.line, entry.label);
+        modelsGroup.remove(
+          entry.markerA,
+          entry.markerB,
+          entry.line,
+          entry.legX,
+          entry.legY,
+          entry.legZ,
+          entry.label,
+        );
         entry.markerA.material.dispose();
         entry.markerB.material.dispose();
         entry.line.geometry.dispose();
         entry.line.material.dispose();
+        entry.legX.geometry.dispose();
+        entry.legX.material.dispose();
+        entry.legY.geometry.dispose();
+        entry.legY.material.dispose();
+        entry.legZ.geometry.dispose();
+        entry.legZ.material.dispose();
         // Not entry.label.geometry: THREE.Sprite shares one module-level
         // geometry singleton across every sprite instance in the app —
         // disposing it here would break every other sprite too.
@@ -710,16 +749,19 @@ export function useIfcViewer() {
     window.addEventListener("keydown", onMeasureKeyDown);
 
     // Ctrl+scroll used to move the (single) clip plane along its own
-    // normal; that's now done by shift+dragging its gizmo instead (see
-    // onClipPlaneDragMove below), since with multiple planes there's no
-    // single unambiguous "the" plane for a keyboard-modified scroll to
-    // target. Ctrl+wheel is still swallowed here (rather than left
-    // unhandled) so it doesn't fall through to the browser's own
-    // page-zoom — attached to `window` with `capture: true` so it runs,
-    // and can stop the event, before OrbitControls' own wheel listener on
-    // `renderer.domElement`; registration order alone wouldn't guarantee
-    // that, since both would otherwise be listening on the very same
-    // element.
+    // normal; that was replaced by shift+dragging its gizmo (see
+    // onClipPlaneDragMove below) and, later, shift+scrolling while
+    // hovering that same gizmo (see tryShiftScrollClipPlane, used from
+    // onZoomWheel) — both resolve "which plane" the same way, by
+    // requiring the cursor to actually be over that plane's own gizmo,
+    // since with multiple planes there's no single unambiguous "the"
+    // plane a keyboard-modified scroll could target otherwise. Ctrl+wheel
+    // is still swallowed here (rather than left unhandled) so it doesn't
+    // fall through to the browser's own page-zoom — attached to `window`
+    // with `capture: true` so it runs, and can stop the event, before
+    // OrbitControls' own wheel listener on `renderer.domElement`;
+    // registration order alone wouldn't guarantee that, since both would
+    // otherwise be listening on the very same element.
     const onCtrlWheel = (event) => {
       if (!event.ctrlKey) return;
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
@@ -888,6 +930,15 @@ export function useIfcViewer() {
       if (event.ctrlKey) return; // handled by onCtrlWheel instead
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
         return;
+      }
+      if (event.shiftKey) {
+        if (tryShiftScrollClipPlane(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        // Shift held but the cursor isn't over any clip-plane gizmo —
+        // fall through to normal zoom below.
       }
       event.preventDefault();
       event.stopPropagation();
@@ -1091,9 +1142,16 @@ export function useIfcViewer() {
       transparent: true,
       opacity: 0.45,
       side: THREE.DoubleSide,
-      // The overlay coincides exactly with the base geometry's depth
-      // (same vertices), which would otherwise z-fight against it.
-      depthTest: false,
+      // depthTest stays on so the highlight is correctly hidden behind
+      // any other element actually in front of the selected one (rather
+      // than always painting on top of everything). The overlay
+      // coincides exactly with the base geometry's own depth (same
+      // vertices), so a small polygon offset pulls it slightly toward
+      // the camera to avoid z-fighting against that same surface.
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
     };
     let highlightOverlays = []; // THREE.Mesh[]
     // Guards only against overlapping showHighlightFill calls from rapid
@@ -1329,12 +1387,25 @@ export function useIfcViewer() {
       pos.needsUpdate = true;
       entry.line.geometry.computeBoundingSphere();
 
+      const cornerX = { x: b.x, y: a.y, z: a.z };
+      const cornerXY = { x: b.x, y: b.y, z: a.z };
+      const setLeg = (leg, p1, p2) => {
+        const legPos = leg.geometry.attributes.position;
+        legPos.setXYZ(0, p1.x, p1.y, p1.z);
+        legPos.setXYZ(1, p2.x, p2.y, p2.z);
+        legPos.needsUpdate = true;
+        leg.geometry.computeBoundingSphere();
+      };
+      setLeg(entry.legX, a, cornerX);
+      setLeg(entry.legY, cornerX, cornerXY);
+      setLeg(entry.legZ, cornerXY, b);
+
       entry.dx = Math.abs(b.x - a.x);
       entry.dy = Math.abs(b.y - a.y);
       entry.dz = Math.abs(b.z - a.z);
       entry.length = a.distanceTo(b);
       entry.label.position.copy(a).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.label, measureLabelLines(entry.dx, entry.dy, entry.length));
+      updateMeasureLabelText(entry.label, measureLabelLines(entry.dx, entry.dy, entry.dz, entry.length));
 
       setMeasurements(measureManager.list());
       requestRender();
@@ -1457,6 +1528,39 @@ export function useIfcViewer() {
 
       window.addEventListener("pointermove", onClipPlaneDragMove);
       window.addEventListener("pointerup", onClipPlaneDragEnd);
+      return true;
+    };
+
+    const CLIP_PLANE_SCROLL_SENSITIVITY = 0.00025; // fraction of model radius moved per deltaY unit
+    const CLIP_PLANE_SCROLL_MAX_STEP = 0.005; // cap: max fraction of model radius per single wheel event
+    // Shift+scroll moves whichever clip plane's gizmo is currently under
+    // the cursor along its own normal — same disambiguation as the
+    // shift+drag gesture above (hit-test the gizmo actually being
+    // pointed at), since with multiple planes there's no single
+    // unambiguous "the" plane a keyboard-modified scroll could target
+    // otherwise (see the removed ctrl+scroll comment near onCtrlWheel).
+    const tryShiftScrollClipPlane = (event) => {
+      const hittable = clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh);
+      if (hittable.length === 0) return false;
+      raycaster.setFromCamera(getNdc(event), camera);
+      const hits = raycaster.intersectObjects(hittable, false);
+      if (hits.length === 0) return false;
+      const entry = clipPlanesRuntime.find((p) => p.mesh === hits[0].object);
+      if (!entry) return false;
+
+      const sphere = getGroupSphere();
+      const radius = sphere ? sphere.radius : 1;
+      // Clamp the per-event step to a small fraction of the model's own
+      // size, so an outsized deltaY spike (trackpad flings can report
+      // deltaY in the thousands) can never move the plane far in one
+      // tick — movement always stays gentle regardless of input device.
+      const rawStep = -event.deltaY * CLIP_PLANE_SCROLL_SENSITIVITY * radius;
+      const maxStep = radius * CLIP_PLANE_SCROLL_MAX_STEP;
+      const step = Math.max(-maxStep, Math.min(maxStep, rawStep));
+
+      entry.localPlane.constant += step;
+      syncGizmoMesh(entry);
+      requestRender();
       return true;
     };
 

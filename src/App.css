@@ -302,6 +302,13 @@
   border-top: 1px solid #2b2f38;
 }
 
+.measure-control__length {
+  font-weight: 600;
+  font-size: 14px;
+  color: #e8eaed;
+  font-variant-numeric: tabular-nums;
+}
+
 .measure-control__values {
   display: flex;
   flex-direction: column;

@@ -460,9 +460,10 @@ export function useIfcViewer() {
     // parented under modelsGroup (like the clip-plane gizmos above) so they
     // inherit model rotation for free instead of needing per-frame transform
     // math the way the transient, world-fixed pivotMarker does.
-    const measurementsRuntime = []; // { id, markerA, markerB, line, dx, dy, dz }
+    const measurementsRuntime = []; // { id, markerA, markerB, line, label, dx, dy, dz, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
+    const MEASURE_LABEL_PIXEL_HEIGHT = 28;
     let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
     let measurePendingMarker = null; // THREE.Mesh | null
     let measureUid = 0;
@@ -475,6 +476,42 @@ export function useIfcViewer() {
       marker.renderOrder = 999;
       modelsGroup.add(marker);
       return marker;
+    };
+
+    // A billboard-style text label for a measurement's length, drawn once
+    // at creation (the two points never move afterward, so the text never
+    // needs to change) and rescaled per frame like the markers above.
+    // THREE.Sprite auto-faces the camera, so no projection math is needed.
+    const createMeasureLabel = (text) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const font = "600 40px sans-serif";
+      ctx.font = font;
+      const paddingX = 20;
+      const paddingY = 14;
+      const textWidth = ctx.measureText(text).width;
+      canvas.width = Math.ceil(textWidth + paddingX * 2);
+      canvas.height = Math.ceil(40 + paddingY * 2);
+      // Resizing the canvas resets all context state, so font/fill/etc.
+      // must be re-applied below.
+      ctx.font = font;
+      ctx.fillStyle = "rgba(27, 30, 36, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(0, 0, canvas.width, canvas.height, 10);
+      ctx.fill();
+      ctx.fillStyle = "#e8eaed";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
+      const sprite = new THREE.Sprite(material);
+      sprite.renderOrder = 1000;
+      sprite.userData.aspect = canvas.width / canvas.height;
+      modelsGroup.add(sprite);
+      return sprite;
     };
 
     const measureManager = {
@@ -498,14 +535,19 @@ export function useIfcViewer() {
         const line = new THREE.Line(geometry, material);
         line.renderOrder = 999;
         modelsGroup.add(line);
+        const length = a.distanceTo(b);
+        const label = createMeasureLabel(length.toFixed(3));
+        label.position.copy(a).add(b).multiplyScalar(0.5);
         measurementsRuntime.push({
           id: `measure-${++measureUid}`,
           markerA,
           markerB,
           line,
-          dx: b.x - a.x,
-          dy: b.y - a.y,
-          dz: b.z - a.z,
+          label,
+          dx: Math.abs(b.x - a.x),
+          dy: Math.abs(b.y - a.y),
+          dz: Math.abs(b.z - a.z),
+          length,
         });
         measurePendingPoint = null;
         measurePendingMarker = null;
@@ -525,14 +567,20 @@ export function useIfcViewer() {
         const index = measurementsRuntime.findIndex((m) => m.id === id);
         if (index === -1) return;
         const [entry] = measurementsRuntime.splice(index, 1);
-        modelsGroup.remove(entry.markerA, entry.markerB, entry.line);
+        modelsGroup.remove(entry.markerA, entry.markerB, entry.line, entry.label);
         entry.markerA.material.dispose();
         entry.markerB.material.dispose();
         entry.line.geometry.dispose();
         entry.line.material.dispose();
+        // Not entry.label.geometry: THREE.Sprite shares one module-level
+        // geometry singleton across every sprite instance in the app —
+        // disposing it here would break every other sprite too.
+        entry.label.material.map.dispose();
+        entry.label.material.dispose();
         requestRender();
       },
-      list: () => measurementsRuntime.map((m) => ({ id: m.id, dx: m.dx, dy: m.dy, dz: m.dz })),
+      list: () =>
+        measurementsRuntime.map((m) => ({ id: m.id, dx: m.dx, dy: m.dy, dz: m.dz, length: m.length })),
     };
     measureManagerRef.current = measureManager;
 
@@ -541,17 +589,22 @@ export function useIfcViewer() {
     // these persist and need to stay a sane size at any zoom level.
     const measureScratchVec3 = new THREE.Vector3();
     const scaleMeasureMarkers = () => {
+      const worldPerPixelAt = (object) => {
+        const distance = camera.position.distanceTo(object.getWorldPosition(measureScratchVec3));
+        return (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) / renderer.domElement.clientHeight;
+      };
       const scaleOne = (marker) => {
-        const distance = camera.position.distanceTo(marker.getWorldPosition(measureScratchVec3));
-        const worldPerPixel =
-          (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) /
-          renderer.domElement.clientHeight;
-        marker.scale.setScalar(worldPerPixel * MEASURE_MARKER_PIXELS);
+        marker.scale.setScalar(worldPerPixelAt(marker) * MEASURE_MARKER_PIXELS);
+      };
+      const scaleLabel = (label) => {
+        const height = worldPerPixelAt(label) * MEASURE_LABEL_PIXEL_HEIGHT;
+        label.scale.set(height * label.userData.aspect, height, 1);
       };
       if (measurePendingMarker) scaleOne(measurePendingMarker);
       for (const entry of measurementsRuntime) {
         scaleOne(entry.markerA);
         scaleOne(entry.markerB);
+        scaleLabel(entry.label);
       }
     };
 
@@ -1004,15 +1057,14 @@ export function useIfcViewer() {
     // full second, or forcing full (non-LOD) geometry — the change
     // simply never reached the screen. A bounding-box outline was a
     // working stopgap, but doesn't match the element's actual shape.
-    // getItemDrawChunks + the tile's own live mesh does: it's a
-    // read-only RPC (same kind as the already-working getBBoxes/
-    // getItemsData below, not the broken *mutation* RPC family above),
-    // and it returns exactly which index-buffer ranges of which
-    // currently-rendered tile mesh belong to this item — so the overlay
-    // can share that tile's real position/normal/index buffers and
-    // limit itself to just those ranges via geometry.addGroup, with no
-    // coordinate-space math needed (it inherits the tile mesh's own
-    // matrix directly).
+    // getItemsGeometry does: it's a read-only RPC that recomputes an
+    // item's geometry fresh from the immutable source data on every
+    // call and returns copied-out position/index/normal arrays — never
+    // offsets into a live, mutable tile buffer the way the previously-
+    // tried getItemDrawChunks approach did, which could be raced by the
+    // library's own background tile rebuilding (LOD/visibility-driven
+    // regeneration) and end up rendering another same-type element's
+    // triangles instead of the clicked one's.
     const HIGHLIGHT_FILL_MATERIAL_PROPS = {
       color: new THREE.Color(0xff0000),
       transparent: true,
@@ -1023,133 +1075,61 @@ export function useIfcViewer() {
       depthTest: false,
     };
     let highlightOverlays = []; // THREE.Mesh[]
-    let stopWatchingHighlightTiles = null;
-    // Bumped on every clear/rebuild so an in-flight showHighlightFill
-    // (including one triggered asynchronously by a tile-rebuild watcher,
-    // below) can tell it's been superseded and discard its result
-    // instead of resurrecting overlays after the user already moved on.
+    // Guards only against overlapping showHighlightFill calls from rapid
+    // re-selection (selectElementFrom doesn't await the previous call
+    // before starting a new one) — the overlay's geometry is always a
+    // fresh, independently-owned copy now, so there's no shared-buffer
+    // race to guard against.
     let highlightGeneration = 0;
     const clearHighlight = () => {
       highlightGeneration++;
-      stopWatchingHighlightTiles?.();
-      stopWatchingHighlightTiles = null;
       if (highlightOverlays.length === 0) return;
       for (const overlay of highlightOverlays) {
         overlay.parent?.remove(overlay);
-        // Don't dispose the wrapper geometry: its position/normal/index
-        // BufferAttributes are the *same* objects the live tile mesh is
-        // rendering with (shared, not copied), so disposing them here
-        // would release their GPU buffers out from under that mesh.
-        // Only the overlay's own material is actually ours to dispose.
+        overlay.geometry.dispose();
         overlay.material.dispose();
       }
       highlightOverlays = [];
       requestRender();
     };
     clearHighlightRef.current = clearHighlight;
-    const MAX_DRAW_CHUNK_ATTEMPTS = 3;
-    // getItemDrawChunks computes byte offsets against whichever tile
-    // geometry exists in the worker at call time. Tiles are batched by
-    // (class, material, lod), so many same-type elements share one
-    // tile's buffers — if that tile gets deleted and rebuilt (LOD/
-    // visibility-driven regeneration) before we read it a tick later,
-    // tiles.get(tileId) silently returns a *different* geometry and the
-    // old offsets land on unrelated triangles, visible as "many
-    // same-type elements highlighted". Watch tiles.onItemSet/
-    // onBeforeDelete for churn on the tileIds our chunks reference and
-    // retry if any occurred mid-flight.
-    const fetchStableDrawChunks = async (hit) => {
-      const { tiles } = hit.fragments;
-      for (let attempt = 0; attempt < MAX_DRAW_CHUNK_ATTEMPTS; attempt++) {
-        const touchedTileIds = new Set();
-        const onTouch = ({ key }) => touchedTileIds.add(key);
-        tiles.onItemSet.add(onTouch);
-        tiles.onBeforeDelete.add(onTouch);
-        let chunks;
-        try {
-          chunks = await hit.fragments.getItemDrawChunks([hit.localId]);
-        } finally {
-          tiles.onItemSet.remove(onTouch);
-          tiles.onBeforeDelete.remove(onTouch);
-        }
-        if (!chunks.some((c) => touchedTileIds.has(c.tileId))) return chunks;
-        if (attempt === MAX_DRAW_CHUNK_ATTEMPTS - 1) {
-          console.warn("Highlight fill: tile geometry kept changing; using last result");
-          return chunks;
-        }
-      }
-      return [];
-    };
     const showHighlightFill = async (hit) => {
-      stopWatchingHighlightTiles?.();
-      stopWatchingHighlightTiles = null;
       const myGeneration = ++highlightGeneration;
-      const chunks = await fetchStableDrawChunks(hit);
+      const groups = await hit.fragments.getItemsGeometry([hit.localId]);
       if (myGeneration !== highlightGeneration) return; // superseded while awaiting
+      // An item can have more than one representation/geometry chunk;
+      // flatten to render all of them.
+      const chunks = groups.flat();
       const overlays = [];
-      const usedTileIds = new Set();
       for (const chunk of chunks) {
-        usedTileIds.add(chunk.tileId);
-        const tileMesh = hit.fragments.tiles.get(chunk.tileId);
-        if (!tileMesh) continue;
+        if (!chunk.positions || !chunk.indices) continue;
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", tileMesh.geometry.attributes.position);
-        if (tileMesh.geometry.attributes.normal) {
-          geometry.setAttribute("normal", tileMesh.geometry.attributes.normal);
+        geometry.setAttribute("position", new THREE.BufferAttribute(chunk.positions, 3));
+        if (chunk.normals) {
+          geometry.setAttribute("normal", new THREE.BufferAttribute(chunk.normals, 3, true));
         }
-        geometry.setIndex(tileMesh.geometry.index);
-        for (let i = 0; i < chunk.position.length; i++) {
-          geometry.addGroup(chunk.position[i], chunk.size[i], 0);
-        }
-        // The wrapper geometry has no precomputed bounding volume, and
-        // the fragments library appears to free the shared position
-        // attribute's CPU-side array after it's uploaded to the GPU (a
-        // memory optimization for large models) — computing one lazily
-        // (which three.js does both for frustum culling and, since this
-        // material is transparent, for back-to-front depth sorting)
-        // then throws trying to read that freed array. Reuse the tile
-        // mesh's own bounding volume instead — it was already computed
-        // before the array was freed, and being a superset of our
-        // subset of its triangles is perfectly fine here.
-        if (tileMesh.geometry.boundingSphere) {
-          geometry.boundingSphere = tileMesh.geometry.boundingSphere.clone();
-        }
-        if (tileMesh.geometry.boundingBox) {
-          geometry.boundingBox = tileMesh.geometry.boundingBox.clone();
-        }
+        geometry.setIndex(new THREE.BufferAttribute(chunk.indices, 1));
+        // These are fresh, independently-owned arrays (not shared with
+        // any live tile mesh), so normal lazy bounding-volume computation
+        // is safe here.
+        geometry.computeBoundingSphere();
+        geometry.computeBoundingBox();
         const overlay = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial(HIGHLIGHT_FILL_MATERIAL_PROPS));
         overlay.renderOrder = 999;
-        overlay.matrix.copy(tileMesh.matrix);
+        // chunk.transform crosses a worker postMessage, so it arrives as
+        // a plain { elements } object rather than a live THREE.Matrix4
+        // (matches the library's own reconstruction of this same RPC's
+        // result elsewhere).
+        overlay.matrix.fromArray(chunk.transform.elements);
         overlay.matrixAutoUpdate = false;
-        // Belt-and-braces: skip frustum culling too, in case something
-        // else ever tries to recompute the bounding sphere later (e.g.
-        // if the tile mesh's own bounding volume weren't set yet at
-        // this point). The overlay is small and short-lived, so always
-        // rendering it is cheap.
         overlay.frustumCulled = false;
-        // Same parent as the tile mesh => identical placement, with no
-        // transform math of our own needed.
-        tileMesh.parent.add(overlay);
+        // Tile meshes are always children of the model's own object, so
+        // this is the correct parent for identical placement/rotation.
+        hit.fragments.object.add(overlay);
         overlays.push(overlay);
       }
       highlightOverlays = overlays;
       requestRender();
-      // The overlay's geometry shares its buffers with the tile mesh it
-      // was built from, not copies of them. If that tile is later
-      // rebuilt (e.g. further LOD/visibility streaming while the
-      // highlight is still shown), the library's own tiles.onBeforeDelete
-      // handler disposes the *old* mesh's geometry — which deletes the
-      // GPU buffers for those shared BufferAttribute objects out from
-      // under our still-displayed overlay, leaving it broken. Watch for
-      // exactly that and rebuild the highlight against the fresh tile
-      // rather than leave a dangling overlay.
-      const { tiles } = hit.fragments;
-      const onTileRebuilt = ({ key }) => {
-        if (!usedTileIds.has(key)) return;
-        showHighlightFill(hit).catch((err) => console.error("Highlight rebuild failed", err));
-      };
-      tiles.onBeforeDelete.add(onTileRebuilt);
-      stopWatchingHighlightTiles = () => tiles.onBeforeDelete.remove(onTileRebuilt);
     };
 
     const formatElementData = (data, modelName) => {

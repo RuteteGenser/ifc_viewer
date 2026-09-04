@@ -5,6 +5,105 @@
   overflow: hidden;
 }
 
+/* ---------- Top bar ---------- */
+
+.top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  background: #1b1e24;
+  border-bottom: 1px solid #2b2f38;
+}
+
+.top-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.top-bar__home-button {
+  background: #22262e;
+  color: #e8eaed;
+  border: 1px solid #3a3f4a;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.top-bar__home-button:hover:not(:disabled) {
+  background: #2a2f38;
+}
+
+.top-bar__home-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.top-bar__icon-button {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #22262e;
+  color: #e8eaed;
+  border: 1px solid #3a3f4a;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.top-bar__icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.top-bar__icon-button:hover:not(:disabled) {
+  background: #2a2f38;
+}
+
+.top-bar__icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.top-bar__icon-button--active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+.camera-clip {
+  position: relative;
+}
+
+.camera-clip-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #22262e;
+  border: 1px solid #3a3f4a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 12px;
+}
+
 /* ---------- Mobile menu toggle / backdrop ---------- */
 
 .menu-toggle {
@@ -73,52 +172,6 @@
 .sidebar__add-button:disabled {
   background: #394050;
   cursor: not-allowed;
-}
-
-.sidebar__home-button {
-  background: #22262e;
-  color: #e8eaed;
-  border: 1px solid #3a3f4a;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.sidebar__home-button:hover:not(:disabled) {
-  background: #2a2f38;
-}
-
-.sidebar__home-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sidebar__measure-button {
-  background: #22262e;
-  color: #e8eaed;
-  border: 1px solid #3a3f4a;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.sidebar__measure-button:hover:not(:disabled) {
-  background: #2a2f38;
-}
-
-.sidebar__measure-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sidebar__measure-button--active {
-  background: #3b82f6;
-  color: #fff;
-  border-color: #3b82f6;
 }
 
 .sidebar__reset-visibility-button {
@@ -242,10 +295,6 @@
 .clip-control__slider {
   width: 100%;
   accent-color: #3b82f6;
-}
-
-.camera-clip-control {
-  margin-top: 0;
 }
 
 .clip-control__buttons {
@@ -379,12 +428,9 @@
 /* ---------- Search bar ---------- */
 
 .search-bar {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 25;
-  width: min(90%, 420px);
+  position: relative;
+  width: min(100%, 360px);
+  min-width: 0;
 }
 
 .search-bar__input {
@@ -404,9 +450,19 @@
   border-color: #5b8def;
 }
 
+.search-bar__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .search-bar__results {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 0;
   padding: 4px;
   background: #22262e;
   border: 1px solid #3a3f4a;
@@ -455,7 +511,6 @@
 }
 
 .search-bar__isolate-banner {
-  margin-top: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -633,7 +688,7 @@
 
 .status-stack {
   position: absolute;
-  top: 16px;
+  top: 64px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -723,12 +778,10 @@
     padding: 0;
   }
 
-  .status-stack {
-    top: 60px;
-  }
-
-  .search-bar {
-    top: 60px;
-    width: min(90%, 320px);
+  /* Leaves room for the floating hamburger (left: 12px, 40px wide),
+     which stays above the sidebar (z-index 35) so it can still close
+     an open sidebar — it isn't absorbed into the bar itself. */
+  .top-bar {
+    padding-left: 56px;
   }
 }

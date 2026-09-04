@@ -7,7 +7,7 @@ import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
 import ElementInfoPanel from "./components/ElementInfoPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
-import SearchBar from "./components/SearchBar";
+import TopBar from "./components/TopBar";
 import "./App.css";
 
 function App() {
@@ -114,7 +114,6 @@ function App() {
         }}
         onToggleVisible={setVisible}
         onRemove={removeModel}
-        onResetView={resetView}
         onResetVisibility={resetVisibility}
         isLoading={isLoading}
         loadingLabel={loadingLabel}
@@ -123,14 +122,8 @@ function App() {
         onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
         onFlipClipPlane={flipClipPlane}
         onRemoveClipPlane={removeClipPlane}
-        cameraClipEnabled={cameraClipEnabled}
-        onSetCameraClipEnabled={setCameraClipEnabled}
-        cameraClipDistance={cameraClipDistance}
-        onSetCameraClipDistance={setCameraClipDistance}
         measurements={measurements}
         onRemoveMeasurement={removeMeasurement}
-        measureModeActive={measureModeActive}
-        onToggleMeasureMode={toggleMeasureMode}
       />
 
       <div
@@ -142,19 +135,27 @@ function App() {
       >
         <Viewport containerRef={containerRef} />
         <DropOverlay visible={isDragging} />
+        <TopBar
+          hasModels={models.length > 0}
+          onResetView={resetView}
+          measureModeActive={measureModeActive}
+          onToggleMeasureMode={toggleMeasureMode}
+          cameraClipEnabled={cameraClipEnabled}
+          onSetCameraClipEnabled={setCameraClipEnabled}
+          cameraClipDistance={cameraClipDistance}
+          onSetCameraClipDistance={setCameraClipDistance}
+          searchQuery={searchQuery}
+          onQueryChange={setSearchQuery}
+          searchResults={searchResults}
+          isolatedKeys={isolatedKeys}
+          onToggleIsolate={toggleIsolate}
+          onClearIsolation={clearIsolation}
+        />
         <StatusBanner
           isLoading={isLoading}
           loadingLabel={loadingLabel}
           error={error}
           onDismissError={clearError}
-        />
-        <SearchBar
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          results={searchResults}
-          isolatedKeys={isolatedKeys}
-          onToggleIsolate={toggleIsolate}
-          onClearIsolation={clearIsolation}
         />
       </div>
 

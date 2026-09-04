@@ -1,6 +1,5 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
-import CameraClipControl from "./CameraClipControl";
 import MeasureControl from "./MeasureControl";
 
 function ModelRow({ model, onToggleVisible, onRemove }) {
@@ -35,7 +34,6 @@ export default function Sidebar({
   onFilesSelected,
   onToggleVisible,
   onRemove,
-  onResetView,
   onResetVisibility,
   isLoading,
   loadingLabel,
@@ -44,14 +42,8 @@ export default function Sidebar({
   onSetClipPlaneGizmoVisible,
   onFlipClipPlane,
   onRemoveClipPlane,
-  cameraClipEnabled,
-  onSetCameraClipEnabled,
-  cameraClipDistance,
-  onSetCameraClipDistance,
   measurements,
   onRemoveMeasurement,
-  measureModeActive,
-  onToggleMeasureMode,
 }) {
   const fileInputRef = useRef(null);
 
@@ -67,24 +59,6 @@ export default function Sidebar({
           disabled={isLoading}
         >
           {isLoading ? loadingLabel || "Loading…" : "+ Add IFC file(s)"}
-        </button>
-        <button
-          type="button"
-          className="sidebar__home-button"
-          onClick={onResetView}
-          disabled={models.length === 0}
-          title="Reset to the default view"
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          className={`sidebar__measure-button${measureModeActive ? " sidebar__measure-button--active" : ""}`}
-          onClick={onToggleMeasureMode}
-          disabled={models.length === 0}
-          title="Click two points in the view to measure between them"
-        >
-          Measure
         </button>
       </div>
       <input
@@ -137,14 +111,6 @@ export default function Sidebar({
         onSetClipPlaneGizmoVisible={onSetClipPlaneGizmoVisible}
         onFlipClipPlane={onFlipClipPlane}
         onRemoveClipPlane={onRemoveClipPlane}
-      />
-
-      <CameraClipControl
-        cameraClipEnabled={cameraClipEnabled}
-        onSetCameraClipEnabled={onSetCameraClipEnabled}
-        cameraClipDistance={cameraClipDistance}
-        onSetCameraClipDistance={onSetCameraClipDistance}
-        disabled={models.length === 0}
       />
 
       <MeasureControl

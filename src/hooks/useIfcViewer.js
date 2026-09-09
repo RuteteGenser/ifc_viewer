@@ -376,10 +376,21 @@ export function useIfcViewer() {
       // GPU floating-point clip-distance evaluation is right at the
       // zero/epsilon threshold and flickers per-fragment (a sparse,
       // dithered dropout pattern) between clipped and kept. Nudge it a
-      // hair into the kept region (along +normal) so it renders solidly;
-      // the offset is far too small relative to the gizmo's own size to
-      // be visually distinguishable from sitting exactly on the plane.
-      const KEPT_SIDE_EPSILON = scale * 0.002;
+      // hair into the kept region (along +normal) so it renders solidly.
+      // Scaled by camera-to-plane distance (not the model's overall
+      // bounding-sphere radius, and not the gizmo's own visual `scale`
+      // above): on a geometrically large/spread-out model, a radius-based
+      // offset stayed "far too small to notice" only when viewed from
+      // roughly the whole-model framing distance — zoomed in close (the
+      // normal way to actually work with a clip plane), that same offset
+      // became a large, very visible gap between the blue gizmo and the
+      // real cut line. Camera distance keeps the nudge imperceptible at
+      // whatever distance the plane is actually being viewed from.
+      modelsGroup.updateMatrix();
+      modelsGroup.matrixWorld.copy(modelsGroup.matrix);
+      const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal.clone());
+      const cameraDistance = camera.position.distanceTo(pointOnPlaneWorld);
+      const KEPT_SIDE_EPSILON = cameraDistance * 0.002;
       mesh.position.copy(pointOnPlaneLocal).addScaledVector(localPlane.normal, KEPT_SIDE_EPSILON);
       mesh.quaternion.setFromUnitVectors(GIZMO_UP, localPlane.normal);
       // PlaneGeometry(1, 1) is a unit square (half-width 0.5), so scale by
@@ -1648,8 +1659,8 @@ export function useIfcViewer() {
       return true;
     };
 
-    const CLIP_PLANE_SCROLL_SENSITIVITY = 0.00025; // fraction of model radius moved per deltaY unit
-    const CLIP_PLANE_SCROLL_MAX_STEP = 0.005; // cap: max fraction of model radius per single wheel event
+    const CLIP_PLANE_SCROLL_SENSITIVITY = 0.00025; // fraction of camera-to-plane distance moved per deltaY unit
+    const CLIP_PLANE_SCROLL_MAX_STEP = 0.005; // cap: max fraction of camera-to-plane distance per single wheel event
     // Shared by both scroll-to-move gestures below: raycasts `hittable`
     // (a caller-chosen subset of clip-plane meshes) and, on a hit, nudges
     // that plane along its own normal by a capped, gentle amount.
@@ -1661,14 +1672,25 @@ export function useIfcViewer() {
       const entry = clipPlanesRuntime.find((p) => p.mesh === hits[0].object);
       if (!entry) return false;
 
-      const sphere = getGroupSphere();
-      const radius = sphere ? sphere.radius : 1;
-      // Clamp the per-event step to a small fraction of the model's own
-      // size, so an outsized deltaY spike (trackpad flings can report
-      // deltaY in the thousands) can never move the plane far in one
-      // tick — movement always stays gentle regardless of input device.
-      const rawStep = -event.deltaY * CLIP_PLANE_SCROLL_SENSITIVITY * radius;
-      const maxStep = radius * CLIP_PLANE_SCROLL_MAX_STEP;
+      // A synchronous, correct world-space point on the plane — mirrors
+      // tryStartClipPlaneDrag's own derivation above rather than
+      // entry.mesh.getWorldPosition(), whose matrixWorld is only
+      // guaranteed fresh as of the last renderer.render() call, not at
+      // arbitrary wheel-handler time.
+      modelsGroup.updateMatrix();
+      modelsGroup.matrixWorld.copy(modelsGroup.matrix);
+      const pointOnPlaneLocal = entry.localPlane.normal.clone().multiplyScalar(-entry.localPlane.constant);
+      const pointOnPlaneWorld = modelsGroup.localToWorld(pointOnPlaneLocal);
+      const distance = camera.position.distanceTo(pointOnPlaneWorld);
+      // Clamp the per-event step to a small fraction of the current
+      // camera-to-plane distance — not the whole model's bounding-sphere
+      // radius — so movement stays gentle and proportional to how
+      // zoomed-in the current view is, regardless of how geometrically
+      // large/spread-out the loaded model is. An outsized deltaY spike
+      // (trackpad flings can report deltaY in the thousands) still can't
+      // move the plane far in one tick.
+      const rawStep = -event.deltaY * CLIP_PLANE_SCROLL_SENSITIVITY * distance;
+      const maxStep = distance * CLIP_PLANE_SCROLL_MAX_STEP;
       const step = Math.max(-maxStep, Math.min(maxStep, rawStep));
 
       entry.localPlane.constant += step;

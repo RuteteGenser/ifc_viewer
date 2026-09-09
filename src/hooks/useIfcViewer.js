@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { unzip, zip } from "fflate";
+import { closeRawIfcModel, extractElementIfcData, isEligibleCategoryName, openRawIfcModel } from "../ifc/rawIfcQuery";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -96,6 +97,7 @@ export function useIfcViewer() {
   const modelsGroupRef = useRef(null); // THREE.Group holding every loaded model, rotated as a unit
   const clipPlaneManagerRef = useRef(null); // { add, remove, flip, setEnabled, setGizmoVisible, list } | null
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
+  const rawIfcHandlesRef = useRef(new Map()); // modelId -> { api, modelID } | never entered if sourceBytes is unavailable — lazily opened raw web-ifc models, for data getItemsData can't reach (see rawIfcQuery.js)
   const modelNamesRef = useRef(new Map()); // modelId -> display name, kept in sync with `models` state
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
@@ -109,6 +111,15 @@ export function useIfcViewer() {
   const measureModeActiveRef = useRef(false);
   const showMeasureDeletePopupRef = useRef(() => {});
   const measureDeletePopupRef = useRef(null); // mirrors measureDeletePopup state, for the imperative animate() loop
+  const raycastVisibleRef = useRef(async () => null); // bridges the effect-scoped raycastVisible out to top-level callbacks
+  const lastPointerClientRef = useRef({ x: 0, y: 0 }); // last known mouse position, for keyboard shortcuts that need a cursor-relative raycast
+  // Undo/redo history for the "modeling" actions below (hide element,
+  // clip plane create/remove/flip, measurement create/remove) — each
+  // entry is a { undo, redo } pair of (possibly async) callbacks. Model
+  // load/remove, camera/view changes, visibility checkboxes, and
+  // selection are intentionally not tracked here.
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -127,6 +138,27 @@ export function useIfcViewer() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]); // { key, modelId, localId, name, category, modelName }[]
   const [isolatedKeys, setIsolatedKeys] = useState(() => new Set()); // `${modelId}::${localId}`
+  const [confirmReplace, setConfirmReplace] = useState(null); // { name, resolve } | null
+
+  // A new action always invalidates the redo history — the standard
+  // undo/redo convention (you can't "redo" something that's no longer
+  // where it would have applied).
+  const pushUndo = useCallback((entry) => {
+    undoStackRef.current.push(entry);
+    redoStackRef.current = [];
+  }, []);
+  const undo = useCallback(async () => {
+    const entry = undoStackRef.current.pop();
+    if (!entry) return;
+    await entry.undo();
+    redoStackRef.current.push(entry);
+  }, []);
+  const redo = useCallback(async () => {
+    const entry = redoStackRef.current.pop();
+    if (!entry) return;
+    await entry.redo();
+    undoStackRef.current.push(entry);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -485,6 +517,20 @@ export function useIfcViewer() {
       list: () =>
         clipPlanesRuntime.map((p) => ({ id: p.id, enabled: p.enabled, gizmoVisible: p.gizmoVisible })),
       refreshClippingPlanes,
+      // For undo: enough to recreate an equivalent plane via `add` after
+      // it's been removed. The original localPoint isn't retained on the
+      // entry (only the resulting plane's normal/constant are), but any
+      // point on the plane works just as well for reconstruction.
+      getPlaneSnapshot: (id) => {
+        const entry = clipPlanesRuntime.find((p) => p.id === id);
+        if (!entry) return null;
+        return {
+          normal: entry.localPlane.normal.clone(),
+          point: entry.localPlane.normal.clone().multiplyScalar(-entry.localPlane.constant),
+          enabled: entry.enabled,
+          gizmoVisible: entry.gizmoVisible,
+        };
+      },
     };
     clipPlaneManagerRef.current = clipPlaneManager;
 
@@ -581,8 +627,12 @@ export function useIfcViewer() {
       sprite.userData.aspect = sprite.userData.canvas.width / sprite.userData.canvas.height;
       sprite.material.map.needsUpdate = true;
     };
+    // Distances inside the Three.js scene are in meters (the loader's
+    // coordinate convention); measurements are displayed in millimeters
+    // instead, matching this project's construction-drawing convention.
+    const formatMm = (meters) => `${(meters * 1000).toFixed(1)} mm`;
     const measureLabelLines = (length) => [
-      { text: `${length.toFixed(3)} m`, color: "#e8eaed" },
+      { text: formatMm(length), color: "#e8eaed" },
     ];
 
     // Live preview while hovering for point B, before it's clicked. Reuses
@@ -637,11 +687,11 @@ export function useIfcViewer() {
       entry.label.position.copy(a).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.label, measureLabelLines(length));
       entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legXLabel, [{ text: `${dx.toFixed(3)} m`, color: "#ef4444" }]);
+      updateMeasureLabelText(entry.legXLabel, [{ text: formatMm(dx), color: "#ef4444" }]);
       entry.legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legYLabel, [{ text: `${dy.toFixed(3)} m`, color: "#22c55e" }]);
+      updateMeasureLabelText(entry.legYLabel, [{ text: formatMm(dy), color: "#22c55e" }]);
       entry.legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legZLabel, [{ text: `${dz.toFixed(3)} m`, color: "#3b82f6" }]);
+      updateMeasureLabelText(entry.legZLabel, [{ text: formatMm(dz), color: "#3b82f6" }]);
 
       requestRender();
     };
@@ -685,6 +735,67 @@ export function useIfcViewer() {
       requestRender();
     };
 
+    // Builds a full measurement (marker/line/legs/labels) from two known
+    // local-space points — shared by the normal click-to-place flow
+    // (addPoint below) and by undo/redo, which need to recreate a
+    // measurement from stored points without going through the
+    // pending-point state machine. Reuses `existingMarkerA` if given
+    // (the pending-point marker already placed for point A) instead of
+    // creating a redundant one.
+    const createMeasurementEntry = (a, b, existingMarkerA) => {
+      const markerA = existingMarkerA ?? createMeasureMarker();
+      markerA.position.copy(a);
+      const markerB = createMeasureMarker();
+      markerB.position.copy(b);
+      const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+      const line = new THREE.Line(geometry, material);
+      line.renderOrder = 999;
+      modelsGroup.add(line);
+      // Right-angle "dogleg" path from a to b via two corners, visually
+      // breaking the straight-line hypotenuse above into its X/Y/Z
+      // axis contributions (each leg's own length equals dx/dy/dz).
+      const cornerX = new THREE.Vector3(b.x, a.y, a.z);
+      const cornerXY = new THREE.Vector3(b.x, b.y, a.z);
+      const legX = createMeasureLeg(a, cornerX, 0xef4444);
+      const legY = createMeasureLeg(cornerX, cornerXY, 0x22c55e);
+      const legZ = createMeasureLeg(cornerXY, b, 0x3b82f6);
+      const length = a.distanceTo(b);
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      const dz = Math.abs(b.z - a.z);
+      const label = createMeasureLabel(measureLabelLines(length));
+      label.position.copy(a).add(b).multiplyScalar(0.5);
+      // One small single-line label per leg, at that leg's own
+      // midpoint, showing just that axis's own distance.
+      const legXLabel = createMeasureLabel([{ text: formatMm(dx), color: "#ef4444" }]);
+      legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
+      const legYLabel = createMeasureLabel([{ text: formatMm(dy), color: "#22c55e" }]);
+      legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
+      const legZLabel = createMeasureLabel([{ text: formatMm(dz), color: "#3b82f6" }]);
+      legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
+      const entry = {
+        id: `measure-${++measureUid}`,
+        markerA,
+        markerB,
+        line,
+        legX,
+        legY,
+        legZ,
+        label,
+        legXLabel,
+        legYLabel,
+        legZLabel,
+        dx,
+        dy,
+        dz,
+        length,
+      };
+      measurementsRuntime.push(entry);
+      requestRender();
+      return entry;
+    };
+
     const measureManager = {
       // Returns "started" after recording point A, "completed" after B
       // finishes a measurement.
@@ -699,57 +810,36 @@ export function useIfcViewer() {
         clearMeasurePreview();
         const a = measurePendingPoint;
         const b = localPoint;
-        const markerA = measurePendingMarker;
-        const markerB = createMeasureMarker();
-        markerB.position.copy(b);
-        const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
-        const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
-        const line = new THREE.Line(geometry, material);
-        line.renderOrder = 999;
-        modelsGroup.add(line);
-        // Right-angle "dogleg" path from a to b via two corners, visually
-        // breaking the straight-line hypotenuse above into its X/Y/Z
-        // axis contributions (each leg's own length equals dx/dy/dz).
-        const cornerX = new THREE.Vector3(b.x, a.y, a.z);
-        const cornerXY = new THREE.Vector3(b.x, b.y, a.z);
-        const legX = createMeasureLeg(a, cornerX, 0xef4444);
-        const legY = createMeasureLeg(cornerX, cornerXY, 0x22c55e);
-        const legZ = createMeasureLeg(cornerXY, b, 0x3b82f6);
-        const length = a.distanceTo(b);
-        const dx = Math.abs(b.x - a.x);
-        const dy = Math.abs(b.y - a.y);
-        const dz = Math.abs(b.z - a.z);
-        const label = createMeasureLabel(measureLabelLines(length));
-        label.position.copy(a).add(b).multiplyScalar(0.5);
-        // One small single-line label per leg, at that leg's own
-        // midpoint, showing just that axis's own distance.
-        const legXLabel = createMeasureLabel([{ text: `${dx.toFixed(3)} m`, color: "#ef4444" }]);
-        legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
-        const legYLabel = createMeasureLabel([{ text: `${dy.toFixed(3)} m`, color: "#22c55e" }]);
-        legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
-        const legZLabel = createMeasureLabel([{ text: `${dz.toFixed(3)} m`, color: "#3b82f6" }]);
-        legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
-        measurementsRuntime.push({
-          id: `measure-${++measureUid}`,
-          markerA,
-          markerB,
-          line,
-          legX,
-          legY,
-          legZ,
-          label,
-          legXLabel,
-          legYLabel,
-          legZLabel,
-          dx,
-          dy,
-          dz,
-          length,
-        });
+        const aSnap = a.clone();
+        const bSnap = b.clone();
+        const entry = createMeasurementEntry(a, b, measurePendingMarker);
         measurePendingPoint = null;
         measurePendingMarker = null;
-        requestRender();
+        const idBox = { id: entry.id };
+        pushUndo({
+          undo: () => {
+            measureManager.remove(idBox.id);
+            setMeasurements(measureManager.list());
+          },
+          redo: () => {
+            const created = measureManager.createFromPoints(aSnap, bSnap);
+            idBox.id = created.id;
+            setMeasurements(measureManager.list());
+          },
+        });
         return "completed";
+      },
+      // Recreates a full measurement from two known local-space points —
+      // used by undo (restoring a removed measurement) and redo
+      // (recreating one that was undone), bypassing the pending-point
+      // state machine entirely.
+      createFromPoints: (a, b) => createMeasurementEntry(a.clone(), b.clone()),
+      // For undo: captures enough to recreate an equivalent measurement
+      // after it's been removed.
+      getPointsSnapshot: (id) => {
+        const entry = measurementsRuntime.find((m) => m.id === id);
+        if (!entry) return null;
+        return { a: entry.markerA.position.clone(), b: entry.markerB.position.clone() };
       },
       cancelPending: () => {
         if (measurePendingMarker) {
@@ -912,6 +1002,7 @@ export function useIfcViewer() {
         ) ?? null
       );
     };
+    raycastVisibleRef.current = raycastVisible;
 
     // Right-click opens a context menu (see App.jsx) instead of the
     // browser's native one. Kick off the surface raycast immediately so
@@ -1263,6 +1354,7 @@ export function useIfcViewer() {
     // usually already resolved and waiting.
     const onZoomHoverMove = (event) => {
       if (!renderer.domElement.contains(event.target)) return;
+      lastPointerClientRef.current = { x: event.clientX, y: event.clientY };
       refreshZoomHitCache(event.clientX, event.clientY);
     };
     renderer.domElement.addEventListener("pointermove", onZoomHoverMove);
@@ -1530,6 +1622,21 @@ export function useIfcViewer() {
       };
     };
 
+    // Lazily opens (and caches, per model) an independent raw web-ifc
+    // model from the original bytes retained in modelsRef — OpenModel
+    // re-parses the whole SPF file, which is nontrivial for a large
+    // model, so this must not reopen one per click. Closed in
+    // removeModel and in this effect's own cleanup below.
+    const getOrOpenRawIfcHandle = async (modelId) => {
+      const cached = rawIfcHandlesRef.current.get(modelId);
+      if (cached) return cached;
+      const entry = modelsRef.current.get(modelId);
+      if (!entry?.sourceBytes) return null;
+      const handle = await openRawIfcModel(entry.sourceBytes);
+      rawIfcHandlesRef.current.set(modelId, handle);
+      return handle;
+    };
+
     const selectElementFrom = async (raycastPromise) => {
       if (!raycastPromise) {
         clearHighlight();
@@ -1557,7 +1664,28 @@ export function useIfcViewer() {
           },
         });
         const modelName = modelNamesRef.current.get(hit.fragments.modelId);
-        setSelectedElement(data ? formatElementData(data, modelName) : null);
+        const formatted = data ? formatElementData(data, modelName) : null;
+        setSelectedElement(formatted);
+
+        // Non-blocking follow-up: geometry/system/material data getItemsData
+        // can't reach at all (see rawIfcQuery.js) — the base panel above
+        // already rendered at normal speed, this just fills in extra
+        // fields once ready, guarded against the user having since
+        // selected something else.
+        if (formatted && formatted.guid && isEligibleCategoryName(formatted.category)) {
+          const targetGuid = formatted.guid;
+          getOrOpenRawIfcHandle(hit.fragments.modelId)
+            .then((handle) =>
+              handle ? extractElementIfcData(handle.api, handle.modelID, formatted.category, targetGuid) : null,
+            )
+            .then((ifcInfo) => {
+              setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, ifcInfo: ifcInfo ?? null } : prev));
+            })
+            .catch((err) => {
+              console.error("Failed to extract IFC geometry/system/material data", err);
+              setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, ifcInfo: null } : prev));
+            });
+        }
       } catch (err) {
         console.error("Failed to fetch element properties", err);
         setSelectedElement(null);
@@ -1678,11 +1806,11 @@ export function useIfcViewer() {
       updateMeasureLabelText(entry.label, measureLabelLines(entry.length));
 
       entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legXLabel, [{ text: `${entry.dx.toFixed(3)} m`, color: "#ef4444" }]);
+      updateMeasureLabelText(entry.legXLabel, [{ text: formatMm(entry.dx), color: "#ef4444" }]);
       entry.legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legYLabel, [{ text: `${entry.dy.toFixed(3)} m`, color: "#22c55e" }]);
+      updateMeasureLabelText(entry.legYLabel, [{ text: formatMm(entry.dy), color: "#22c55e" }]);
       entry.legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legZLabel, [{ text: `${entry.dz.toFixed(3)} m`, color: "#3b82f6" }]);
+      updateMeasureLabelText(entry.legZLabel, [{ text: formatMm(entry.dz), color: "#3b82f6" }]);
 
       setMeasurements(measureManager.list());
       requestRender();
@@ -1974,7 +2102,6 @@ export function useIfcViewer() {
         .catch((err) => console.error("Pivot raycast failed", err));
     };
     renderer.domElement.addEventListener("pointerdown", onRotateStart);
-
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(20, 30, 15);
@@ -2157,8 +2284,13 @@ export function useIfcViewer() {
       rendererRef.current = null;
       modelsGroupRef.current = null;
       loadedModels.clear();
+      for (const handle of rawIfcHandlesRef.current.values()) closeRawIfcModel(handle);
+      rawIfcHandlesRef.current.clear();
     };
-  }, []);
+    // pushUndo is a stable ([]) useCallback, so including it here doesn't
+    // change this effect's run-once behavior — it only satisfies
+    // exhaustive-deps for the addPoint-internal pushUndo call above.
+  }, [pushUndo]);
 
   useEffect(() => {
     cameraClipEnabledRef.current = cameraClipEnabled;
@@ -2199,11 +2331,11 @@ export function useIfcViewer() {
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const closeMeasureDeletePopup = useCallback(() => setMeasureDeletePopup(null), []);
 
-  const createClipPlaneHere = useCallback(async () => {
-    const pending = pendingSurfacePickRef.current;
-    setContextMenu(null);
-    if (!pending) return;
-    const hit = await pending.promise;
+  // Shared by the right-click "Create clip plane here" menu item and the
+  // "c" keyboard shortcut (which raycasts under the cursor itself rather
+  // than a pre-captured context-menu pick, but ends up with the exact
+  // same { point, normal } shape).
+  const createClipPlaneAt = useCallback((hit) => {
     if (!hit || !hit.normal) return;
 
     const modelsGroup = modelsGroupRef.current;
@@ -2222,20 +2354,68 @@ export function useIfcViewer() {
     const localNormal = hit.normal.clone().applyQuaternion(invQuat).negate();
     const localPoint = modelsGroup.worldToLocal(hit.point.clone());
 
-    manager.add(localNormal, localPoint);
+    const idBox = { id: manager.add(localNormal, localPoint) };
     setClipPlanes(manager.list());
-  }, []);
+    pushUndo({
+      undo: () => {
+        manager.remove(idBox.id);
+        setClipPlanes(manager.list());
+      },
+      redo: () => {
+        idBox.id = manager.add(localNormal, localPoint);
+        setClipPlanes(manager.list());
+      },
+    });
+  }, [pushUndo]);
+
+  const createClipPlaneHere = useCallback(async () => {
+    const pending = pendingSurfacePickRef.current;
+    setContextMenu(null);
+    if (!pending) return;
+    const hit = await pending.promise;
+    createClipPlaneAt(hit);
+  }, [createClipPlaneAt]);
+
+  // "c" shortcut: same action as the context-menu item above, but
+  // targeting whatever's under the cursor right now instead of a
+  // pre-captured right-click pick.
+  const createClipPlaneUnderCursor = useCallback(async () => {
+    const { x, y } = lastPointerClientRef.current;
+    const hit = await raycastVisibleRef.current(x, y);
+    createClipPlaneAt(hit);
+  }, [createClipPlaneAt]);
 
   const flipClipPlane = useCallback((id) => {
     clipPlaneManagerRef.current?.flip(id);
-  }, []);
+    // A flip is its own inverse — flipping twice restores the original
+    // normal/constant — so undo and redo are literally the same action.
+    pushUndo({
+      undo: () => clipPlaneManagerRef.current?.flip(id),
+      redo: () => clipPlaneManagerRef.current?.flip(id),
+    });
+  }, [pushUndo]);
 
   const removeClipPlane = useCallback((id) => {
     const manager = clipPlaneManagerRef.current;
     if (!manager) return;
+    const snapshot = manager.getPlaneSnapshot(id);
     manager.remove(id);
     setClipPlanes(manager.list());
-  }, []);
+    if (!snapshot) return;
+    const idBox = { id };
+    pushUndo({
+      undo: () => {
+        idBox.id = manager.add(snapshot.normal, snapshot.point);
+        manager.setEnabled(idBox.id, snapshot.enabled);
+        manager.setGizmoVisible(idBox.id, snapshot.gizmoVisible);
+        setClipPlanes(manager.list());
+      },
+      redo: () => {
+        manager.remove(idBox.id);
+        setClipPlanes(manager.list());
+      },
+    });
+  }, [pushUndo]);
 
   const toggleMeasureMode = useCallback(() => {
     const next = !measureModeActiveRef.current;
@@ -2247,9 +2427,23 @@ export function useIfcViewer() {
   const removeMeasurement = useCallback((id) => {
     const manager = measureManagerRef.current;
     if (!manager) return;
+    const snapshot = manager.getPointsSnapshot(id);
     manager.remove(id);
     setMeasurements(manager.list());
-  }, []);
+    if (!snapshot) return;
+    const idBox = { id };
+    pushUndo({
+      undo: () => {
+        const created = manager.createFromPoints(snapshot.a, snapshot.b);
+        idBox.id = created.id;
+        setMeasurements(manager.list());
+      },
+      redo: () => {
+        manager.remove(idBox.id);
+        setMeasurements(manager.list());
+      },
+    });
+  }, [pushUndo]);
 
   const setClipPlaneEnabled = useCallback((id, enabled) => {
     const manager = clipPlaneManagerRef.current;
@@ -2265,12 +2459,12 @@ export function useIfcViewer() {
     setClipPlanes(manager.list());
   }, []);
 
-  const hideElementHere = useCallback(async () => {
-    const pending = pendingSurfacePickRef.current;
-    setContextMenu(null);
-    if (!pending) return;
-    const hit = await pending.promise;
-    if (!hit || hit.localId == null) return;
+  // Shared by the right-click "Hide element here" menu item and the "h"
+  // keyboard shortcut. `hit.fragments` is the FragmentsModel instance
+  // the element belongs to (a raycast result's field, confusingly
+  // named), not the FragmentsManager.
+  const hideHit = useCallback(async (hit) => {
+    if (!hit || hit.localId == null || !hit.fragments) return;
     renderForAWhile(() => requestRenderRef.current());
     await hit.fragments.setVisible([hit.localId], false);
     // setVisible resolving only means the worker accepted the change, not
@@ -2289,7 +2483,80 @@ export function useIfcViewer() {
       setSelectedElement(null);
     }
     requestRenderRef.current();
-  }, []);
+    const setHidden = async (hidden) => {
+      renderForAWhile(() => requestRenderRef.current());
+      await hit.fragments.setVisible([hit.localId], !hidden);
+      await pipelineRef.current?.fragments.core.update(true);
+      invalidateGroupSphereRef.current();
+      requestRenderRef.current();
+    };
+    pushUndo({
+      undo: () => setHidden(false),
+      redo: () => setHidden(true),
+    });
+  }, [pushUndo]);
+
+  const hideElementHere = useCallback(async () => {
+    const pending = pendingSurfacePickRef.current;
+    setContextMenu(null);
+    if (!pending) return;
+    const hit = await pending.promise;
+    await hideHit(hit);
+  }, [hideHit]);
+
+  // "h" shortcut: hides whatever element is currently selected (the one
+  // the info panel is showing), rather than needing a fresh pick —
+  // hiding naturally follows "the thing I just selected."
+  const hideSelectedElement = useCallback(async () => {
+    const sel = selectedHitRef.current;
+    if (!sel) return;
+    const entry = modelsRef.current.get(sel.modelId);
+    if (!entry) return;
+    await hideHit({ fragments: entry.model, localId: sel.localId });
+  }, [hideHit]);
+
+  // Global keyboard shortcuts: "h" hide the selection, "c" create a clip
+  // plane under the cursor, "m" toggle measure mode, Ctrl+Z undo,
+  // Ctrl+Y/Ctrl+Shift+Z redo (Cmd on macOS via metaKey). Guarded against
+  // typing in the search box (or any future text input) and against
+  // other modifier combos, which should fall through to the browser/OS
+  // as normal rather than being hijacked.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = document.activeElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (mod && (key === "y" || (key === "z" && event.shiftKey))) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      switch (key) {
+        case "h":
+          hideSelectedElement();
+          break;
+        case "c":
+          createClipPlaneUnderCursor();
+          break;
+        case "m":
+          toggleMeasureMode();
+          break;
+        default:
+          return;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, undo, redo]);
 
   const resetVisibility = useCallback(async () => {
     // Also exits isolate mode — otherwise the search checkboxes would
@@ -2391,6 +2658,71 @@ export function useIfcViewer() {
     return () => clearTimeout(handle);
   }, [searchQuery, runSearch]);
 
+  const setVisible = useCallback(
+    (modelId, visible) => {
+      const entry = modelsRef.current.get(modelId);
+      if (entry) entry.object.visible = visible;
+      invalidateGroupSphereRef.current();
+      // Hiding a whole model whose element is currently selected leaves
+      // the same kind of stale highlight/panel as hiding just that one
+      // element does — clear it the same way.
+      if (!visible && selectedHitRef.current?.modelId === modelId) {
+        clearHighlightRef.current?.();
+        selectedHitRef.current = null;
+        setSelectedElement(null);
+      }
+      requestRenderRef.current();
+      setModels((prev) =>
+        prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
+      );
+    },
+    [],
+  );
+
+  const removeModel = useCallback(async (modelId) => {
+    const pipeline = pipelineRef.current;
+    const modelsGroup = modelsGroupRef.current;
+    const entry = modelsRef.current.get(modelId);
+
+    if (entry && modelsGroup) modelsGroup.remove(entry.object);
+    modelsRef.current.delete(modelId);
+    const rawHandle = rawIfcHandlesRef.current.get(modelId);
+    if (rawHandle) {
+      closeRawIfcModel(rawHandle);
+      rawIfcHandlesRef.current.delete(modelId);
+    }
+    invalidateGroupSphereRef.current();
+    requestRenderRef.current();
+    setModels((prev) => prev.filter((m) => m.id !== modelId));
+    setSearchResults((prev) => prev.filter((r) => r.modelId !== modelId));
+    setIsolatedKeys((prev) => {
+      const next = new Set([...prev].filter((key) => !key.startsWith(`${modelId}::`)));
+      return next.size === prev.size ? prev : next;
+    });
+
+    try {
+      await pipeline?.fragments.core.disposeModel(modelId);
+    } catch (err) {
+      console.error(`Failed to dispose model ${modelId}`, err);
+    }
+  }, []);
+
+  // Shows the "replace existing file?" modal and resolves to the user's
+  // choice; ConfirmDialog (rendered from the `confirmReplace` state)
+  // calls back into `resolve` via confirmReplaceAnswer below.
+  const confirmReplaceFile = useCallback((name) => {
+    return new Promise((resolve) => {
+      setConfirmReplace({ name, resolve });
+    });
+  }, []);
+
+  const confirmReplaceAnswer = useCallback((replace) => {
+    setConfirmReplace((prev) => {
+      prev?.resolve(replace);
+      return null;
+    });
+  }, []);
+
   const loadFiles = useCallback(async (fileList) => {
     const pipeline = pipelineRef.current;
     const modelsGroup = modelsGroupRef.current;
@@ -2414,6 +2746,15 @@ export function useIfcViewer() {
     // handling (including retaining the original bytes for "Save as
     // .ifcZIP", see saveAsIfcZip further down).
     const loadOneIfc = async (data, displayName) => {
+      const existingId = [...modelNamesRef.current.entries()].find(([, name]) => name === displayName)?.[0];
+      if (existingId) {
+        const replace = await confirmReplaceFile(displayName);
+        if (!replace) {
+          appendError(`Skipped "${displayName}" — a model with that name is already loaded.`);
+          return;
+        }
+        await removeModel(existingId);
+      }
       const modelId = nextId();
       try {
         // An independent copy, not just a view over the same buffer —
@@ -2499,7 +2840,7 @@ export function useIfcViewer() {
 
     setIsLoading(false);
     setLoadingLabel("");
-  }, []);
+  }, [confirmReplaceFile, removeModel]);
 
   // Bundles every currently-loaded model's original bytes back into a
   // single buildingSMART-style .ifcZIP (a plain ZIP of the .ifc files —
@@ -2539,50 +2880,6 @@ export function useIfcViewer() {
     URL.revokeObjectURL(url);
   }, []);
 
-  const setVisible = useCallback(
-    (modelId, visible) => {
-      const entry = modelsRef.current.get(modelId);
-      if (entry) entry.object.visible = visible;
-      invalidateGroupSphereRef.current();
-      // Hiding a whole model whose element is currently selected leaves
-      // the same kind of stale highlight/panel as hiding just that one
-      // element does — clear it the same way.
-      if (!visible && selectedHitRef.current?.modelId === modelId) {
-        clearHighlightRef.current?.();
-        selectedHitRef.current = null;
-        setSelectedElement(null);
-      }
-      requestRenderRef.current();
-      setModels((prev) =>
-        prev.map((m) => (m.id === modelId ? { ...m, visible } : m)),
-      );
-    },
-    [],
-  );
-
-  const removeModel = useCallback(async (modelId) => {
-    const pipeline = pipelineRef.current;
-    const modelsGroup = modelsGroupRef.current;
-    const entry = modelsRef.current.get(modelId);
-
-    if (entry && modelsGroup) modelsGroup.remove(entry.object);
-    modelsRef.current.delete(modelId);
-    invalidateGroupSphereRef.current();
-    requestRenderRef.current();
-    setModels((prev) => prev.filter((m) => m.id !== modelId));
-    setSearchResults((prev) => prev.filter((r) => r.modelId !== modelId));
-    setIsolatedKeys((prev) => {
-      const next = new Set([...prev].filter((key) => !key.startsWith(`${modelId}::`)));
-      return next.size === prev.size ? prev : next;
-    });
-
-    try {
-      await pipeline?.fragments.core.disposeModel(modelId);
-    } catch (err) {
-      console.error(`Failed to dispose model ${modelId}`, err);
-    }
-  }, []);
-
   // "Home": back to the same framing new files get on load, with the
   // model's own orientation reset too (rotation is the only transform
   // the arcball drag ever applies to modelsGroup — it's never
@@ -2614,6 +2911,8 @@ export function useIfcViewer() {
     ready,
     loadFiles,
     saveAsIfcZip,
+    confirmReplace,
+    confirmReplaceAnswer,
     setVisible,
     removeModel,
     resetView,

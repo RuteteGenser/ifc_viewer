@@ -7,6 +7,7 @@ import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
 import ElementInfoPanel from "./components/ElementInfoPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
+import ConfirmDialog from "./components/ConfirmDialog";
 import TopBar from "./components/TopBar";
 import "./App.css";
 
@@ -19,6 +20,8 @@ function App() {
     error,
     loadFiles,
     saveAsIfcZip,
+    confirmReplace,
+    confirmReplaceAnswer,
     setVisible,
     removeModel,
     resetView,
@@ -186,6 +189,17 @@ function App() {
             closeMeasureDeletePopup();
           }}
           onClose={closeMeasureDeletePopup}
+        />
+      )}
+
+      {confirmReplace && (
+        <ConfirmDialog
+          title="Replace existing model?"
+          message={`"${confirmReplace.name}" is already loaded. Replace it with the new file?`}
+          confirmLabel="Replace"
+          cancelLabel="Cancel"
+          onConfirm={() => confirmReplaceAnswer(true)}
+          onCancel={() => confirmReplaceAnswer(false)}
         />
       )}
     </div>

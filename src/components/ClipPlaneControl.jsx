@@ -1,3 +1,13 @@
+function FlipIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v18" strokeDasharray="3 3" />
+      <path d="M7 8 4 12 7 16" />
+      <path d="M17 8 20 12 17 16" />
+    </svg>
+  );
+}
+
 export default function ClipPlaneControl({
   clipPlanes,
   onSetClipPlaneEnabled,
@@ -43,16 +53,20 @@ export default function ClipPlaneControl({
                 <button
                   type="button"
                   className="clip-control__flip"
+                  aria-label="Flip direction"
+                  title="Flip direction"
                   onClick={() => onFlipClipPlane(plane.id)}
                 >
-                  Flip direction
+                  <FlipIcon />
                 </button>
                 <button
                   type="button"
                   className="clip-control__remove"
+                  aria-label="Remove clip plane"
+                  title="Remove clip plane"
                   onClick={() => onRemoveClipPlane(plane.id)}
                 >
-                  Remove
+                  ✕
                 </button>
               </div>
             </div>

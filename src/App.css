@@ -13,7 +13,11 @@
   left: 0;
   right: 0;
   height: 52px;
-  z-index: 30;
+  /* Above .element-panel's z-index: 40 (App.css ~line 574) so the
+     search dropdown nested inside this stacking context doesn't get
+     painted under the always-visible info panel; still below
+     .context-menu/.measure-delete-button's z-index: 50. */
+  z-index: 41;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -320,24 +324,40 @@
 
 .clip-control__buttons {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  justify-content: flex-end;
 }
 
 .clip-control__flip,
 .clip-control__remove {
-  background: #22262e;
-  color: #e8eaed;
-  border: 1px solid #3a3f4a;
-  border-radius: 6px;
-  padding: 6px 10px;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #9aa2af;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
   font-size: 13px;
   cursor: pointer;
-  flex: 1;
+}
+
+.clip-control__flip svg {
+  width: 16px;
+  height: 16px;
 }
 
 .clip-control__flip:hover,
 .clip-control__remove:hover {
-  background: #2a2f38;
+  background: #3a3f4a;
+  color: #e8eaed;
+}
+
+.clip-control__remove:hover {
+  color: #f87171;
 }
 
 .clip-control__toggle input:disabled {
@@ -385,6 +405,74 @@
   gap: 4px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Confirm dialog ---------- */
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-dialog {
+  background: #22262e;
+  border: 1px solid #3a3f4a;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 20px;
+  width: min(90vw, 360px);
+  color: #e8eaed;
+}
+
+.confirm-dialog__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.confirm-dialog__message {
+  font-size: 13px;
+  color: #c3c8d1;
+  margin: 0 0 16px;
+}
+
+.confirm-dialog__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-dialog__cancel,
+.confirm-dialog__confirm {
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #3a3f4a;
+}
+
+.confirm-dialog__cancel {
+  background: #1b1e24;
+  color: #e8eaed;
+}
+
+.confirm-dialog__cancel:hover {
+  background: #2a2f38;
+}
+
+.confirm-dialog__confirm {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.confirm-dialog__confirm:hover {
+  background: #2563eb;
 }
 
 /* ---------- Context menu ---------- */
@@ -563,7 +651,13 @@
 
 .element-panel {
   position: fixed;
-  top: 0;
+  /* Starts below the top bar (52px tall) rather than under it, so the
+     two never occupy the same vertical band — previously whichever had
+     the higher z-index (the panel, originally) visually covered the
+     other's controls in that shared top-right region (the search bar
+     itself, in the panel's case) regardless of which fix was applied
+     to the other's stacking order. */
+  top: 52px;
   right: 0;
   bottom: 0;
   width: 320px;

@@ -494,6 +494,13 @@ export function useIfcViewer() {
     let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
     let measurePendingMarker = null; // THREE.Mesh | null
     let measureUid = 0;
+    // Live preview of the in-progress second point: built lazily on the
+    // first hover once point A exists, then updated in place every
+    // subsequent hover (never pushed into measurementsRuntime — it's
+    // torn down as soon as the real point B is placed or the pending
+    // point is cancelled).
+    let measurePreviewEntry = null; // { markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel } | null
+    let measurePreviewRaycastPending = false;
 
     const createMeasureMarker = () => {
       const marker = new THREE.Mesh(
@@ -572,6 +579,106 @@ export function useIfcViewer() {
       { text: `${length.toFixed(3)} m`, color: "#e8eaed" },
     ];
 
+    // Live preview while hovering for point B, before it's clicked. Reuses
+    // the exact same objects/dogleg math as a finished measurement (see
+    // addPoint's "completed" branch below), just lazily created on first
+    // hover and updated in place thereafter (same in-place-update pattern
+    // as applyMeasureMarkerDrag) rather than recreated every mousemove.
+    const updateMeasurePreview = (a, b) => {
+      if (!measurePreviewEntry) {
+        const markerB = createMeasureMarker();
+        const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+        const line = new THREE.Line(geometry, material);
+        line.renderOrder = 999;
+        modelsGroup.add(line);
+        const legX = createMeasureLeg(a, a, 0xef4444);
+        const legY = createMeasureLeg(a, a, 0x22c55e);
+        const legZ = createMeasureLeg(a, a, 0x3b82f6);
+        const label = createMeasureLabel(measureLabelLines(0));
+        const legXLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }]);
+        const legYLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }]);
+        const legZLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }]);
+        measurePreviewEntry = { markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel };
+      }
+      const entry = measurePreviewEntry;
+      entry.markerB.visible = true;
+      entry.markerB.position.copy(b);
+
+      const pos = entry.line.geometry.attributes.position;
+      pos.setXYZ(0, a.x, a.y, a.z);
+      pos.setXYZ(1, b.x, b.y, b.z);
+      pos.needsUpdate = true;
+      entry.line.geometry.computeBoundingSphere();
+
+      const cornerX = new THREE.Vector3(b.x, a.y, a.z);
+      const cornerXY = new THREE.Vector3(b.x, b.y, a.z);
+      const setLeg = (leg, p1, p2) => {
+        const legPos = leg.geometry.attributes.position;
+        legPos.setXYZ(0, p1.x, p1.y, p1.z);
+        legPos.setXYZ(1, p2.x, p2.y, p2.z);
+        legPos.needsUpdate = true;
+        leg.geometry.computeBoundingSphere();
+      };
+      setLeg(entry.legX, a, cornerX);
+      setLeg(entry.legY, cornerX, cornerXY);
+      setLeg(entry.legZ, cornerXY, b);
+
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      const dz = Math.abs(b.z - a.z);
+      const length = a.distanceTo(b);
+      entry.label.position.copy(a).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.label, measureLabelLines(length));
+      entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legXLabel, [{ text: `${dx.toFixed(3)} m`, color: "#ef4444" }]);
+      entry.legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legYLabel, [{ text: `${dy.toFixed(3)} m`, color: "#22c55e" }]);
+      entry.legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legZLabel, [{ text: `${dz.toFixed(3)} m`, color: "#3b82f6" }]);
+
+      requestRender();
+    };
+
+    const clearMeasurePreview = () => {
+      if (!measurePreviewEntry) return;
+      const entry = measurePreviewEntry;
+      modelsGroup.remove(
+        entry.markerB,
+        entry.line,
+        entry.legX,
+        entry.legY,
+        entry.legZ,
+        entry.label,
+        entry.legXLabel,
+        entry.legYLabel,
+        entry.legZLabel,
+      );
+      entry.markerB.material.dispose();
+      entry.line.geometry.dispose();
+      entry.line.material.dispose();
+      entry.legX.geometry.dispose();
+      entry.legX.material.dispose();
+      entry.legY.geometry.dispose();
+      entry.legY.material.dispose();
+      entry.legZ.geometry.dispose();
+      entry.legZ.material.dispose();
+      // Not entry.label.geometry (or legXLabel/legYLabel/legZLabel's):
+      // THREE.Sprite shares one module-level geometry singleton across
+      // every sprite instance in the app — disposing it here would
+      // break every other sprite too.
+      entry.label.material.map.dispose();
+      entry.label.material.dispose();
+      entry.legXLabel.material.map.dispose();
+      entry.legXLabel.material.dispose();
+      entry.legYLabel.material.map.dispose();
+      entry.legYLabel.material.dispose();
+      entry.legZLabel.material.map.dispose();
+      entry.legZLabel.material.dispose();
+      measurePreviewEntry = null;
+      requestRender();
+    };
+
     const measureManager = {
       // Returns "started" after recording point A, "completed" after B
       // finishes a measurement.
@@ -583,6 +690,7 @@ export function useIfcViewer() {
           requestRender();
           return "started";
         }
+        clearMeasurePreview();
         const a = measurePendingPoint;
         const b = localPoint;
         const markerA = measurePendingMarker;
@@ -644,6 +752,7 @@ export function useIfcViewer() {
           measurePendingMarker = null;
         }
         measurePendingPoint = null;
+        clearMeasurePreview();
         requestRender();
       },
       remove: (id) => {
@@ -710,6 +819,13 @@ export function useIfcViewer() {
         label.scale.set(height * label.userData.aspect, height, 1);
       };
       if (measurePendingMarker) scaleOne(measurePendingMarker);
+      if (measurePreviewEntry) {
+        scaleOne(measurePreviewEntry.markerB);
+        scaleLegLabel(measurePreviewEntry.label);
+        scaleLegLabel(measurePreviewEntry.legXLabel);
+        scaleLegLabel(measurePreviewEntry.legYLabel);
+        scaleLegLabel(measurePreviewEntry.legZLabel);
+      }
       for (const entry of measurementsRuntime) {
         scaleOne(entry.markerA);
         scaleOne(entry.markerB);
@@ -1095,11 +1211,25 @@ export function useIfcViewer() {
       const scale = Math.pow(0.95, Math.abs(event.deltaY) * 0.01);
       const zoomingIn = event.deltaY < 0;
       const rawDistance = zoomingIn ? prevDistance * scale : prevDistance / scale;
-      const minDistance = Math.max(camera.near * 4, 1e-3);
+      // Tiny absolute floor — camera.near is kept proportional to the
+      // *current* distance below, so this no longer needs to scale with
+      // the whole model's size.
+      const minDistance = 1e-4;
       const newDistance = Math.max(rawDistance, minDistance);
       const radiusDelta = prevDistance - newDistance;
 
       camera.position.addScaledVector(dir, radiusDelta);
+
+      // Keep near proportional to how close the camera currently is, not
+      // to the whole model's size computed once at the last
+      // frameCameraOnScene call (model load / Home button) — otherwise,
+      // on a large model, near (and any minDistance derived from it)
+      // stays large forever, silently capping how close you can zoom in
+      // on any one small part of it. Recomputed every tick so it also
+      // grows back on zoom-out, keeping depth precision reasonable at
+      // whatever distance you're actually viewing from.
+      camera.near = Math.max(newDistance / 100, 1e-6);
+      camera.updateProjectionMatrix();
 
       // Keep target exactly on the camera's *current* forward axis (not
       // at cursorPoint, which is generally off-center) so the next
@@ -1130,6 +1260,37 @@ export function useIfcViewer() {
       refreshZoomHitCache(event.clientX, event.clientY);
     };
     renderer.domElement.addEventListener("pointermove", onZoomHoverMove);
+
+    // Live preview of the second measurement point: once point A has
+    // been placed and the tool is waiting on point B, keep a preview
+    // line/legs/labels tracking the cursor's raycast hit so the user can
+    // see the in-progress length/height before clicking. Suppressed
+    // while an actual rotate-drag gesture is in progress (pivotPending/
+    // rotating), matching the fact that a drag never places a point
+    // today (see onRotateEnd's CLICK_MOVE_THRESHOLD check below).
+    const onMeasureHoverMove = (event) => {
+      if (!measureModeActiveRef.current || measurePendingPoint === null) return;
+      if (pivotPending || rotating) return;
+      if (!renderer.domElement.contains(event.target)) return;
+      if (measurePreviewRaycastPending) return;
+      measurePreviewRaycastPending = true;
+      raycastVisible(event.clientX, event.clientY)
+        .then((hit) => {
+          if (disposed || measurePendingPoint === null) return;
+          if (!hit) {
+            if (measurePreviewEntry) measurePreviewEntry.markerB.visible = false;
+            return;
+          }
+          modelsGroup.updateMatrixWorld(true);
+          const b = modelsGroup.worldToLocal(hit.point.clone());
+          updateMeasurePreview(measurePendingPoint, b);
+        })
+        .catch(() => {})
+        .finally(() => {
+          measurePreviewRaycastPending = false;
+        });
+    };
+    renderer.domElement.addEventListener("pointermove", onMeasureHoverMove);
 
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * (ndc.x - startNdcX);
@@ -1573,12 +1734,21 @@ export function useIfcViewer() {
       window.addEventListener("pointerup", onMeasureMarkerDragEnd);
       return true;
     };
+    // Offset up-and-right from the marker's own screen position (not
+    // centered on top of it) so the marker stays reachable underneath
+    // for dragging to a new position, with a small, deliberate gap
+    // between the two.
+    const MEASURE_DELETE_POPUP_OFFSET = 18;
+    const measureDeletePopupPosition = (marker) => {
+      const client = worldToClient(marker.getWorldPosition(new THREE.Vector3()));
+      return { x: client.x + MEASURE_DELETE_POPUP_OFFSET, y: client.y - MEASURE_DELETE_POPUP_OFFSET };
+    };
     showMeasureDeletePopupRef.current = (entryId, which) => {
       const entry = measurementsRuntime.find((m) => m.id === entryId);
       if (!entry) return;
       const marker = which === "A" ? entry.markerA : entry.markerB;
-      const client = worldToClient(marker.getWorldPosition(new THREE.Vector3()));
-      setMeasureDeletePopup({ entryId, which, x: client.x, y: client.y });
+      const { x, y } = measureDeletePopupPosition(marker);
+      setMeasureDeletePopup({ entryId, which, x, y });
     };
 
     let draggingClipPlaneId = null;
@@ -1704,9 +1874,12 @@ export function useIfcViewer() {
     // pointed at), since with multiple planes there's no single
     // unambiguous "the" plane a keyboard-modified scroll could target
     // otherwise (see the removed ctrl+scroll comment near onCtrlWheel).
-    // Only reacts to *visible* handles, matching shift+drag.
+    // Works regardless of handle visibility, matching middle+scroll
+    // below — entry.mesh stays raycastable even with the handle turned
+    // off (only material.visible is toggled, see setGizmoVisible above),
+    // so there's no reason to require a visible handle just to scroll.
     const tryShiftScrollClipPlane = (event) =>
-      moveClipPlaneUnderCursor(event, clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh));
+      moveClipPlaneUnderCursor(event, clipPlanesRuntime.map((p) => p.mesh));
     // Middle-mouse+scroll works even with the handle turned off —
     // intentionally does NOT filter by gizmoVisible, since the whole
     // point is to move a plane you can't see a handle for (unlike
@@ -1844,9 +2017,9 @@ export function useIfcViewer() {
           setMeasureDeletePopup(null); // measurement was deleted from elsewhere (e.g. the sidebar)
         } else {
           const marker = which === "A" ? entry.markerA : entry.markerB;
-          const client = worldToClient(marker.getWorldPosition(new THREE.Vector3()));
-          if (client.x !== measureDeletePopupRef.current.x || client.y !== measureDeletePopupRef.current.y) {
-            setMeasureDeletePopup({ entryId, which, x: client.x, y: client.y });
+          const { x, y } = measureDeletePopupPosition(marker);
+          if (x !== measureDeletePopupRef.current.x || y !== measureDeletePopupRef.current.y) {
+            setMeasureDeletePopup({ entryId, which, x, y });
           }
         }
       }
@@ -1950,6 +2123,8 @@ export function useIfcViewer() {
       window.removeEventListener("keydown", onMeasureKeyDown);
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
       renderer.domElement.removeEventListener("pointermove", onZoomHoverMove);
+      renderer.domElement.removeEventListener("pointermove", onMeasureHoverMove);
+      clearMeasurePreview();
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);

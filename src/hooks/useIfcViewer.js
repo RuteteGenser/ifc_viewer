@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { unzip, zip } from "fflate";
 
 const IFC_EXTENSION = /\.ifc$/i;
+// buildingSMART's ifcZIP format: a plain ZIP archive containing one or
+// more .ifc (or .ifcXML — not supported by this viewer) files, no special
+// re-encoding. Case is inconsistent in the wild (.ifcZIP/.ifczip), hence
+// the case-insensitive match.
+const IFCZIP_EXTENSION = /\.ifczip$/i;
 
 let uid = 0;
 function nextId() {
@@ -2399,21 +2405,22 @@ export function useIfcViewer() {
     setError(null);
     setIsLoading(true);
 
-    for (const file of files) {
-      setLoadingLabel(`Parsing ${file.name}…`);
-      if (!IFC_EXTENSION.test(file.name)) {
-        setError((prev) =>
-          prev
-            ? `${prev} · "${file.name}" is not an .ifc file`
-            : `"${file.name}" is not an .ifc file`,
-        );
-        continue;
-      }
+    const appendError = (message) =>
+      setError((prev) => (prev ? `${prev} · ${message}` : message));
 
+    // Parses one .ifc buffer into a model and wires it into the scene —
+    // shared by a directly-selected/dropped .ifc file and by each .ifc
+    // entry unpacked from an .ifcZIP below, so both paths get identical
+    // handling (including retaining the original bytes for "Save as
+    // .ifcZIP", see saveAsIfcZip further down).
+    const loadOneIfc = async (data, displayName) => {
       const modelId = nextId();
       try {
-        const buffer = await file.arrayBuffer();
-        const data = new Uint8Array(buffer);
+        // An independent copy, not just a view over the same buffer —
+        // ifcLoader.load may hand `data`'s underlying buffer off to a
+        // worker (transferable objects get detached, not cloned), which
+        // would otherwise silently zero out sourceBytes after the load.
+        const sourceBytes = data.slice();
         const model = await pipeline.ifcLoader.load(data, true, modelId, {
           // Some IFC exporters produce geometry with inconsistent winding
           // (a face's front side doesn't reliably match its outward
@@ -2429,21 +2436,54 @@ export function useIfcViewer() {
 
         if (cameraRef.current) model.useCamera(cameraRef.current);
         modelsGroup.add(model.object);
-        modelsRef.current.set(modelId, { model, object: model.object });
+        modelsRef.current.set(modelId, { model, object: model.object, sourceBytes, fileName: displayName });
         invalidateGroupSphereRef.current();
         requestRenderRef.current();
 
         setModels((prev) => [
           ...prev,
-          { id: modelId, name: file.name, visible: true },
+          { id: modelId, name: displayName, visible: true },
         ]);
       } catch (err) {
-        console.error(`Failed to load ${file.name}`, err);
-        setError((prev) => {
-          const message = `Could not parse "${file.name}" — it doesn't look like a valid IFC file.`;
-          return prev ? `${prev} · ${message}` : message;
-        });
+        console.error(`Failed to load ${displayName}`, err);
+        appendError(`Could not parse "${displayName}" — it doesn't look like a valid IFC file.`);
       }
+    };
+
+    for (const file of files) {
+      if (IFCZIP_EXTENSION.test(file.name)) {
+        setLoadingLabel(`Unpacking ${file.name}…`);
+        try {
+          const buffer = await file.arrayBuffer();
+          const unzipped = await new Promise((resolve, reject) => {
+            unzip(new Uint8Array(buffer), (err, result) => (err ? reject(err) : resolve(result)));
+          });
+          const innerNames = Object.keys(unzipped).filter((name) => IFC_EXTENSION.test(name));
+          if (innerNames.length === 0) {
+            appendError(`"${file.name}" doesn't contain any .ifc files`);
+            continue;
+          }
+          for (const innerName of innerNames) {
+            setLoadingLabel(`Parsing ${innerName}…`);
+            // Base name only (ifcZIP entries are commonly flat, but a
+            // path prefix would otherwise leak into the model list).
+            await loadOneIfc(unzipped[innerName], innerName.split("/").pop());
+          }
+        } catch (err) {
+          console.error(`Failed to unpack ${file.name}`, err);
+          appendError(`Could not unpack "${file.name}" — it doesn't look like a valid .ifcZIP file.`);
+        }
+        continue;
+      }
+
+      if (!IFC_EXTENSION.test(file.name)) {
+        appendError(`"${file.name}" is not an .ifc or .ifcZIP file`);
+        continue;
+      }
+
+      setLoadingLabel(`Parsing ${file.name}…`);
+      const buffer = await file.arrayBuffer();
+      await loadOneIfc(new Uint8Array(buffer), file.name);
     }
 
     // Let a few frames of streamed geometry land before measuring bounds.
@@ -2459,6 +2499,44 @@ export function useIfcViewer() {
 
     setIsLoading(false);
     setLoadingLabel("");
+  }, []);
+
+  // Bundles every currently-loaded model's original bytes back into a
+  // single buildingSMART-style .ifcZIP (a plain ZIP of the .ifc files —
+  // no geometry re-encoding), and triggers a browser download. Models
+  // loaded from an .ifcZIP or as plain .ifc files are handled identically
+  // here since both retain sourceBytes/fileName in modelsRef (see
+  // loadOneIfc above).
+  const saveAsIfcZip = useCallback(async () => {
+    const entries = [...modelsRef.current.values()].filter((entry) => entry.sourceBytes);
+    if (entries.length === 0) return;
+
+    // Zip entry names must be unique even if two loaded models share a
+    // filename (e.g. loaded from different folders).
+    const usedNames = new Set();
+    const files = {};
+    for (const entry of entries) {
+      let name = entry.fileName;
+      let suffix = 2;
+      while (usedNames.has(name)) {
+        name = entry.fileName.replace(IFC_EXTENSION, `-${suffix}.ifc`);
+        suffix += 1;
+      }
+      usedNames.add(name);
+      files[name] = entry.sourceBytes;
+    }
+
+    const zipped = await new Promise((resolve, reject) => {
+      zip(files, { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
+    });
+
+    const blob = new Blob([zipped], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = entries.length === 1 ? entries[0].fileName.replace(IFC_EXTENSION, ".ifczip") : "models.ifczip";
+    link.click();
+    URL.revokeObjectURL(url);
   }, []);
 
   const setVisible = useCallback(
@@ -2535,6 +2613,7 @@ export function useIfcViewer() {
     error,
     ready,
     loadFiles,
+    saveAsIfcZip,
     setVisible,
     removeModel,
     resetView,

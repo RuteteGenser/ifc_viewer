@@ -18,6 +18,7 @@ function App() {
     loadingLabel,
     error,
     loadFiles,
+    saveAsIfcZip,
     setVisible,
     removeModel,
     resetView,
@@ -114,6 +115,7 @@ function App() {
         }}
         onToggleVisible={setVisible}
         onRemove={removeModel}
+        onSaveIfcZip={saveAsIfcZip}
         onResetVisibility={resetVisibility}
         isLoading={isLoading}
         loadingLabel={loadingLabel}

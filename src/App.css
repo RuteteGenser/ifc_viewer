@@ -174,6 +174,27 @@
   cursor: not-allowed;
 }
 
+.sidebar__save-button {
+  flex: 1;
+  background: #22262e;
+  color: #e8eaed;
+  border: 1px solid #3a3f4a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sidebar__save-button:hover:not(:disabled) {
+  background: #2a2f38;
+}
+
+.sidebar__save-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .sidebar__reset-visibility-button {
   background: #22262e;
   color: #e8eaed;

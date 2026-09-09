@@ -34,6 +34,7 @@ export default function Sidebar({
   onFilesSelected,
   onToggleVisible,
   onRemove,
+  onSaveIfcZip,
   onResetVisibility,
   isLoading,
   loadingLabel,
@@ -58,13 +59,22 @@ export default function Sidebar({
           onClick={() => fileInputRef.current?.click()}
           disabled={isLoading}
         >
-          {isLoading ? loadingLabel || "Loading…" : "+ Add IFC file(s)"}
+          {isLoading ? loadingLabel || "Loading…" : "+ Add file(s)"}
+        </button>
+        <button
+          type="button"
+          className="sidebar__save-button"
+          onClick={onSaveIfcZip}
+          disabled={models.length === 0}
+          title="Save all loaded models as a single .ifcZIP"
+        >
+          Save as .ifcZIP
         </button>
       </div>
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ifc"
+        accept=".ifc,.ifczip"
         multiple
         hidden
         onChange={(e) => {
@@ -79,8 +89,8 @@ export default function Sidebar({
 
       {models.length === 0 ? (
         <p className="sidebar__empty">
-          No models loaded yet. Add an .ifc file or drop one onto the
-          viewport.
+          No models loaded yet. Add an .ifc or .ifcZIP file, or drop one
+          onto the viewport.
         </p>
       ) : (
         <ul className="model-list">

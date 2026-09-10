@@ -139,7 +139,7 @@ export function useIfcViewer() {
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
-  const [measurements, setMeasurements] = useState([]); // [{ id, dx, dy, dz }]
+  const [measurements, setMeasurements] = useState([]); // [{ id, depth, horizontal, vertical, length }]
   const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]); // { key, modelId, localId, name, category, modelName }[]
@@ -564,12 +564,52 @@ export function useIfcViewer() {
     };
     clipPlaneManagerRef.current = clipPlaneManager;
 
+    // Converts a world-space direction (e.g. a raycast hit's face normal)
+    // into modelsGroup's local frame, matching how measurement points
+    // themselves are stored (see worldToLocal calls below) — needed since
+    // the model can be rotated relative to world space at any time.
+    const localDirectionFromWorld = (worldVec) => {
+      const invQuat = modelsGroup.quaternion.clone().invert();
+      return worldVec.clone().applyQuaternion(invQuat).normalize();
+    };
+
+    const MEASURE_UP = new THREE.Vector3(0, 1, 0);
+    const MEASURE_FALLBACK_TANGENT = new THREE.Vector3(0, 0, 1);
+    // Builds the orthonormal basis a measurement's dogleg is decomposed
+    // into: `normal` is the reference surface's own normal (point B's, by
+    // convention — see addPoint below), and `tangentUp`/`tangentRight`
+    // span that surface's own plane, so "distance to the wall" always
+    // means distance along the wall's normal rather than some arbitrary
+    // global axis. `tangentUp` is world-up projected onto the surface
+    // plane (i.e. "up, as seen while facing the surface") unless the
+    // surface is itself (near-)horizontal — measuring across a floor or
+    // ceiling — in which case world-up IS the normal and can't define an
+    // in-plane direction, so a fixed fallback axis is used instead to
+    // keep the basis well-defined and stable.
+    const measureBasis = (localNormal) => {
+      const normal = (localNormal ?? MEASURE_UP).clone().normalize();
+      const upRef = Math.abs(normal.dot(MEASURE_UP)) > 0.999 ? MEASURE_FALLBACK_TANGENT : MEASURE_UP;
+      const tangentUp = upRef.clone().sub(normal.clone().multiplyScalar(upRef.dot(normal))).normalize();
+      const tangentRight = new THREE.Vector3().crossVectors(normal, tangentUp).normalize();
+      return { normal, tangentUp, tangentRight };
+    };
+    // Decomposes the vector from a to b into that basis: `depth` is the
+    // (signed) distance along the reference surface's normal, `right`/
+    // `up` are the in-plane components. These three, applied in order as
+    // displacements from `a`, land exactly on `b` again (it's just `b-a`
+    // expressed in a different orthonormal basis), which is what lets the
+    // 3D dogleg visualization below still work unchanged.
+    const measureComponents = (a, b, basis) => {
+      const d = b.clone().sub(a);
+      return { depth: d.dot(basis.normal), right: d.dot(basis.tangentRight), up: d.dot(basis.tangentUp) };
+    };
+
     // Measure tool: click point A, then point B, and record the local-space
     // (modelsGroup frame) difference between them. Points/line/markers are
     // parented under modelsGroup (like the clip-plane gizmos above) so they
     // inherit model rotation for free instead of needing per-frame transform
     // math the way the transient, world-fixed pivotMarker does.
-    const measurementsRuntime = []; // { id, markerA, markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel, dx, dy, dz, length }
+    const measurementsRuntime = []; // { id, markerA, markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel, referenceNormal, depth, horizontal, vertical, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
     const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30; // shared by the main label and the three per-leg labels
@@ -581,7 +621,7 @@ export function useIfcViewer() {
     // subsequent hover (never pushed into measurementsRuntime — it's
     // torn down as soon as the real point B is placed or the pending
     // point is cancelled).
-    let measurePreviewEntry = null; // { markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel } | null
+    let measurePreviewEntry = null; // { markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel } | null
     let measurePreviewRaycastPending = false;
 
     const createMeasureMarker = () => {
@@ -673,7 +713,7 @@ export function useIfcViewer() {
     // addPoint's "completed" branch below), just lazily created on first
     // hover and updated in place thereafter (same in-place-update pattern
     // as applyMeasureMarkerDrag) rather than recreated every mousemove.
-    const updateMeasurePreview = (a, b) => {
+    const updateMeasurePreview = (a, b, localNormal) => {
       if (!measurePreviewEntry) {
         const markerB = createMeasureMarker();
         const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
@@ -681,14 +721,14 @@ export function useIfcViewer() {
         const line = new THREE.Line(geometry, material);
         line.renderOrder = 999;
         modelsGroup.add(line);
-        const legX = createMeasureLeg(a, a, 0xef4444);
-        const legY = createMeasureLeg(a, a, 0x22c55e);
-        const legZ = createMeasureLeg(a, a, 0x3b82f6);
+        const legDepth = createMeasureLeg(a, a, 0xef4444);
+        const legRight = createMeasureLeg(a, a, 0x3b82f6);
+        const legUp = createMeasureLeg(a, a, 0x22c55e);
         const label = createMeasureLabel(measureLabelLines(0));
-        const legXLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }]);
-        const legYLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }]);
-        const legZLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }]);
-        measurePreviewEntry = { markerB, line, legX, legY, legZ, label, legXLabel, legYLabel, legZLabel };
+        const legDepthLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }]);
+        const legRightLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }]);
+        const legUpLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }]);
+        measurePreviewEntry = { markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel };
       }
       const entry = measurePreviewEntry;
       entry.markerB.visible = true;
@@ -700,8 +740,13 @@ export function useIfcViewer() {
       pos.needsUpdate = true;
       entry.line.geometry.computeBoundingSphere();
 
-      const cornerX = new THREE.Vector3(b.x, a.y, a.z);
-      const cornerXY = new THREE.Vector3(b.x, b.y, a.z);
+      // Dogleg via the reference surface's own basis (see measureBasis
+      // above) instead of raw X/Y/Z, so the legs mean "along the wall"
+      // and "distance to the wall" rather than arbitrary global axes.
+      const basis = measureBasis(localNormal);
+      const { depth, right, up } = measureComponents(a, b, basis);
+      const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
+      const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
       const setLeg = (leg, p1, p2) => {
         const legPos = leg.geometry.attributes.position;
         legPos.setXYZ(0, p1.x, p1.y, p1.z);
@@ -709,22 +754,19 @@ export function useIfcViewer() {
         legPos.needsUpdate = true;
         leg.geometry.computeBoundingSphere();
       };
-      setLeg(entry.legX, a, cornerX);
-      setLeg(entry.legY, cornerX, cornerXY);
-      setLeg(entry.legZ, cornerXY, b);
+      setLeg(entry.legRight, a, cornerRight);
+      setLeg(entry.legUp, cornerRight, cornerRightUp);
+      setLeg(entry.legDepth, cornerRightUp, b);
 
-      const dx = Math.abs(b.x - a.x);
-      const dy = Math.abs(b.y - a.y);
-      const dz = Math.abs(b.z - a.z);
       const length = a.distanceTo(b);
       entry.label.position.copy(a).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.label, measureLabelLines(length));
-      entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legXLabel, [{ text: formatMm(dx), color: "#ef4444" }]);
-      entry.legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legYLabel, [{ text: formatMm(dy), color: "#22c55e" }]);
-      entry.legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legZLabel, [{ text: formatMm(dz), color: "#3b82f6" }]);
+      entry.legRightLabel.position.copy(a).add(cornerRight).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legRightLabel, [{ text: formatMm(Math.abs(right)), color: "#3b82f6" }]);
+      entry.legUpLabel.position.copy(cornerRight).add(cornerRightUp).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legUpLabel, [{ text: formatMm(Math.abs(up)), color: "#22c55e" }]);
+      entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(Math.abs(depth)), color: "#ef4444" }]);
 
       requestRender();
     };
@@ -735,35 +777,35 @@ export function useIfcViewer() {
       modelsGroup.remove(
         entry.markerB,
         entry.line,
-        entry.legX,
-        entry.legY,
-        entry.legZ,
+        entry.legDepth,
+        entry.legRight,
+        entry.legUp,
         entry.label,
-        entry.legXLabel,
-        entry.legYLabel,
-        entry.legZLabel,
+        entry.legDepthLabel,
+        entry.legRightLabel,
+        entry.legUpLabel,
       );
       entry.markerB.material.dispose();
       entry.line.geometry.dispose();
       entry.line.material.dispose();
-      entry.legX.geometry.dispose();
-      entry.legX.material.dispose();
-      entry.legY.geometry.dispose();
-      entry.legY.material.dispose();
-      entry.legZ.geometry.dispose();
-      entry.legZ.material.dispose();
-      // Not entry.label.geometry (or legXLabel/legYLabel/legZLabel's):
-      // THREE.Sprite shares one module-level geometry singleton across
-      // every sprite instance in the app — disposing it here would
-      // break every other sprite too.
+      entry.legDepth.geometry.dispose();
+      entry.legDepth.material.dispose();
+      entry.legRight.geometry.dispose();
+      entry.legRight.material.dispose();
+      entry.legUp.geometry.dispose();
+      entry.legUp.material.dispose();
+      // Not entry.label.geometry (or legDepthLabel/legRightLabel/
+      // legUpLabel's): THREE.Sprite shares one module-level geometry
+      // singleton across every sprite instance in the app — disposing it
+      // here would break every other sprite too.
       entry.label.material.map.dispose();
       entry.label.material.dispose();
-      entry.legXLabel.material.map.dispose();
-      entry.legXLabel.material.dispose();
-      entry.legYLabel.material.map.dispose();
-      entry.legYLabel.material.dispose();
-      entry.legZLabel.material.map.dispose();
-      entry.legZLabel.material.dispose();
+      entry.legDepthLabel.material.map.dispose();
+      entry.legDepthLabel.material.dispose();
+      entry.legRightLabel.material.map.dispose();
+      entry.legRightLabel.material.dispose();
+      entry.legUpLabel.material.map.dispose();
+      entry.legUpLabel.material.dispose();
       measurePreviewEntry = null;
       requestRender();
     };
@@ -774,8 +816,12 @@ export function useIfcViewer() {
     // measurement from stored points without going through the
     // pending-point state machine. Reuses `existingMarkerA` if given
     // (the pending-point marker already placed for point A) instead of
-    // creating a redundant one.
-    const createMeasurementEntry = (a, b, existingMarkerA) => {
+    // creating a redundant one. `localNormal` is point B's surface
+    // normal (local space) — B, by convention, is "the surface you're
+    // measuring to" (see addPoint below) — and is stored on the entry so
+    // later dragging point A can recompute the decomposition without
+    // losing track of which surface it's still relative to.
+    const createMeasurementEntry = (a, b, existingMarkerA, localNormal) => {
       const markerA = existingMarkerA ?? createMeasureMarker();
       markerA.position.copy(a);
       const markerB = createMeasureMarker();
@@ -785,43 +831,46 @@ export function useIfcViewer() {
       const line = new THREE.Line(geometry, material);
       line.renderOrder = 999;
       modelsGroup.add(line);
+      const referenceNormal = (localNormal ?? MEASURE_UP).clone();
       // Right-angle "dogleg" path from a to b via two corners, visually
-      // breaking the straight-line hypotenuse above into its X/Y/Z
-      // axis contributions (each leg's own length equals dx/dy/dz).
-      const cornerX = new THREE.Vector3(b.x, a.y, a.z);
-      const cornerXY = new THREE.Vector3(b.x, b.y, a.z);
-      const legX = createMeasureLeg(a, cornerX, 0xef4444);
-      const legY = createMeasureLeg(cornerX, cornerXY, 0x22c55e);
-      const legZ = createMeasureLeg(cornerXY, b, 0x3b82f6);
+      // breaking the straight-line hypotenuse above into its
+      // depth/horizontal/vertical contributions relative to the
+      // reference surface (see measureBasis/measureComponents above),
+      // rather than raw global X/Y/Z.
+      const basis = measureBasis(referenceNormal);
+      const { depth, right, up } = measureComponents(a, b, basis);
+      const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
+      const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
+      const legRight = createMeasureLeg(a, cornerRight, 0x3b82f6);
+      const legUp = createMeasureLeg(cornerRight, cornerRightUp, 0x22c55e);
+      const legDepth = createMeasureLeg(cornerRightUp, b, 0xef4444);
       const length = a.distanceTo(b);
-      const dx = Math.abs(b.x - a.x);
-      const dy = Math.abs(b.y - a.y);
-      const dz = Math.abs(b.z - a.z);
       const label = createMeasureLabel(measureLabelLines(length));
       label.position.copy(a).add(b).multiplyScalar(0.5);
       // One small single-line label per leg, at that leg's own
-      // midpoint, showing just that axis's own distance.
-      const legXLabel = createMeasureLabel([{ text: formatMm(dx), color: "#ef4444" }]);
-      legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
-      const legYLabel = createMeasureLabel([{ text: formatMm(dy), color: "#22c55e" }]);
-      legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
-      const legZLabel = createMeasureLabel([{ text: formatMm(dz), color: "#3b82f6" }]);
-      legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
+      // midpoint, showing just that component's own distance.
+      const legRightLabel = createMeasureLabel([{ text: formatMm(Math.abs(right)), color: "#3b82f6" }]);
+      legRightLabel.position.copy(a).add(cornerRight).multiplyScalar(0.5);
+      const legUpLabel = createMeasureLabel([{ text: formatMm(Math.abs(up)), color: "#22c55e" }]);
+      legUpLabel.position.copy(cornerRight).add(cornerRightUp).multiplyScalar(0.5);
+      const legDepthLabel = createMeasureLabel([{ text: formatMm(Math.abs(depth)), color: "#ef4444" }]);
+      legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
       const entry = {
         id: `measure-${++measureUid}`,
         markerA,
         markerB,
         line,
-        legX,
-        legY,
-        legZ,
+        legDepth,
+        legRight,
+        legUp,
         label,
-        legXLabel,
-        legYLabel,
-        legZLabel,
-        dx,
-        dy,
-        dz,
+        legDepthLabel,
+        legRightLabel,
+        legUpLabel,
+        referenceNormal,
+        depth: Math.abs(depth),
+        horizontal: Math.abs(right),
+        vertical: Math.abs(up),
         length,
       };
       measurementsRuntime.push(entry);
@@ -831,8 +880,10 @@ export function useIfcViewer() {
 
     const measureManager = {
       // Returns "started" after recording point A, "completed" after B
-      // finishes a measurement.
-      addPoint: (localPoint) => {
+      // finishes a measurement. `localNormal` is only ever used for B —
+      // A's own surface normal is irrelevant, since B is always "the
+      // surface being measured to" (see createMeasurementEntry above).
+      addPoint: (localPoint, localNormal) => {
         if (measurePendingPoint === null) {
           measurePendingPoint = localPoint;
           measurePendingMarker = createMeasureMarker();
@@ -845,7 +896,8 @@ export function useIfcViewer() {
         const b = localPoint;
         const aSnap = a.clone();
         const bSnap = b.clone();
-        const entry = createMeasurementEntry(a, b, measurePendingMarker);
+        const normalSnap = (localNormal ?? MEASURE_UP).clone();
+        const entry = createMeasurementEntry(a, b, measurePendingMarker, localNormal);
         measurePendingPoint = null;
         measurePendingMarker = null;
         const idBox = { id: entry.id };
@@ -855,24 +907,24 @@ export function useIfcViewer() {
             setMeasurements(measureManager.list());
           },
           redo: () => {
-            const created = measureManager.createFromPoints(aSnap, bSnap);
+            const created = measureManager.createFromPoints(aSnap, bSnap, normalSnap);
             idBox.id = created.id;
             setMeasurements(measureManager.list());
           },
         });
         return "completed";
       },
-      // Recreates a full measurement from two known local-space points —
-      // used by undo (restoring a removed measurement) and redo
-      // (recreating one that was undone), bypassing the pending-point
-      // state machine entirely.
-      createFromPoints: (a, b) => createMeasurementEntry(a.clone(), b.clone()),
+      // Recreates a full measurement from two known local-space points
+      // (and B's reference normal) — used by undo (restoring a removed
+      // measurement) and redo (recreating one that was undone), bypassing
+      // the pending-point state machine entirely.
+      createFromPoints: (a, b, normal) => createMeasurementEntry(a.clone(), b.clone(), undefined, normal),
       // For undo: captures enough to recreate an equivalent measurement
       // after it's been removed.
       getPointsSnapshot: (id) => {
         const entry = measurementsRuntime.find((m) => m.id === id);
         if (!entry) return null;
-        return { a: entry.markerA.position.clone(), b: entry.markerB.position.clone() };
+        return { a: entry.markerA.position.clone(), b: entry.markerB.position.clone(), normal: entry.referenceNormal.clone() };
       },
       cancelPending: () => {
         if (measurePendingMarker) {
@@ -892,40 +944,40 @@ export function useIfcViewer() {
           entry.markerA,
           entry.markerB,
           entry.line,
-          entry.legX,
-          entry.legY,
-          entry.legZ,
+          entry.legDepth,
+          entry.legRight,
+          entry.legUp,
           entry.label,
-          entry.legXLabel,
-          entry.legYLabel,
-          entry.legZLabel,
+          entry.legDepthLabel,
+          entry.legRightLabel,
+          entry.legUpLabel,
         );
         entry.markerA.material.dispose();
         entry.markerB.material.dispose();
         entry.line.geometry.dispose();
         entry.line.material.dispose();
-        entry.legX.geometry.dispose();
-        entry.legX.material.dispose();
-        entry.legY.geometry.dispose();
-        entry.legY.material.dispose();
-        entry.legZ.geometry.dispose();
-        entry.legZ.material.dispose();
-        // Not entry.label.geometry (or legXLabel/legYLabel/legZLabel's):
-        // THREE.Sprite shares one module-level geometry singleton across
-        // every sprite instance in the app — disposing it here would
-        // break every other sprite too.
+        entry.legDepth.geometry.dispose();
+        entry.legDepth.material.dispose();
+        entry.legRight.geometry.dispose();
+        entry.legRight.material.dispose();
+        entry.legUp.geometry.dispose();
+        entry.legUp.material.dispose();
+        // Not entry.label.geometry (or legDepthLabel/legRightLabel/
+        // legUpLabel's): THREE.Sprite shares one module-level geometry
+        // singleton across every sprite instance in the app — disposing
+        // it here would break every other sprite too.
         entry.label.material.map.dispose();
         entry.label.material.dispose();
-        entry.legXLabel.material.map.dispose();
-        entry.legXLabel.material.dispose();
-        entry.legYLabel.material.map.dispose();
-        entry.legYLabel.material.dispose();
-        entry.legZLabel.material.map.dispose();
-        entry.legZLabel.material.dispose();
+        entry.legDepthLabel.material.map.dispose();
+        entry.legDepthLabel.material.dispose();
+        entry.legRightLabel.material.map.dispose();
+        entry.legRightLabel.material.dispose();
+        entry.legUpLabel.material.map.dispose();
+        entry.legUpLabel.material.dispose();
         requestRender();
       },
       list: () =>
-        measurementsRuntime.map((m) => ({ id: m.id, dx: m.dx, dy: m.dy, dz: m.dz, length: m.length })),
+        measurementsRuntime.map((m) => ({ id: m.id, depth: m.depth, horizontal: m.horizontal, vertical: m.vertical, length: m.length })),
     };
     measureManagerRef.current = measureManager;
 
@@ -951,17 +1003,17 @@ export function useIfcViewer() {
       if (measurePreviewEntry) {
         scaleOne(measurePreviewEntry.markerB);
         scaleLegLabel(measurePreviewEntry.label);
-        scaleLegLabel(measurePreviewEntry.legXLabel);
-        scaleLegLabel(measurePreviewEntry.legYLabel);
-        scaleLegLabel(measurePreviewEntry.legZLabel);
+        scaleLegLabel(measurePreviewEntry.legDepthLabel);
+        scaleLegLabel(measurePreviewEntry.legRightLabel);
+        scaleLegLabel(measurePreviewEntry.legUpLabel);
       }
       for (const entry of measurementsRuntime) {
         scaleOne(entry.markerA);
         scaleOne(entry.markerB);
         scaleLegLabel(entry.label);
-        scaleLegLabel(entry.legXLabel);
-        scaleLegLabel(entry.legYLabel);
-        scaleLegLabel(entry.legZLabel);
+        scaleLegLabel(entry.legDepthLabel);
+        scaleLegLabel(entry.legRightLabel);
+        scaleLegLabel(entry.legUpLabel);
       }
     };
 
@@ -1414,7 +1466,8 @@ export function useIfcViewer() {
           }
           modelsGroup.updateMatrixWorld(true);
           const b = modelsGroup.worldToLocal(hit.point.clone());
-          updateMeasurePreview(measurePendingPoint, b);
+          const localNormal = hit.normal ? localDirectionFromWorld(hit.normal) : null;
+          updateMeasurePreview(measurePendingPoint, b, localNormal);
         })
         .catch(() => {})
         .finally(() => {
@@ -1733,7 +1786,8 @@ export function useIfcViewer() {
       if (!hit) return;
       modelsGroup.updateMatrixWorld(true);
       const localPoint = modelsGroup.worldToLocal(hit.point.clone());
-      if (measureManager.addPoint(localPoint) === "completed") {
+      const localNormal = hit.normal ? localDirectionFromWorld(hit.normal) : null;
+      if (measureManager.addPoint(localPoint, localNormal) === "completed") {
         setMeasurements(measureManager.list());
       }
     };
@@ -1809,6 +1863,13 @@ export function useIfcViewer() {
       modelsGroup.updateMatrixWorld(true);
       const marker = draggingMeasurePoint.which === "A" ? entry.markerA : entry.markerB;
       marker.position.copy(modelsGroup.worldToLocal(hit.point.clone()));
+      // Only dragging B re-anchors which surface the measurement is
+      // relative to — B is "the surface being measured to" by
+      // convention (see createMeasurementEntry above), so dragging A
+      // around must keep decomposing against B's original surface.
+      if (draggingMeasurePoint.which === "B" && hit.normal) {
+        entry.referenceNormal = localDirectionFromWorld(hit.normal);
+      }
 
       const a = entry.markerA.position;
       const b = entry.markerB.position;
@@ -1818,8 +1879,10 @@ export function useIfcViewer() {
       pos.needsUpdate = true;
       entry.line.geometry.computeBoundingSphere();
 
-      const cornerX = { x: b.x, y: a.y, z: a.z };
-      const cornerXY = { x: b.x, y: b.y, z: a.z };
+      const basis = measureBasis(entry.referenceNormal);
+      const { depth, right, up } = measureComponents(a, b, basis);
+      const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
+      const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
       const setLeg = (leg, p1, p2) => {
         const legPos = leg.geometry.attributes.position;
         legPos.setXYZ(0, p1.x, p1.y, p1.z);
@@ -1827,23 +1890,23 @@ export function useIfcViewer() {
         legPos.needsUpdate = true;
         leg.geometry.computeBoundingSphere();
       };
-      setLeg(entry.legX, a, cornerX);
-      setLeg(entry.legY, cornerX, cornerXY);
-      setLeg(entry.legZ, cornerXY, b);
+      setLeg(entry.legRight, a, cornerRight);
+      setLeg(entry.legUp, cornerRight, cornerRightUp);
+      setLeg(entry.legDepth, cornerRightUp, b);
 
-      entry.dx = Math.abs(b.x - a.x);
-      entry.dy = Math.abs(b.y - a.y);
-      entry.dz = Math.abs(b.z - a.z);
+      entry.depth = Math.abs(depth);
+      entry.horizontal = Math.abs(right);
+      entry.vertical = Math.abs(up);
       entry.length = a.distanceTo(b);
       entry.label.position.copy(a).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.label, measureLabelLines(entry.length));
 
-      entry.legXLabel.position.copy(a).add(cornerX).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legXLabel, [{ text: formatMm(entry.dx), color: "#ef4444" }]);
-      entry.legYLabel.position.copy(cornerX).add(cornerXY).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legYLabel, [{ text: formatMm(entry.dy), color: "#22c55e" }]);
-      entry.legZLabel.position.copy(cornerXY).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legZLabel, [{ text: formatMm(entry.dz), color: "#3b82f6" }]);
+      entry.legRightLabel.position.copy(a).add(cornerRight).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legRightLabel, [{ text: formatMm(entry.horizontal), color: "#3b82f6" }]);
+      entry.legUpLabel.position.copy(cornerRight).add(cornerRightUp).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legUpLabel, [{ text: formatMm(entry.vertical), color: "#22c55e" }]);
+      entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(entry.depth), color: "#ef4444" }]);
 
       setMeasurements(measureManager.list());
       requestRender();
@@ -2521,7 +2584,7 @@ export function useIfcViewer() {
     const idBox = { id };
     pushUndo({
       undo: () => {
-        const created = manager.createFromPoints(snapshot.a, snapshot.b);
+        const created = manager.createFromPoints(snapshot.a, snapshot.b, snapshot.normal);
         idBox.id = created.id;
         setMeasurements(manager.list());
       },

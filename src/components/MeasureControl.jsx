@@ -10,9 +10,9 @@ export default function MeasureControl({ measurements, onRemoveMeasurement }) {
           <div className="clip-control__plane" key={m.id}>
             <div className="measure-control__length">Length: {(m.length * 1000).toFixed(1)} mm</div>
             <div className="measure-control__values">
-              <span style={{ color: "#ef4444" }}>ΔX: {(m.dx * 1000).toFixed(1)} mm</span>
-              <span style={{ color: "#22c55e" }}>ΔY: {(m.dy * 1000).toFixed(1)} mm</span>
-              <span style={{ color: "#3b82f6" }}>ΔZ: {(m.dz * 1000).toFixed(1)} mm</span>
+              <span style={{ color: "#ef4444" }} title="Perpendicular distance to the second point's surface">Depth: {(m.depth * 1000).toFixed(1)} mm</span>
+              <span style={{ color: "#3b82f6" }}>Horizontal: {(m.horizontal * 1000).toFixed(1)} mm</span>
+              <span style={{ color: "#22c55e" }}>Vertical: {(m.vertical * 1000).toFixed(1)} mm</span>
             </div>
             <div className="clip-control__buttons">
               <button

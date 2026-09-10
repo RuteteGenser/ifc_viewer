@@ -414,8 +414,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
 }
 
 .measure-control__length {
@@ -701,13 +699,38 @@
   color: var(--text);
 }
 
-.element-panel__header {
+.element-panel__tabbar {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 16px;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.element-panel__tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 14px 10px;
+  cursor: pointer;
+}
+
+.element-panel__tab:hover {
+  color: var(--text);
+}
+
+.element-panel__tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.element-panel__info-header {
+  margin-bottom: 16px;
 }
 
 .element-panel__category {
@@ -725,6 +748,7 @@
 }
 
 .element-panel__close {
+  margin-left: auto;
   background: none;
   border: none;
   color: var(--text-faint);
@@ -831,6 +855,65 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--text);
+}
+
+/* ---------- Compass ---------- */
+
+.compass {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.compass__dial {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The rotation itself is applied inline (a live-computed angle), not
+     here — this only smooths out the per-frame jumps during a drag. */
+  transition: transform 0.05s linear;
+}
+
+.compass__offset {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  box-shadow: var(--shadow-sm);
+}
+
+.compass__offset input {
+  width: 40px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 0;
+}
+
+.compass__offset input:focus {
+  outline: none;
+}
+
+.compass__offset input:disabled {
+  opacity: 0.4;
 }
 
 /* ---------- Status banners ---------- */

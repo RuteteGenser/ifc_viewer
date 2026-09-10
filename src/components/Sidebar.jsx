@@ -1,6 +1,5 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
-import MeasureControl from "./MeasureControl";
 
 function ModelRow({ model, onToggleVisible, onRemove }) {
   return (
@@ -43,8 +42,6 @@ export default function Sidebar({
   onSetClipPlaneGizmoVisible,
   onFlipClipPlane,
   onRemoveClipPlane,
-  measurements,
-  onRemoveMeasurement,
 }) {
   const fileInputRef = useRef(null);
 
@@ -121,11 +118,6 @@ export default function Sidebar({
         onSetClipPlaneGizmoVisible={onSetClipPlaneGizmoVisible}
         onFlipClipPlane={onFlipClipPlane}
         onRemoveClipPlane={onRemoveClipPlane}
-      />
-
-      <MeasureControl
-        measurements={measurements}
-        onRemoveMeasurement={onRemoveMeasurement}
       />
     </aside>
   );

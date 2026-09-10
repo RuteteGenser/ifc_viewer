@@ -1,10 +1,6 @@
 export default function MeasureControl({ measurements, onRemoveMeasurement }) {
   return (
     <div className="measure-control">
-      <div className="sidebar__section-title">
-        {measurements.length > 1 ? "Measurements" : "Measurement"}
-      </div>
-
       {measurements.length === 0 ? (
         <p className="clip-control__hint">
           Turn on Measure, then click two points in the view.

@@ -120,6 +120,12 @@ export function useIfcViewer() {
   // selection are intentionally not tracked here.
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
+  // Degrees, measured from the model's own local -Z axis (an arbitrary
+  // reference with no inherent geographic meaning) to true north. Purely
+  // a display calibration for the compass below — it's read every frame
+  // by the animate loop's compass calculation, but never touches
+  // modelsGroup itself.
+  const northOffsetRef = useRef(0);
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -139,6 +145,8 @@ export function useIfcViewer() {
   const [searchResults, setSearchResults] = useState([]); // { key, modelId, localId, name, category, modelName }[]
   const [isolatedKeys, setIsolatedKeys] = useState(() => new Set()); // `${modelId}::${localId}`
   const [confirmReplace, setConfirmReplace] = useState(null); // { name, resolve } | null
+  const [northOffsetDeg, setNorthOffsetDegState] = useState(0);
+  const [compassAngleDeg, setCompassAngleDeg] = useState(0);
 
   // A new action always invalidates the redo history — the standard
   // undo/redo convention (you can't "redo" something that's no longer
@@ -158,6 +166,13 @@ export function useIfcViewer() {
     if (!entry) return;
     await entry.redo();
     undoStackRef.current.push(entry);
+  }, []);
+
+  // Recalibrates which direction the compass calls "true north" without
+  // ever touching modelsGroup — the model itself never rotates from this.
+  const setNorthOffset = useCallback((deg) => {
+    northOffsetRef.current = deg;
+    setNorthOffsetDegState(deg);
   }, []);
 
   useEffect(() => {
@@ -2127,6 +2142,22 @@ export function useIfcViewer() {
     fillLight.position.set(-20, 10, -15);
     scene.add(ambientLight, directionalLight, fillLight);
 
+    // Compass: projects a "north" direction, fixed in the model's own
+    // local frame (recalibrated only by northOffsetRef, never by rotating
+    // anything), onto the screen plane defined by the camera's current
+    // (in this app, permanently fixed — see controls.enableRotate above)
+    // right/up basis vectors. Re-derived from scratch every frame — the
+    // dot products are cheap — rather than only on rotation, since a
+    // change to northOffsetRef alone (no 3D change at all) still needs to
+    // move the needle.
+    const compassBaseLocal = new THREE.Vector3(0, 0, -1);
+    const compassUpAxis = new THREE.Vector3(0, 1, 0);
+    const compassNorthLocal = new THREE.Vector3();
+    const compassNorthWorld = new THREE.Vector3();
+    const compassCameraRight = new THREE.Vector3();
+    const compassCameraUp = new THREE.Vector3();
+    let lastCompassAngle = null;
+
     let frameId;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
@@ -2174,6 +2205,23 @@ export function useIfcViewer() {
           }
         }
       }
+      // Camera never actually moves via user input in this app (see
+      // controls.enableRotate = false above) except through pan/dolly,
+      // which translate camera+target together and never change its
+      // orientation — but updateMatrixWorld() is cheap and keeps this
+      // correct even if that ever changes.
+      camera.updateMatrixWorld();
+      compassNorthLocal.copy(compassBaseLocal).applyAxisAngle(compassUpAxis, (northOffsetRef.current * Math.PI) / 180);
+      compassNorthWorld.copy(compassNorthLocal).applyQuaternion(modelsGroup.quaternion);
+      compassCameraRight.setFromMatrixColumn(camera.matrixWorld, 0);
+      compassCameraUp.setFromMatrixColumn(camera.matrixWorld, 1);
+      const compassAngle =
+        (Math.atan2(compassNorthWorld.dot(compassCameraRight), compassNorthWorld.dot(compassCameraUp)) * 180) / Math.PI;
+      if (lastCompassAngle === null || Math.abs(compassAngle - lastCompassAngle) > 0.05) {
+        lastCompassAngle = compassAngle;
+        setCompassAngleDeg(compassAngle);
+      }
+
       controls.update();
       pipelineRef.current?.fragments.core.update();
       if (!needsRender) return;
@@ -2964,5 +3012,8 @@ export function useIfcViewer() {
     isolatedKeys,
     toggleIsolate,
     clearIsolation,
+    northOffsetDeg,
+    setNorthOffset,
+    compassAngleDeg,
   };
 }

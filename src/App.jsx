@@ -1,14 +1,15 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useIfcViewer } from "./hooks/useIfcViewer";
 import Viewport from "./components/Viewport";
 import Sidebar from "./components/Sidebar";
 import DropOverlay from "./components/DropOverlay";
 import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
-import ElementInfoPanel from "./components/ElementInfoPanel";
+import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
 import ConfirmDialog from "./components/ConfirmDialog";
 import TopBar from "./components/TopBar";
+import Compass from "./components/Compass";
 import "./App.css";
 
 function App() {
@@ -55,11 +56,28 @@ function App() {
     isolatedKeys,
     toggleIsolate,
     clearIsolation,
+    northOffsetDeg,
+    setNorthOffset,
+    compassAngleDeg,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeRightTab, setActiveRightTab] = useState("info");
   const dragDepthRef = useRef(0);
+  const lastAutoSwitchGuidRef = useRef(null);
+
+  // Jump to the Info tab whenever a genuinely new element is selected
+  // (not on the later async ifcInfo merge, which keeps the same guid) so
+  // clicking something in the view is never silently hidden behind the
+  // Measurements tab.
+  useEffect(() => {
+    const guid = selectedElement?.guid ?? null;
+    if (guid && guid !== lastAutoSwitchGuidRef.current) {
+      setActiveRightTab("info");
+    }
+    lastAutoSwitchGuidRef.current = guid;
+  }, [selectedElement?.guid]);
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -127,8 +145,6 @@ function App() {
         onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
         onFlipClipPlane={flipClipPlane}
         onRemoveClipPlane={removeClipPlane}
-        measurements={measurements}
-        onRemoveMeasurement={removeMeasurement}
       />
 
       <div
@@ -140,6 +156,12 @@ function App() {
       >
         <Viewport containerRef={containerRef} />
         <DropOverlay visible={isDragging} />
+        <Compass
+          angleDeg={compassAngleDeg}
+          offsetDeg={northOffsetDeg}
+          onOffsetChange={setNorthOffset}
+          disabled={models.length === 0}
+        />
         <TopBar
           hasModels={models.length > 0}
           onResetView={resetView}
@@ -174,10 +196,14 @@ function App() {
         />
       )}
 
-      <ElementInfoPanel
+      <RightPanel
+        activeTab={activeRightTab}
+        onTabChange={setActiveRightTab}
+        onClose={clearSelection}
         element={selectedElement}
         loading={selectedElementLoading}
-        onClose={clearSelection}
+        measurements={measurements}
+        onRemoveMeasurement={removeMeasurement}
       />
 
       {measureDeletePopup && (

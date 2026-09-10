@@ -168,7 +168,7 @@ export function useIfcViewer() {
     const loadedModels = modelsRef.current;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1b1e24);
+    scene.background = new THREE.Color(0xf1f1ef);
     sceneRef.current = scene;
 
     const modelsGroup = new THREE.Group();
@@ -570,9 +570,12 @@ export function useIfcViewer() {
     let measurePreviewRaycastPending = false;
 
     const createMeasureMarker = () => {
+      // Dark fill (not white) so the marker stays visible against the
+      // light scene background (see scene.background above) — same
+      // reasoning applies to the measurement lines' color below.
       const marker = new THREE.Mesh(
         measureMarkerGeometry,
-        new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }),
+        new THREE.MeshBasicMaterial({ color: 0x111111, depthTest: false }),
       );
       marker.renderOrder = 999;
       modelsGroup.add(marker);
@@ -659,7 +662,7 @@ export function useIfcViewer() {
       if (!measurePreviewEntry) {
         const markerB = createMeasureMarker();
         const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
-        const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+        const material = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false });
         const line = new THREE.Line(geometry, material);
         line.renderOrder = 999;
         modelsGroup.add(line);
@@ -763,7 +766,7 @@ export function useIfcViewer() {
       const markerB = createMeasureMarker();
       markerB.position.copy(b);
       const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
-      const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+      const material = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false });
       const line = new THREE.Line(geometry, material);
       line.renderOrder = 999;
       modelsGroup.add(line);

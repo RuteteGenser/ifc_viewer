@@ -389,8 +389,20 @@ export function useIfcViewer() {
     // at each shared edge under transparency — visible as a faint
     // radiating moiré/seam pattern across the whole disc. A quad has
     // only one internal edge, so this artifact is negligible.
-    const gizmoGeometry = new THREE.PlaneGeometry(1, 1);
-    const GIZMO_UP = new THREE.Vector3(0, 0, 1); // PlaneGeometry lies in XY, facing +Z
+    //
+    // A thin box rather than a zero-thickness plane: shift+drag/shift+
+    // scroll/middle+scroll all raycast against this exact mesh (see
+    // tryStartClipPlaneDrag and moveClipPlaneUnderCursor below), and a
+    // perfectly flat quad's on-screen silhouette shrinks toward a
+    // single line — genuinely near-zero pixels wide — when viewed
+    // close to edge-on, making it effectively unclickable from some
+    // angles. Giving it a small thickness along its own normal (the
+    // box's 3rd dimension) keeps a real, non-vanishing cross-section to
+    // hit at any viewing angle, at the cost of an imperceptible amount
+    // of extra visible "edge" thickness face-on.
+    const GIZMO_THICKNESS = 0.08; // fraction of the gizmo's own unit width
+    const gizmoGeometry = new THREE.BoxGeometry(1, 1, GIZMO_THICKNESS);
+    const GIZMO_UP = new THREE.Vector3(0, 0, 1); // faces +Z before orienting to the plane's normal
 
     const refreshClippingPlanes = () => {
       const planes = clipPlanesRuntime.filter((p) => p.enabled).map((p) => p.worldPlane);
@@ -431,9 +443,12 @@ export function useIfcViewer() {
       const KEPT_SIDE_EPSILON = cameraDistance * 0.002;
       mesh.position.copy(pointOnPlaneLocal).addScaledVector(localPlane.normal, KEPT_SIDE_EPSILON);
       mesh.quaternion.setFromUnitVectors(GIZMO_UP, localPlane.normal);
-      // PlaneGeometry(1, 1) is a unit square (half-width 0.5), so scale by
+      // The box's 1x1 face is a unit square (half-width 0.5), so scale by
       // ~2x the radius to get a comparable span to what a radius-1.3x
-      // circle would have covered.
+      // circle would have covered. Uniform scaling also grows the thin
+      // GIZMO_THICKNESS dimension proportionally, which is fine — it
+      // just keeps the raycast hit-target a constant fraction of the
+      // gizmo's own (now scale-dependent) visual size.
       mesh.scale.setScalar(scale);
     };
 

@@ -2157,6 +2157,18 @@ export function useIfcViewer() {
     const compassCameraRight = new THREE.Vector3();
     const compassCameraUp = new THREE.Vector3();
     let lastCompassAngle = null;
+    // atan2 below only ever returns a value in (-180, 180], so reading it
+    // straight into the CSS transform makes the needle spin the long way
+    // around every time the true angle crosses the +180/-180 seam (e.g.
+    // 179deg -> 181deg reads back as 179deg -> -179deg, a 358deg jump in
+    // the raw number even though the physical rotation was only 2deg).
+    // Unwrapping accumulates the actual frame-to-frame delta (itself
+    // always wrapped into (-180, 180], since real rotation between two
+    // consecutive frames is never that fast) onto a continuous running
+    // total instead, so the reported angle can exceed +-180 and CSS
+    // transitions animate the short way every time.
+    let compassUnwrappedAngle = null;
+    let lastRawCompassAngle = null;
 
     let frameId;
     const animate = () => {
@@ -2215,8 +2227,17 @@ export function useIfcViewer() {
       compassNorthWorld.copy(compassNorthLocal).applyQuaternion(modelsGroup.quaternion);
       compassCameraRight.setFromMatrixColumn(camera.matrixWorld, 0);
       compassCameraUp.setFromMatrixColumn(camera.matrixWorld, 1);
-      const compassAngle =
+      const rawCompassAngle =
         (Math.atan2(compassNorthWorld.dot(compassCameraRight), compassNorthWorld.dot(compassCameraUp)) * 180) / Math.PI;
+      if (lastRawCompassAngle === null) {
+        compassUnwrappedAngle = rawCompassAngle;
+      } else {
+        const rawDelta = rawCompassAngle - lastRawCompassAngle;
+        const wrappedDelta = ((rawDelta + 180) % 360 + 360) % 360 - 180;
+        compassUnwrappedAngle += wrappedDelta;
+      }
+      lastRawCompassAngle = rawCompassAngle;
+      const compassAngle = compassUnwrappedAngle;
       if (lastCompassAngle === null || Math.abs(compassAngle - lastCompassAngle) > 0.05) {
         lastCompassAngle = compassAngle;
         setCompassAngleDeg(compassAngle);

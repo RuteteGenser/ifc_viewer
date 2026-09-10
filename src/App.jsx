@@ -9,6 +9,7 @@ import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
 import ConfirmDialog from "./components/ConfirmDialog";
 import Header from "./components/Header";
+import Toolbar from "./components/Toolbar";
 import Compass from "./components/Compass";
 import "./App.css";
 
@@ -112,14 +113,6 @@ function App() {
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
-        hasModels={models.length > 0}
-        onResetView={resetView}
-        measureModeActive={measureModeActive}
-        onToggleMeasureMode={toggleMeasureMode}
-        cameraClipEnabled={cameraClipEnabled}
-        onSetCameraClipEnabled={setCameraClipEnabled}
-        cameraClipDistance={cameraClipDistance}
-        onSetCameraClipDistance={setCameraClipDistance}
         searchQuery={searchQuery}
         onQueryChange={setSearchQuery}
         searchResults={searchResults}
@@ -167,6 +160,16 @@ function App() {
         >
           <Viewport containerRef={containerRef} />
           <DropOverlay visible={isDragging} />
+          <Toolbar
+            hasModels={models.length > 0}
+            onResetView={resetView}
+            measureModeActive={measureModeActive}
+            onToggleMeasureMode={toggleMeasureMode}
+            cameraClipEnabled={cameraClipEnabled}
+            onSetCameraClipEnabled={setCameraClipEnabled}
+            cameraClipDistance={cameraClipDistance}
+            onSetCameraClipDistance={setCameraClipDistance}
+          />
           <Compass
             angleDeg={compassAngleDeg}
             offsetDeg={northOffsetDeg}

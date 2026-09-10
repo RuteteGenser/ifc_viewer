@@ -70,11 +70,21 @@
   white-space: nowrap;
 }
 
-.header__tools {
+/* ---------- Toolbar (between the sidebar and the right panel) ---------- */
+
+.toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  z-index: 15;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  padding: 0 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 
 .top-bar__home-button {
@@ -1105,7 +1115,7 @@
 
 .status-stack {
   position: absolute;
-  top: 16px;
+  top: calc(var(--header-height) + 12px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;

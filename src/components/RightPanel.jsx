@@ -1,6 +1,21 @@
 import ElementInfoPanel from "./ElementInfoPanel";
 import MeasureControl from "./MeasureControl";
 
+function TabUnderline() {
+  return (
+    <svg className="element-panel__tab-underline" viewBox="0 0 40 6" preserveAspectRatio="none" aria-hidden="true">
+      <path
+        d="M1 2.5C8 1 16 4 20 2.3C26 0.5 33 3 39 1.8"
+        stroke="var(--accent)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        fill="none"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
 export default function RightPanel({
   activeTab,
   onTabChange,
@@ -19,6 +34,7 @@ export default function RightPanel({
           onClick={() => onTabChange("info")}
         >
           Info
+          {activeTab === "info" && <TabUnderline />}
         </button>
         <button
           type="button"
@@ -26,6 +42,7 @@ export default function RightPanel({
           onClick={() => onTabChange("measurements")}
         >
           Measurements
+          {activeTab === "measurements" && <TabUnderline />}
         </button>
         <button
           type="button"

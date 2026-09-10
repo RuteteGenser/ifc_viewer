@@ -81,10 +81,38 @@ export default function Sidebar({
       <div className="sidebar__section-title">Loaded models</div>
 
       {models.length === 0 ? (
-        <p className="sidebar__empty">
-          No models loaded yet. Add an .ifc or .ifcZIP file, or drop one
-          onto the viewport.
-        </p>
+        <div className="sidebar__empty-state">
+          <p className="sidebar__empty">
+            No models loaded yet. Add an .ifc or .ifcZIP file, or drop one
+            onto the viewport.
+          </p>
+          <div className="sidebar__start-note" aria-hidden="true">
+            <svg
+              className="sidebar__start-arrow"
+              width="30"
+              height="40"
+              viewBox="0 0 30 40"
+              fill="none"
+            >
+              <path
+                d="M6 38C4 24 6 10 16 3"
+                stroke="var(--ink-muted)"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <path
+                d="M8 4L16 3L13 11"
+                stroke="var(--ink-muted)"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </svg>
+            <span className="sidebar__start-chip">start here</span>
+          </div>
+        </div>
       ) : (
         <ul className="model-list">
           {models.map((model) => (

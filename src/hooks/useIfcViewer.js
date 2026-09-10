@@ -2664,12 +2664,22 @@ export function useIfcViewer() {
     requestRenderRef.current();
   }, [resetVisibility]);
 
+  // Accepts either a single key or an array of keys (e.g. every element in
+  // a search result category toggled together as one group): if every key
+  // in the batch is already isolated, the whole batch is removed;
+  // otherwise every key in the batch is added. That makes a single
+  // checkbox driving many keys behave like a normal tri-state group
+  // toggle (all-on <-> all-off) instead of getting out of sync per-key.
   const toggleIsolate = useCallback(
-    (key) => {
+    (keyOrKeys) => {
+      const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
       setIsolatedKeys((prev) => {
         const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
+        const allIsolated = keys.every((key) => next.has(key));
+        for (const key of keys) {
+          if (allIsolated) next.delete(key);
+          else next.add(key);
+        }
         applyIsolation(next);
         return next;
       });

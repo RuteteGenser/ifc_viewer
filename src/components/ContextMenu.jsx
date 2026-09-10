@@ -19,8 +19,8 @@ export default function ContextMenu({ x, y, onCreateClipPlane, onHideElement, on
   }, [onClose]);
 
   const style = {
-    left: Math.min(x, window.innerWidth - 220),
-    top: Math.min(y, window.innerHeight - 100),
+    left: Math.min(x, window.innerWidth - 260),
+    top: Math.min(y, window.innerHeight - 110),
   };
 
   return (

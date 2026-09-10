@@ -1,3 +1,5 @@
+import Tooltip from "./Tooltip";
+
 function ClipIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -16,16 +18,17 @@ export default function CameraClipControl({
 }) {
   return (
     <div className="camera-clip">
-      <button
-        type="button"
-        className={`top-bar__icon-button${cameraClipEnabled ? " top-bar__icon-button--active" : ""}`}
-        onClick={() => onSetCameraClipEnabled(!cameraClipEnabled)}
-        disabled={disabled}
-        title="Clip in front of camera"
-        aria-label="Toggle camera clip"
-      >
-        <ClipIcon />
-      </button>
+      <Tooltip description="Clip in front of camera">
+        <button
+          type="button"
+          className={`top-bar__icon-button${cameraClipEnabled ? " top-bar__icon-button--active" : ""}`}
+          onClick={() => onSetCameraClipEnabled(!cameraClipEnabled)}
+          disabled={disabled}
+          aria-label="Toggle camera clip"
+        >
+          <ClipIcon />
+        </button>
+      </Tooltip>
 
       {cameraClipEnabled && (
         <div className="camera-clip-popover">

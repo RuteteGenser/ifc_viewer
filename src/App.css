@@ -15,38 +15,62 @@
   --shadow-md: 0 8px 24px rgba(17, 17, 17, 0.1);
   --shadow-lg: 0 20px 48px rgba(17, 17, 17, 0.14);
   --radius: 6px;
+  --header-height: 52px;
 }
 
 .app {
   display: flex;
+  flex-direction: column;
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
 }
 
-/* ---------- Top bar ---------- */
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
 
-.top-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 52px;
-  /* Above .element-panel's z-index: 40 (App.css ~line 574) so the
-     search dropdown nested inside this stacking context doesn't get
-     painted under the always-visible info panel; still below
-     .context-menu/.measure-delete-button's z-index: 50. */
+/* ---------- Header ---------- */
+
+.header {
+  flex-shrink: 0;
+  height: var(--header-height);
+  /* Above .element-panel's z-index: 40 (App.css, element panel section)
+     so the search dropdown and popovers nested inside this stacking
+     context don't get painted under the always-visible info panel;
+     still below .context-menu/.measure-delete-button's z-index: 50. */
   z-index: 41;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   padding: 0 16px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
-.top-bar__left {
+.header__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.logo-mark {
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+.header__title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.header__tools {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -127,14 +151,138 @@
   padding: 12px;
 }
 
+/* ---------- Tooltip ---------- */
+
+.tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip__box {
+  position: absolute;
+  top: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.tooltip__box--center {
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.tooltip:hover .tooltip__box--center,
+.tooltip:focus-within .tooltip__box--center {
+  transform: translateX(-50%) translateY(0);
+}
+
+.tooltip__box--right {
+  right: 0;
+  transform: translateY(-4px);
+}
+
+.tooltip:hover .tooltip__box--right,
+.tooltip:focus-within .tooltip__box--right {
+  transform: translateY(0);
+}
+
+.tooltip:hover .tooltip__box,
+.tooltip:focus-within .tooltip__box {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltip__desc {
+  text-align: left;
+}
+
+.tooltip__hotkey {
+  margin-left: auto;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.18);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* ---------- Shortcuts help ---------- */
+
+.shortcuts-help {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.shortcuts-help__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 260px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 12px;
+}
+
+.shortcuts-help__title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.shortcuts-help__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.shortcuts-help__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shortcuts-help__row dt {
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+
+.shortcuts-help__row dd {
+  margin: 0 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  text-align: right;
+}
+
 /* ---------- Mobile menu toggle / backdrop ---------- */
 
 .menu-toggle {
   display: none;
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 35;
+  flex-shrink: 0;
   width: 40px;
   height: 40px;
   align-items: center;
@@ -506,12 +654,15 @@
   z-index: 50;
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
-  min-width: 180px;
+  min-width: 230px;
 }
 
 .context-menu li {
@@ -525,7 +676,7 @@
   border: none;
   color: var(--text);
   font-size: 13px;
-  padding: 8px 10px;
+  padding: 10px 14px;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -564,6 +715,7 @@
   position: relative;
   width: min(100%, 360px);
   min-width: 0;
+  margin-left: auto;
 }
 
 .search-bar__input {
@@ -598,13 +750,46 @@
 }
 
 .search-bar__results {
-  list-style: none;
-  margin: 0;
-  padding: 4px;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
+}
+
+.search-bar__mode-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-bar__mode-toggle-btn {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+
+.search-bar__mode-toggle-btn:hover {
+  background: var(--bg-subtle);
+}
+
+.search-bar__mode-toggle-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.search-bar__results-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
   max-height: 280px;
   overflow-y: auto;
 }
@@ -679,13 +864,13 @@
 
 .element-panel {
   position: fixed;
-  /* Starts below the top bar (52px tall) rather than under it, so the
-     two never occupy the same vertical band — previously whichever had
-     the higher z-index (the panel, originally) visually covered the
+  /* Starts below the header rather than under it, so the two never
+     occupy the same vertical band — previously whichever had the
+     higher z-index (the panel, originally) visually covered the
      other's controls in that shared top-right region (the search bar
      itself, in the panel's case) regardless of which fix was applied
      to the other's stacking order. */
-  top: 52px;
+  top: var(--header-height);
   right: 0;
   bottom: 0;
   width: 320px;
@@ -920,7 +1105,7 @@
 
 .status-stack {
   position: absolute;
-  top: 64px;
+  top: 16px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -987,14 +1172,15 @@
 
   .sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    top: var(--header-height);
+    bottom: 0;
+    left: 0;
     width: min(85vw, 320px);
     max-width: 320px;
     z-index: 30;
     box-shadow: var(--shadow-lg);
     transform: translateX(-100%);
     transition: transform 0.22s ease;
-    padding-top: 60px;
   }
 
   .sidebar--open {
@@ -1004,17 +1190,22 @@
   .sidebar-backdrop {
     display: block;
     position: fixed;
-    inset: 0;
+    top: var(--header-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: rgba(17, 17, 17, 0.35);
     z-index: 20;
     border: none;
     padding: 0;
   }
 
-  /* Leaves room for the floating hamburger (left: 12px, 40px wide),
-     which stays above the sidebar (z-index 35) so it can still close
-     an open sidebar — it isn't absorbed into the bar itself. */
-  .top-bar {
-    padding-left: 56px;
+  .header {
+    gap: 8px;
+    padding: 0 8px;
+  }
+
+  .header__title {
+    display: none;
   }
 }

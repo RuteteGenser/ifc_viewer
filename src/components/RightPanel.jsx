@@ -25,7 +25,7 @@ export default function RightPanel({
           className={`element-panel__tab${activeTab === "measurements" ? " element-panel__tab--active" : ""}`}
           onClick={() => onTabChange("measurements")}
         >
-          Measurements{measurements.length > 0 ? ` (${measurements.length})` : ""}
+          Measurements
         </button>
         <button
           type="button"

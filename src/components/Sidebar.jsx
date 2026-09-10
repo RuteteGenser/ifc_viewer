@@ -47,8 +47,6 @@ export default function Sidebar({
 
   return (
     <aside className={`sidebar ${className}`.trim()}>
-      <h1 className="sidebar__title">IFC Viewer</h1>
-
       <div className="sidebar__top-buttons">
         <button
           type="button"
@@ -80,9 +78,7 @@ export default function Sidebar({
         }}
       />
 
-      <div className="sidebar__section-title">
-        Loaded models {models.length > 0 ? `(${models.length})` : ""}
-      </div>
+      <div className="sidebar__section-title">Loaded models</div>
 
       {models.length === 0 ? (
         <p className="sidebar__empty">

@@ -8,7 +8,7 @@ import ContextMenu from "./components/ContextMenu";
 import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
 import ConfirmDialog from "./components/ConfirmDialog";
-import TopBar from "./components/TopBar";
+import Header from "./components/Header";
 import Compass from "./components/Compass";
 import "./App.css";
 
@@ -109,125 +109,121 @@ function App() {
 
   return (
     <div className="app">
-      <button
-        type="button"
-        className="menu-toggle"
-        aria-label={sidebarOpen ? "Close menu" : "Open menu"}
-        onClick={() => setSidebarOpen((open) => !open)}
-      >
-        {sidebarOpen ? "✕" : "☰"}
-      </button>
-
-      {sidebarOpen && (
-        <button
-          type="button"
-          className="sidebar-backdrop"
-          aria-label="Close menu"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      <Sidebar
-        className={sidebarOpen ? "sidebar--open" : ""}
-        models={models}
-        onFilesSelected={(files) => {
-          loadFiles(files);
-          setSidebarOpen(false);
-        }}
-        onToggleVisible={setVisible}
-        onRemove={removeModel}
-        onSaveIfcZip={saveAsIfcZip}
-        onResetVisibility={resetVisibility}
-        isLoading={isLoading}
-        loadingLabel={loadingLabel}
-        clipPlanes={clipPlanes}
-        onSetClipPlaneEnabled={setClipPlaneEnabled}
-        onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
-        onFlipClipPlane={flipClipPlane}
-        onRemoveClipPlane={removeClipPlane}
+      <Header
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        hasModels={models.length > 0}
+        onResetView={resetView}
+        measureModeActive={measureModeActive}
+        onToggleMeasureMode={toggleMeasureMode}
+        cameraClipEnabled={cameraClipEnabled}
+        onSetCameraClipEnabled={setCameraClipEnabled}
+        cameraClipDistance={cameraClipDistance}
+        onSetCameraClipDistance={setCameraClipDistance}
+        searchQuery={searchQuery}
+        onQueryChange={setSearchQuery}
+        searchResults={searchResults}
+        isolatedKeys={isolatedKeys}
+        onToggleIsolate={toggleIsolate}
+        onClearIsolation={clearIsolation}
       />
 
-      <div
-        className="viewport-wrapper"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <Viewport containerRef={containerRef} />
-        <DropOverlay visible={isDragging} />
-        <Compass
-          angleDeg={compassAngleDeg}
-          offsetDeg={northOffsetDeg}
-          onOffsetChange={setNorthOffset}
-          disabled={models.length === 0}
-        />
-        <TopBar
-          hasModels={models.length > 0}
-          onResetView={resetView}
-          measureModeActive={measureModeActive}
-          onToggleMeasureMode={toggleMeasureMode}
-          cameraClipEnabled={cameraClipEnabled}
-          onSetCameraClipEnabled={setCameraClipEnabled}
-          cameraClipDistance={cameraClipDistance}
-          onSetCameraClipDistance={setCameraClipDistance}
-          searchQuery={searchQuery}
-          onQueryChange={setSearchQuery}
-          searchResults={searchResults}
-          isolatedKeys={isolatedKeys}
-          onToggleIsolate={toggleIsolate}
-          onClearIsolation={clearIsolation}
-        />
-        <StatusBanner
+      <div className="app-body">
+        {sidebarOpen && (
+          <button
+            type="button"
+            className="sidebar-backdrop"
+            aria-label="Close menu"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        <Sidebar
+          className={sidebarOpen ? "sidebar--open" : ""}
+          models={models}
+          onFilesSelected={(files) => {
+            loadFiles(files);
+            setSidebarOpen(false);
+          }}
+          onToggleVisible={setVisible}
+          onRemove={removeModel}
+          onSaveIfcZip={saveAsIfcZip}
+          onResetVisibility={resetVisibility}
           isLoading={isLoading}
           loadingLabel={loadingLabel}
-          error={error}
-          onDismissError={clearError}
+          clipPlanes={clipPlanes}
+          onSetClipPlaneEnabled={setClipPlaneEnabled}
+          onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
+          onFlipClipPlane={flipClipPlane}
+          onRemoveClipPlane={removeClipPlane}
         />
+
+        <div
+          className="viewport-wrapper"
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <Viewport containerRef={containerRef} />
+          <DropOverlay visible={isDragging} />
+          <Compass
+            angleDeg={compassAngleDeg}
+            offsetDeg={northOffsetDeg}
+            onOffsetChange={setNorthOffset}
+            disabled={models.length === 0}
+          />
+          <StatusBanner
+            isLoading={isLoading}
+            loadingLabel={loadingLabel}
+            error={error}
+            onDismissError={clearError}
+          />
+        </div>
+
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onCreateClipPlane={createClipPlaneHere}
+            onHideElement={hideElementHere}
+            onClose={closeContextMenu}
+          />
+        )}
+
+        <RightPanel
+          activeTab={activeRightTab}
+          onTabChange={setActiveRightTab}
+          onClose={clearSelection}
+          element={selectedElement}
+          loading={selectedElementLoading}
+          measurements={measurements}
+          onRemoveMeasurement={removeMeasurement}
+        />
+
+        {measureDeletePopup && (
+          <MeasureDeleteButton
+            x={measureDeletePopup.x}
+            y={measureDeletePopup.y}
+            onDelete={() => {
+              removeMeasurement(measureDeletePopup.entryId);
+              closeMeasureDeletePopup();
+            }}
+            onClose={closeMeasureDeletePopup}
+          />
+        )}
+
+        {confirmReplace && (
+          <ConfirmDialog
+            title="Replace existing model?"
+            message={`"${confirmReplace.name}" is already loaded. Replace it with the new file?`}
+            confirmLabel="Replace"
+            cancelLabel="Cancel"
+            onConfirm={() => confirmReplaceAnswer(true)}
+            onCancel={() => confirmReplaceAnswer(false)}
+          />
+        )}
       </div>
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onCreateClipPlane={createClipPlaneHere}
-          onHideElement={hideElementHere}
-          onClose={closeContextMenu}
-        />
-      )}
-
-      <RightPanel
-        activeTab={activeRightTab}
-        onTabChange={setActiveRightTab}
-        onClose={clearSelection}
-        element={selectedElement}
-        loading={selectedElementLoading}
-        measurements={measurements}
-        onRemoveMeasurement={removeMeasurement}
-      />
-
-      {measureDeletePopup && (
-        <MeasureDeleteButton
-          x={measureDeletePopup.x}
-          y={measureDeletePopup.y}
-          onDelete={() => {
-            removeMeasurement(measureDeletePopup.entryId);
-            closeMeasureDeletePopup();
-          }}
-          onClose={closeMeasureDeletePopup}
-        />
-      )}
-
-      {confirmReplace && (
-        <ConfirmDialog
-          title="Replace existing model?"
-          message={`"${confirmReplace.name}" is already loaded. Replace it with the new file?`}
-          confirmLabel="Replace"
-          cancelLabel="Cancel"
-          onConfirm={() => confirmReplaceAnswer(true)}
-          onCancel={() => confirmReplaceAnswer(false)}
-        />
-      )}
     </div>
   );
 }

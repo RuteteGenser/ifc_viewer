@@ -699,6 +699,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.measure-control__plane--pending {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
 /* ---------- Confirm dialog ---------- */
 
 .confirm-dialog-backdrop {

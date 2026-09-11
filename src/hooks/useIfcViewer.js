@@ -140,6 +140,7 @@ export function useIfcViewer() {
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
   const [measurements, setMeasurements] = useState([]); // [{ id, depth, horizontal, vertical, length }]
+  const [pendingMeasurePreview, setPendingMeasurePreview] = useState(null); // { depth, horizontal, vertical, length } | null — live readout while point B hasn't been placed yet
   const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]); // { key, modelId, localId, name, category, modelName }[]
@@ -768,6 +769,11 @@ export function useIfcViewer() {
       entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(Math.abs(depth)), color: "#ef4444" }]);
 
+      // Mirrors the 3D labels above into the right panel's Measurements
+      // tab, so its numbers track the cursor live too instead of only
+      // appearing once point B is actually placed.
+      setPendingMeasurePreview({ length, depth: Math.abs(depth), horizontal: Math.abs(right), vertical: Math.abs(up) });
+
       requestRender();
     };
 
@@ -807,6 +813,7 @@ export function useIfcViewer() {
       entry.legUpLabel.material.map.dispose();
       entry.legUpLabel.material.dispose();
       measurePreviewEntry = null;
+      setPendingMeasurePreview(null);
       requestRender();
     };
 
@@ -2207,18 +2214,27 @@ export function useIfcViewer() {
 
     // Compass: projects a "north" direction, fixed in the model's own
     // local frame (recalibrated only by northOffsetRef, never by rotating
-    // anything), onto the screen plane defined by the camera's current
-    // (in this app, permanently fixed — see controls.enableRotate above)
-    // right/up basis vectors. Re-derived from scratch every frame — the
-    // dot products are cheap — rather than only on rotation, since a
-    // change to northOffsetRef alone (no 3D change at all) still needs to
-    // move the needle.
+    // anything), onto the WORLD's horizontal plane — a fixed pair of
+    // world-space axes, not the camera's. The model can be freely tumbled
+    // in any direction (see applyRotation's full theta/phi arcball above),
+    // so projecting north onto the camera's own screen-plane basis instead
+    // degenerates (and visibly jumps) whenever a tumble happens to swing
+    // the north vector toward/away from the camera — a direction that
+    // depends entirely on incidental camera framing. Dotting against
+    // fixed world axes instead means the only singularity is north
+    // pointing straight up/down in the real world (dot with both
+    // horizontal axes -> 0), a rare, meaningful edge case rather than an
+    // arbitrary one, and the reading never depends on the camera's
+    // orientation at all. Re-derived from scratch every frame — the dot
+    // products are cheap — rather than only on rotation, since a change
+    // to northOffsetRef alone (no 3D change at all) still needs to move
+    // the needle.
     const compassBaseLocal = new THREE.Vector3(0, 0, -1);
     const compassUpAxis = new THREE.Vector3(0, 1, 0);
     const compassNorthLocal = new THREE.Vector3();
     const compassNorthWorld = new THREE.Vector3();
-    const compassCameraRight = new THREE.Vector3();
-    const compassCameraUp = new THREE.Vector3();
+    const compassWorldRight = new THREE.Vector3(1, 0, 0);
+    const compassWorldForward = new THREE.Vector3(0, 0, -1);
     let lastCompassAngle = null;
     // atan2 below only ever returns a value in (-180, 180], so reading it
     // straight into the CSS transform makes the needle spin the long way
@@ -2288,10 +2304,8 @@ export function useIfcViewer() {
       camera.updateMatrixWorld();
       compassNorthLocal.copy(compassBaseLocal).applyAxisAngle(compassUpAxis, (northOffsetRef.current * Math.PI) / 180);
       compassNorthWorld.copy(compassNorthLocal).applyQuaternion(modelsGroup.quaternion);
-      compassCameraRight.setFromMatrixColumn(camera.matrixWorld, 0);
-      compassCameraUp.setFromMatrixColumn(camera.matrixWorld, 1);
       const rawCompassAngle =
-        (Math.atan2(compassNorthWorld.dot(compassCameraRight), compassNorthWorld.dot(compassCameraUp)) * 180) / Math.PI;
+        (Math.atan2(compassNorthWorld.dot(compassWorldRight), compassNorthWorld.dot(compassWorldForward)) * 180) / Math.PI;
       if (lastRawCompassAngle === null) {
         compassUnwrappedAngle = rawCompassAngle;
       } else {
@@ -3103,6 +3117,7 @@ export function useIfcViewer() {
     selectedElementLoading,
     clearSelection,
     measurements,
+    pendingMeasurePreview,
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,

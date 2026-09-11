@@ -23,6 +23,7 @@ export default function RightPanel({
   element,
   loading,
   measurements,
+  pendingMeasurePreview,
   onRemoveMeasurement,
 }) {
   return (
@@ -58,7 +59,11 @@ export default function RightPanel({
         {activeTab === "info" ? (
           <ElementInfoPanel element={element} loading={loading} />
         ) : (
-          <MeasureControl measurements={measurements} onRemoveMeasurement={onRemoveMeasurement} />
+          <MeasureControl
+            measurements={measurements}
+            pendingMeasurePreview={pendingMeasurePreview}
+            onRemoveMeasurement={onRemoveMeasurement}
+          />
         )}
       </div>
     </aside>

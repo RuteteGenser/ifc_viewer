@@ -28,6 +28,15 @@ export function isEligibleCategoryName(category) {
   return !!category && NAME_TO_TYPE[category.toUpperCase()] !== undefined;
 }
 
+// Narrower than isEligibleCategoryName above (which also covers
+// terminals/controllers/treatment devices/proxies for the Info panel):
+// dimension tags only make sense for a straight pipe/duct run and its
+// fittings, per the dimension-tag feature's own scope.
+export function isDimensionTagEligibleCategory(category) {
+  const c = category?.toUpperCase();
+  return c === "IFCFLOWSEGMENT" || c === "IFCFLOWFITTING";
+}
+
 // Opens an independent web-ifc model from raw bytes, using the same wasm
 // path already configured for the app's main IfcLoader (setupComponents.js).
 export async function openRawIfcModel(sourceBytes) {
@@ -236,4 +245,18 @@ export function extractElementIfcData(api, modelID, category, guid) {
   const material = extractMaterial(api, modelID, expressID);
 
   return { shape, diameter, width, height, length, systems, material };
+}
+
+// Cheap sibling of extractElementIfcData above, for callers that only
+// need shape/diameter/width/height/length (dimension tags, on hover or
+// in a "show all" batch pass) and can't afford extractSystems/
+// extractMaterial's full-file relation scans on every call.
+export function extractDimensionTagData(api, modelID, category, guid) {
+  const ifcType = NAME_TO_TYPE[category?.toUpperCase()];
+  if (ifcType === undefined) return null;
+  const expressID = findExpressIdByGuid(api, modelID, ifcType, guid);
+  if (expressID === null) return null;
+
+  const mmPerUnit = getLengthUnitsFactorToMm(api, modelID);
+  return extractShapeAndLength(api, modelID, expressID, mmPerUnit);
 }

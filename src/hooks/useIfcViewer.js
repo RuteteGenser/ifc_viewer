@@ -2,7 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { unzip, zip } from "fflate";
-import { closeRawIfcModel, extractElementIfcData, isEligibleCategoryName, openRawIfcModel } from "../ifc/rawIfcQuery";
+import {
+  closeRawIfcModel,
+  extractDimensionTagData,
+  extractElementIfcData,
+  isDimensionTagEligibleCategory,
+  isEligibleCategoryName,
+  openRawIfcModel,
+} from "../ifc/rawIfcQuery";
+import { formatDimensionTag } from "../ifc/dimensionTagFormat";
+import * as tagStore from "../ifc/tagStore";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -126,6 +135,17 @@ export function useIfcViewer() {
   // by the animate loop's compass calculation, but never touches
   // modelsGroup itself.
   const northOffsetRef = useRef(0);
+  const tagToolActiveRef = useRef(false);
+  const showAllDimensionsRef = useRef(false);
+  // guid -> {shape,diameter,width,height,length} | null — avoids
+  // re-extracting the same element's dimension data on every hover frame
+  // or every "show all" pass; cleared per-model in removeModel.
+  const dimensionExtractionCacheRef = useRef(new Map());
+  const restorePinsForModelRef = useRef(() => {});
+  const clearDimensionTagsForModelRef = useRef(() => {});
+  const applyShowAllDimensionsRef = useRef(() => {});
+  const unpinDimensionTagRef = useRef(() => {});
+  const clearAllDimensionPinsRef = useRef(() => {});
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -148,6 +168,9 @@ export function useIfcViewer() {
   const [confirmReplace, setConfirmReplace] = useState(null); // { name, resolve } | null
   const [northOffsetDeg, setNorthOffsetDegState] = useState(0);
   const [compassAngleDeg, setCompassAngleDeg] = useState(0);
+  const [tagToolActive, setTagToolActiveState] = useState(false);
+  const [showAllDimensions, setShowAllDimensionsState] = useState(false);
+  const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
 
   // A new action always invalidates the redo history — the standard
   // undo/redo convention (you can't "redo" something that's no longer
@@ -988,6 +1011,138 @@ export function useIfcViewer() {
     };
     measureManagerRef.current = measureManager;
 
+    // Dimension tags (hover / pin / "show all"): a single registry keyed
+    // by `${modelId}::${localId}` (the same composite-key convention
+    // isolatedKeys uses elsewhere), one entry — and exactly one sprite —
+    // per tagged element. Three independent boolean flags (pinned,
+    // hovered, globalAuto) drive one precedence function that decides
+    // both visibility and style, which is what makes "never draw two
+    // tags on the same element" true by construction rather than by
+    // scattered ad hoc checks across the three trigger paths below.
+    const dimensionTags = new Map(); // key -> entry
+    const DIMENSION_TAG_MIN_PIXELS = 28; // "show all" auto-hide threshold
+    // Colors distinct from the protected measurement-leg colors
+    // (#ef4444/#3b82f6/#22c55e) and the clip-gizmo blue — a warm accent
+    // for a deliberate pin, a light neutral for a transient hover, and a
+    // dimmer neutral for the passive "show all" overview.
+    const DIMENSION_TAG_STYLE_COLORS = {
+      pinned: "#e0a458",
+      hovered: "#e8eaed",
+      global: "#9aa0a6",
+    };
+
+    const dimensionTagVisualStyle = (entry) => {
+      if (entry.pinned) return "pinned";
+      if (entry.hovered) return "hovered";
+      if (entry.globalAuto) return "global";
+      return null;
+    };
+
+    const syncPinnedDimensionTagsState = () => {
+      const list = [];
+      for (const [key, entry] of dimensionTags) {
+        if (entry.pinned) {
+          list.push({ key, guid: entry.guid, category: entry.category, name: entry.name, dimData: entry.dimData });
+        }
+      }
+      setPinnedDimensionTags(list);
+    };
+
+    const refreshDimensionTagEntry = (key) => {
+      const entry = dimensionTags.get(key);
+      if (!entry) return;
+      const style = dimensionTagVisualStyle(entry);
+      const text = style ? formatDimensionTag(entry.category, entry.dimData) : null;
+      if (!style || !text) {
+        if (entry.sprite) entry.sprite.visible = false;
+        requestRender();
+        return;
+      }
+      const lines = [{ text, color: DIMENSION_TAG_STYLE_COLORS[style] }];
+      if (!entry.sprite) {
+        entry.sprite = createMeasureLabel(lines);
+        entry.sprite.position.copy(entry.localPosition);
+      } else {
+        updateMeasureLabelText(entry.sprite, lines);
+      }
+      entry.sprite.visible = true;
+      requestRender();
+    };
+
+    const destroyDimensionTagEntry = (key) => {
+      const entry = dimensionTags.get(key);
+      if (!entry) return;
+      if (entry.sprite) {
+        modelsGroup.remove(entry.sprite);
+        entry.sprite.material.map?.dispose();
+        entry.sprite.material.dispose();
+      }
+      const wasPinned = entry.pinned;
+      dimensionTags.delete(key);
+      if (wasPinned) syncPinnedDimensionTagsState();
+      requestRender();
+    };
+
+    // `meta.localPosition` (a modelsGroup-local THREE.Vector3) is only
+    // used the first time an element is seen — once created, an entry's
+    // anchor position never moves, even as pinned/hovered/globalAuto
+    // flags come and go.
+    const getOrCreateDimensionTagEntry = (key, meta) => {
+      let entry = dimensionTags.get(key);
+      if (!entry) {
+        entry = {
+          sprite: null,
+          guid: meta.guid,
+          category: meta.category,
+          name: meta.name ?? null,
+          localId: meta.localId,
+          modelId: meta.modelId,
+          localPosition: meta.localPosition,
+          dimData: meta.dimData ?? null,
+          pinned: false,
+          hovered: false,
+          globalAuto: false,
+        };
+        dimensionTags.set(key, entry);
+      } else if (meta.dimData !== undefined) {
+        entry.dimData = meta.dimData;
+      }
+      return entry;
+    };
+
+    const setHoveredFlag = (key, hovered) => {
+      const entry = dimensionTags.get(key);
+      if (!entry) return;
+      entry.hovered = hovered;
+      if (!hovered && !entry.pinned && !entry.globalAuto) destroyDimensionTagEntry(key);
+      else refreshDimensionTagEntry(key);
+    };
+
+    const setPinnedFlag = (key, pinned) => {
+      const entry = dimensionTags.get(key);
+      if (!entry) return;
+      entry.pinned = pinned;
+      if (entry.guid) {
+        if (pinned) tagStore.setTag(entry.guid, "dimension");
+        else tagStore.removeTag(entry.guid);
+      }
+      if (!pinned && !entry.hovered && !entry.globalAuto) destroyDimensionTagEntry(key);
+      else refreshDimensionTagEntry(key);
+      syncPinnedDimensionTagsState();
+    };
+
+    const setGlobalAutoFlag = (key, on) => {
+      const entry = dimensionTags.get(key);
+      if (!entry) return;
+      entry.globalAuto = on;
+      if (!on && !entry.pinned && !entry.hovered) destroyDimensionTagEntry(key);
+      else refreshDimensionTagEntry(key);
+    };
+
+    const destroyAllDimensionTags = () => {
+      for (const key of [...dimensionTags.keys()]) destroyDimensionTagEntry(key);
+    };
+
     // Constant on-screen size for measurement markers (same technique as
     // scalePivotMarker below), since — unlike the transient pivot marker —
     // these persist and need to stay a sane size at any zoom level.
@@ -1021,6 +1176,34 @@ export function useIfcViewer() {
         scaleLegLabel(entry.legDepthLabel);
         scaleLegLabel(entry.legRightLabel);
         scaleLegLabel(entry.legUpLabel);
+      }
+    };
+
+    // Constant on-screen size for dimension tags (same technique as
+    // scaleMeasureMarkers above), plus — only for entries currently shown
+    // via the passive "show all" mode, never for a pinned/hovered one —
+    // hiding tags that would render too small to read once zoomed out,
+    // estimated cheaply from the cross-section size already extracted
+    // rather than any further geometry lookup.
+    const dimensionTagScratchVec3 = new THREE.Vector3();
+    const scaleAndAutoHideDimensionTags = () => {
+      if (dimensionTags.size === 0) return;
+      const worldPerPixelAt = (object) => {
+        const distance = camera.position.distanceTo(object.getWorldPosition(dimensionTagScratchVec3));
+        return (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) / renderer.domElement.clientHeight;
+      };
+      for (const entry of dimensionTags.values()) {
+        const sprite = entry.sprite;
+        if (!sprite) continue;
+        const perPixel = worldPerPixelAt(sprite);
+        const height = perPixel * MEASURE_LEG_LABEL_PIXEL_HEIGHT;
+        sprite.scale.set(height * sprite.userData.aspect, height, 1);
+        if (dimensionTagVisualStyle(entry) === "global") {
+          const { diameter, width, height: h } = entry.dimData ?? {};
+          const crossSectionMm = diameter ?? Math.max(width ?? 0, h ?? 0);
+          const projectedPixels = (crossSectionMm / 1000) / perPixel;
+          sprite.visible = projectedPixels >= DIMENSION_TAG_MIN_PIXELS;
+        }
       }
     };
 
@@ -1123,6 +1306,9 @@ export function useIfcViewer() {
       } else if (measureModeActiveRef.current) {
         measureModeActiveRef.current = false;
         setMeasureModeActiveState(false);
+      } else if (tagToolActiveRef.current) {
+        tagToolActiveRef.current = false;
+        setTagToolActiveState(false);
       }
     };
     window.addEventListener("keydown", onMeasureKeyDown);
@@ -1483,6 +1669,27 @@ export function useIfcViewer() {
     };
     renderer.domElement.addEventListener("pointermove", onMeasureHoverMove);
 
+    // Hover-based dimension tags: only the cheap cursor position is
+    // stashed here on every pointermove — the actual (async, worker-
+    // backed) raycast is kicked off at most once per rendered frame from
+    // inside animate() below (see dimHoverRaycastBusy there), the same
+    // "cap raycast rate to frame rate, not mousemove rate" pattern the
+    // measure-marker drag uses. Suppressed during an active rotate/pivot
+    // drag and while Measure mode's own hover preview is doing the same
+    // job in the same screen space.
+    let dimHoverPendingClient = null; // { clientX, clientY } | null
+    let dimHoverRaycastBusy = false;
+    let dimHoverGeneration = 0;
+    let currentHoveredDimensionKey = null; // `${modelId}::${localId}` | null
+    const onDimensionHoverMove = (event) => {
+      if (pivotPending || rotating) return;
+      if (measureModeActiveRef.current) return;
+      if (draggingMeasurePoint) return;
+      if (!renderer.domElement.contains(event.target)) return;
+      dimHoverPendingClient = { clientX: event.clientX, clientY: event.clientY };
+    };
+    renderer.domElement.addEventListener("pointermove", onDimensionHoverMove);
+
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * (ndc.x - startNdcX);
       // + on the elevation term: ndc.y grows upward, and dragging up
@@ -1730,6 +1937,170 @@ export function useIfcViewer() {
       return handle;
     };
 
+    // Called (from animate() below) whenever the per-frame hover raycast
+    // resolves — `hit` is null when the cursor isn't over any geometry.
+    // Guarded at each await against the hovered element having already
+    // changed again in the meantime (the same staleness pattern
+    // selectElementFrom uses), so a slow extraction for an element the
+    // user has since moved off never clobbers whatever's hovered by then.
+    const handleDimensionHoverResult = async (hit) => {
+      const newKey = hit ? `${hit.fragments.modelId}::${hit.localId}` : null;
+      if (newKey === currentHoveredDimensionKey) return;
+      const previousKey = currentHoveredDimensionKey;
+      currentHoveredDimensionKey = newKey;
+      if (previousKey) setHoveredFlag(previousKey, false);
+      if (!newKey) return;
+
+      const [data] = await hit.fragments.getItemsData([hit.localId], { attributesDefault: true });
+      if (currentHoveredDimensionKey !== newKey) return;
+      const category = data?._category?.value ?? null;
+      const guid = data?._guid?.value ?? null;
+      if (!guid || !isDimensionTagEligibleCategory(category)) {
+        currentHoveredDimensionKey = null;
+        return;
+      }
+
+      let dimData = dimensionExtractionCacheRef.current.get(guid);
+      if (dimData === undefined) {
+        const handle = await getOrOpenRawIfcHandle(hit.fragments.modelId);
+        dimData = handle ? extractDimensionTagData(handle.api, handle.modelID, category, guid) : null;
+        dimensionExtractionCacheRef.current.set(guid, dimData);
+      }
+      if (currentHoveredDimensionKey !== newKey) return;
+
+      modelsGroup.updateMatrixWorld(true);
+      const localPosition = modelsGroup.worldToLocal(hit.point.clone());
+      getOrCreateDimensionTagEntry(newKey, {
+        guid,
+        category,
+        name: data?.Name?.value ?? null,
+        localId: hit.localId,
+        modelId: hit.fragments.modelId,
+        localPosition,
+        dimData,
+      });
+      setHoveredFlag(newKey, true);
+    };
+
+    // Batched, chunked category+guid lookup shared by pin-restore and
+    // "show all dimensions" below — both need "every eligible element's
+    // guid/category", just filtered differently (persisted-pin match vs.
+    // currently-visible).
+    const fetchEligibleElementInfo = async (modelId, model, localIds) => {
+      const CHUNK = 200;
+      const out = []; // { localId, guid, category, name }
+      for (let i = 0; i < localIds.length; i += CHUNK) {
+        const chunk = localIds.slice(i, i + CHUNK);
+        const items = await model.getItemsData(chunk, { attributesDefault: true });
+        for (let j = 0; j < chunk.length; j++) {
+          const data = items[j];
+          const guid = data?._guid?.value;
+          if (!guid) continue;
+          out.push({
+            localId: chunk[j],
+            guid,
+            category: data?._category?.value ?? null,
+            name: data?.Name?.value ?? null,
+          });
+        }
+      }
+      return out;
+    };
+
+    // Creates/updates registry entries (with a freshly-derived world
+    // position and cached dimension extraction) for a batch of elements
+    // at once, then applies `applyFlag` to each — shared by pin-restore
+    // (flags them pinned) and "show all" (flags them globalAuto).
+    const applyDimensionTagsToBatch = async (modelId, model, elements, applyFlag) => {
+      if (elements.length === 0) return;
+      const boxes = await model.getBoxes(elements.map((el) => el.localId));
+      const handle = await getOrOpenRawIfcHandle(modelId);
+      for (let i = 0; i < elements.length; i++) {
+        const { localId, guid, category, name } = elements[i];
+        const key = `${modelId}::${localId}`;
+        let dimData = dimensionExtractionCacheRef.current.get(guid);
+        if (dimData === undefined) {
+          dimData = handle ? extractDimensionTagData(handle.api, handle.modelID, category, guid) : null;
+          dimensionExtractionCacheRef.current.set(guid, dimData);
+        }
+        const worldPosition = boxes[i].getCenter(new THREE.Vector3());
+        const localPosition = modelsGroup.worldToLocal(worldPosition);
+        getOrCreateDimensionTagEntry(key, { guid, category, name, localId, modelId, localPosition, dimData });
+        applyFlag(key);
+      }
+    };
+
+    // Non-blocking follow-up after a model finishes loading: cross-
+    // references its eligible elements' GUIDs against persisted
+    // "dimension"-type tags and restores any matches as pinned, with
+    // freshly-extracted (never stale/snapshotted) dimension data.
+    const restorePinsForModel = async (modelId) => {
+      const entry = modelsRef.current.get(modelId);
+      if (!entry) return;
+      const byCategory = await entry.model.getItemsOfCategories([/^IFCFLOWSEGMENT$/i, /^IFCFLOWFITTING$/i]);
+      const localIds = Object.values(byCategory).flat();
+      if (localIds.length === 0) return;
+      const elements = await fetchEligibleElementInfo(modelId, entry.model, localIds);
+      const matched = elements.filter((el) => tagStore.getTag(el.guid)?.type === "dimension");
+      await applyDimensionTagsToBatch(modelId, entry.model, matched, (key) => setPinnedFlag(key, true));
+    };
+    restorePinsForModelRef.current = restorePinsForModel;
+
+    const clearDimensionTagsForModel = (modelId) => {
+      for (const [key, entry] of [...dimensionTags]) {
+        if (entry.modelId === modelId) destroyDimensionTagEntry(key);
+      }
+    };
+    clearDimensionTagsForModelRef.current = clearDimensionTagsForModel;
+
+    const enableShowAllDimensions = async () => {
+      for (const [modelId, entry] of modelsRef.current) {
+        if (!entry.object.visible) continue;
+        const byCategory = await entry.model.getItemsOfCategories([/^IFCFLOWSEGMENT$/i, /^IFCFLOWFITTING$/i]);
+        const localIds = Object.values(byCategory).flat();
+        if (localIds.length === 0) continue;
+        const visibleFlags = await entry.model.getVisible(localIds);
+        const visibleIds = localIds.filter((id, i) => visibleFlags[i]);
+        if (visibleIds.length === 0) continue;
+        const elements = await fetchEligibleElementInfo(modelId, entry.model, visibleIds);
+        // Precedence: an element already pinned or currently hovered
+        // keeps that tag — "show all" never overrides or duplicates it.
+        const toShow = elements.filter((el) => {
+          const existing = dimensionTags.get(`${modelId}::${el.localId}`);
+          return !existing?.pinned && !existing?.hovered;
+        });
+        await applyDimensionTagsToBatch(modelId, entry.model, toShow, (key) => setGlobalAutoFlag(key, true));
+      }
+    };
+    const disableShowAllDimensions = () => {
+      for (const [key, entry] of [...dimensionTags]) {
+        if (entry.globalAuto) setGlobalAutoFlag(key, false);
+      }
+    };
+    applyShowAllDimensionsRef.current = (enabled) => {
+      if (enabled) {
+        enableShowAllDimensions().catch((err) => console.error("Failed to show all dimension tags", err));
+      } else {
+        disableShowAllDimensions();
+      }
+    };
+
+    unpinDimensionTagRef.current = (guid) => {
+      for (const [key, entry] of dimensionTags) {
+        if (entry.guid === guid && entry.pinned) {
+          setPinnedFlag(key, false);
+          break;
+        }
+      }
+    };
+
+    clearAllDimensionPinsRef.current = () => {
+      tagStore.clearTagsOfType("dimension");
+      for (const [key, entry] of [...dimensionTags]) {
+        if (entry.pinned) setPinnedFlag(key, false);
+      }
+    };
+
     const selectElementFrom = async (raycastPromise) => {
       if (!raycastPromise) {
         clearHighlight();
@@ -1799,6 +2170,23 @@ export function useIfcViewer() {
       }
     };
 
+    // Only pins the element whose hover dimension tag is currently
+    // showing (per the spec: pinning is a Tag-tool click on an element
+    // that already has a hover tag, not a general "click anything"
+    // action) — clicking anything else while the tool is active is a
+    // no-op, matching how Measure mode already tolerates clicks that
+    // don't hit usable geometry.
+    const handleTagToolClick = async (raycastPromise) => {
+      if (!raycastPromise) return;
+      const hit = await raycastPromise;
+      if (!hit) return;
+      const key = `${hit.fragments.modelId}::${hit.localId}`;
+      if (key !== currentHoveredDimensionKey) return;
+      const entry = dimensionTags.get(key);
+      if (!entry || !formatDimensionTag(entry.category, entry.dimData)) return;
+      setPinnedFlag(key, true);
+    };
+
     let activePointerId = null;
     let gestureSeq = 0;
     // True from mousedown until the pivot raycast below resolves (or the
@@ -1826,6 +2214,8 @@ export function useIfcViewer() {
         if (moved < CLICK_MOVE_THRESHOLD) {
           if (measureModeActiveRef.current) {
             handleMeasureClick(pivotRaycastPromise);
+          } else if (tagToolActiveRef.current) {
+            handleTagToolClick(pivotRaycastPromise);
           } else {
             selectElementFrom(pivotRaycastPromise);
           }
@@ -2279,6 +2669,24 @@ export function useIfcViewer() {
             console.error("Measure drag raycast failed", err);
           });
       }
+      // Same one-raycast-per-rendered-frame cap as the drag block above,
+      // for the hover dimension tag.
+      if (dimHoverPendingClient && !dimHoverRaycastBusy) {
+        const { clientX, clientY } = dimHoverPendingClient;
+        dimHoverPendingClient = null;
+        dimHoverRaycastBusy = true;
+        const myGeneration = ++dimHoverGeneration;
+        raycastVisible(clientX, clientY)
+          .then((hit) => {
+            dimHoverRaycastBusy = false;
+            if (myGeneration !== dimHoverGeneration) return;
+            return handleDimensionHoverResult(hit);
+          })
+          .catch((err) => {
+            dimHoverRaycastBusy = false;
+            console.error("Dimension hover raycast failed", err);
+          });
+      }
       // The delete popup is an HTML overlay anchored to a 3D point, so
       // (unlike the 3D sprites) its screen position needs recomputing
       // every frame the camera could have moved, not just when the
@@ -2326,6 +2734,7 @@ export function useIfcViewer() {
       needsRender = false;
       scalePivotMarker();
       scaleMeasureMarkers();
+      scaleAndAutoHideDimensionTags();
       if (clipPlanesRuntime.length > 0) {
         // Each plane is authored in modelsGroup's local frame so it
         // rotates together with the model instead of staying fixed in
@@ -2421,6 +2830,8 @@ export function useIfcViewer() {
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
       renderer.domElement.removeEventListener("pointermove", onZoomHoverMove);
       renderer.domElement.removeEventListener("pointermove", onMeasureHoverMove);
+      renderer.domElement.removeEventListener("pointermove", onDimensionHoverMove);
+      destroyAllDimensionTags();
       clearMeasurePreview();
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
@@ -2588,6 +2999,27 @@ export function useIfcViewer() {
     if (!next) measureManagerRef.current?.cancelPending();
   }, []);
 
+  const toggleTagTool = useCallback(() => {
+    const next = !tagToolActiveRef.current;
+    tagToolActiveRef.current = next;
+    setTagToolActiveState(next);
+  }, []);
+
+  const toggleShowAllDimensions = useCallback(() => {
+    const next = !showAllDimensionsRef.current;
+    showAllDimensionsRef.current = next;
+    setShowAllDimensionsState(next);
+    applyShowAllDimensionsRef.current?.(next);
+  }, []);
+
+  const unpinDimensionTag = useCallback((guid) => {
+    unpinDimensionTagRef.current?.(guid);
+  }, []);
+
+  const clearAllDimensionPins = useCallback(() => {
+    clearAllDimensionPinsRef.current?.();
+  }, []);
+
   const removeMeasurement = useCallback((id) => {
     const manager = measureManagerRef.current;
     if (!manager) return;
@@ -2714,13 +3146,16 @@ export function useIfcViewer() {
         case "m":
           toggleMeasureMode();
           break;
+        case "t":
+          toggleTagTool();
+          break;
         default:
           return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, undo, redo]);
+  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, undo, redo]);
 
   const resetVisibility = useCallback(async () => {
     // Also exits isolate mode — otherwise the search checkboxes would
@@ -2868,6 +3303,7 @@ export function useIfcViewer() {
 
     if (entry && modelsGroup) modelsGroup.remove(entry.object);
     modelsRef.current.delete(modelId);
+    clearDimensionTagsForModelRef.current?.(modelId);
     const rawHandle = rawIfcHandlesRef.current.get(modelId);
     if (rawHandle) {
       closeRawIfcModel(rawHandle);
@@ -2967,6 +3403,12 @@ export function useIfcViewer() {
           ...prev,
           { id: modelId, name: displayName, visible: true },
         ]);
+
+        // Non-blocking: restores any previously-pinned dimension tags
+        // whose element's GUID is found in this newly-loaded model.
+        restorePinsForModelRef.current?.(modelId).catch((err) => {
+          console.error("Failed to restore pinned dimension tags", err);
+        });
       } catch (err) {
         console.error(`Failed to load ${displayName}`, err);
         appendError(`Could not parse "${displayName}" — it doesn't look like a valid IFC file.`);
@@ -3132,5 +3574,12 @@ export function useIfcViewer() {
     northOffsetDeg,
     setNorthOffset,
     compassAngleDeg,
+    tagToolActive,
+    toggleTagTool,
+    showAllDimensions,
+    toggleShowAllDimensions,
+    pinnedDimensionTags,
+    unpinDimensionTag,
+    clearAllDimensionPins,
   };
 }

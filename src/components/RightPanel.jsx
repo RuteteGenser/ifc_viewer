@@ -1,5 +1,6 @@
 import ElementInfoPanel from "./ElementInfoPanel";
 import MeasureControl from "./MeasureControl";
+import DimensionTagsPanel from "./DimensionTagsPanel";
 
 function TabUnderline() {
   return (
@@ -25,6 +26,9 @@ export default function RightPanel({
   measurements,
   pendingMeasurePreview,
   onRemoveMeasurement,
+  pinnedDimensionTags,
+  onUnpinDimensionTag,
+  onClearAllDimensionPins,
 }) {
   return (
     <aside className="element-panel">
@@ -47,6 +51,14 @@ export default function RightPanel({
         </button>
         <button
           type="button"
+          className={`element-panel__tab${activeTab === "dimensions" ? " element-panel__tab--active" : ""}`}
+          onClick={() => onTabChange("dimensions")}
+        >
+          Dimensions
+          {activeTab === "dimensions" && <TabUnderline />}
+        </button>
+        <button
+          type="button"
           className="element-panel__close"
           aria-label="Close"
           onClick={onClose}
@@ -58,11 +70,17 @@ export default function RightPanel({
       <div className="element-panel__body">
         {activeTab === "info" ? (
           <ElementInfoPanel element={element} loading={loading} />
-        ) : (
+        ) : activeTab === "measurements" ? (
           <MeasureControl
             measurements={measurements}
             pendingMeasurePreview={pendingMeasurePreview}
             onRemoveMeasurement={onRemoveMeasurement}
+          />
+        ) : (
+          <DimensionTagsPanel
+            pinnedTags={pinnedDimensionTags}
+            onUnpin={onUnpinDimensionTag}
+            onClearAllPins={onClearAllDimensionPins}
           />
         )}
       </div>

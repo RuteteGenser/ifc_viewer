@@ -983,13 +983,16 @@
 
 .element-panel {
   position: fixed;
-  /* Starts below the header rather than under it, so the two never
-     occupy the same vertical band — previously whichever had the
-     higher z-index (the panel, originally) visually covered the
-     other's controls in that shared top-right region (the search bar
-     itself, in the panel's case) regardless of which fix was applied
-     to the other's stacking order. */
-  top: var(--header-height);
+  /* Starts below both the header AND the toolbar row beneath it (same
+     height each, hence the *2) rather than under either, so none of the
+     three ever occupy the same vertical band — the toolbar's own
+     z-index (see .toolbar) is higher than the panel's specifically so
+     its popovers/dropdowns paint over the always-visible panel, which
+     would otherwise also hide the panel's own tab bar/close button
+     wherever the toolbar's content (the search bar, pushed to the
+     toolbar's right edge via margin-left: auto) happens to visually
+     extend into the panel's x-range. */
+  top: calc(var(--header-height) * 2);
   right: 0;
   bottom: 0;
   width: 320px;

@@ -61,6 +61,13 @@ function App() {
     northOffsetDeg,
     setNorthOffset,
     compassAngleDeg,
+    tagToolActive,
+    toggleTagTool,
+    showAllDimensions,
+    toggleShowAllDimensions,
+    pinnedDimensionTags,
+    unpinDimensionTag,
+    clearAllDimensionPins,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -164,6 +171,10 @@ function App() {
             onSetCameraClipEnabled={setCameraClipEnabled}
             cameraClipDistance={cameraClipDistance}
             onSetCameraClipDistance={setCameraClipDistance}
+            tagToolActive={tagToolActive}
+            onToggleTagTool={toggleTagTool}
+            showAllDimensions={showAllDimensions}
+            onToggleShowAllDimensions={toggleShowAllDimensions}
             searchQuery={searchQuery}
             onQueryChange={setSearchQuery}
             searchResults={searchResults}
@@ -204,6 +215,9 @@ function App() {
           measurements={measurements}
           pendingMeasurePreview={pendingMeasurePreview}
           onRemoveMeasurement={removeMeasurement}
+          pinnedDimensionTags={pinnedDimensionTags}
+          onUnpinDimensionTag={unpinDimensionTag}
+          onClearAllDimensionPins={clearAllDimensionPins}
         />
 
         {measureDeletePopup && (

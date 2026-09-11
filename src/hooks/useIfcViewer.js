@@ -2777,14 +2777,22 @@ export function useIfcViewer() {
   }, [resetVisibility]);
 
   const runSearch = useCallback(async (query) => {
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const valueRegex = new RegExp(escaped, "i");
+    // One query entry per whitespace-separated term, each independently
+    // substring-matched against Name (case-insensitive) — the default
+    // "exclusive" aggregation in getItemsByQuery requires an item to match
+    // every entry, so this finds names containing all the typed words in
+    // any order, rather than the whole query as one exact-order phrase.
+    const terms = query.trim().split(/\s+/).filter(Boolean);
+    const termQueries = terms.map((term) => {
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return { name: /^Name$/, value: new RegExp(escaped, "i") };
+    });
     const rows = [];
     for (const [modelId, { model }] of modelsRef.current) {
       if (rows.length >= 50) break;
       let ids;
       try {
-        ids = await model.getItemsByQuery({ attributes: { queries: [{ name: /^Name$/, value: valueRegex }] } });
+        ids = await model.getItemsByQuery({ attributes: { queries: termQueries } });
       } catch (err) {
         console.error("Search query failed", err);
         continue;

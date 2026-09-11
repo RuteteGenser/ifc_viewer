@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 function GroupCheckbox({ checked, indeterminate, onChange }) {
   return (
@@ -8,9 +8,6 @@ function GroupCheckbox({ checked, indeterminate, onChange }) {
       ref={(el) => {
         if (el) el.indeterminate = indeterminate;
       }}
-      // Mousedown fires before the input's own blur, so the dropdown
-      // doesn't close before the click lands.
-      onMouseDown={(e) => e.preventDefault()}
       onChange={onChange}
     />
   );
@@ -27,6 +24,7 @@ export default function SearchBar({
   const [open, setOpen] = useState(false);
   const [groupMode, setGroupMode] = useState("category");
   const isolatedCount = isolatedKeys.size;
+  const containerRef = useRef(null);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -39,7 +37,7 @@ export default function SearchBar({
   }, [results]);
 
   return (
-    <div className="search-bar">
+    <div className="search-bar" ref={containerRef}>
       <input
         type="text"
         className="search-bar__input"
@@ -50,7 +48,20 @@ export default function SearchBar({
         onKeyDown={(e) => {
           if (e.key === "Escape") e.currentTarget.blur();
         }}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          // Clicking a checkbox/button in the dropdown blurs this input
+          // immediately on mousedown — often with relatedTarget still null,
+          // since a mousedown on a non-focusable target (e.g. the row's
+          // name text, next to the checkbox) has no definite next focus
+          // target yet. Closing synchronously here would unmount the
+          // control before the click's default action (including the
+          // label's delegated focus+toggle of its checkbox) has happened.
+          // Deferring one tick lets that settle, so the check below sees
+          // where focus actually ended up.
+          window.setTimeout(() => {
+            if (!containerRef.current?.contains(document.activeElement)) setOpen(false);
+          }, 0);
+        }}
       />
 
       {(open && query.trim().length >= 2) || isolatedCount > 0 ? (
@@ -61,7 +72,6 @@ export default function SearchBar({
                 <button
                   type="button"
                   className={groupMode === "category" ? "search-bar__mode-toggle-btn search-bar__mode-toggle-btn--active" : "search-bar__mode-toggle-btn"}
-                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setGroupMode("category")}
                 >
                   By category
@@ -69,7 +79,6 @@ export default function SearchBar({
                 <button
                   type="button"
                   className={groupMode === "items" ? "search-bar__mode-toggle-btn search-bar__mode-toggle-btn--active" : "search-bar__mode-toggle-btn"}
-                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setGroupMode("items")}
                 >
                   Individual items
@@ -103,7 +112,6 @@ export default function SearchBar({
                         <input
                           type="checkbox"
                           checked={isolatedKeys.has(r.key)}
-                          onMouseDown={(e) => e.preventDefault()}
                           onChange={() => onToggleIsolate(r.key)}
                         />
                         <span className="search-bar__result-name">{r.name}</span>
@@ -119,15 +127,7 @@ export default function SearchBar({
           {isolatedCount > 0 && (
             <div className="search-bar__isolate-banner">
               Isolating {isolatedCount} element{isolatedCount === 1 ? "" : "s"}
-              <button
-                type="button"
-                // Without this, mousedown here blurs the search input first,
-                // which closes the results dropdown above and shifts this
-                // button up before mouseup/click fire at the original
-                // (now-stale) coordinates — losing the click entirely.
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onClearIsolation}
-              >
+              <button type="button" onClick={onClearIsolation}>
                 Show all
               </button>
             </div>

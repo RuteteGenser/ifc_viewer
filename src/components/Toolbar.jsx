@@ -1,5 +1,7 @@
 import CameraClipControl from "./CameraClipControl";
 import Tooltip from "./Tooltip";
+import SearchBar from "./SearchBar";
+import ShortcutsHelp from "./ShortcutsHelp";
 
 function MeasureIcon() {
   return (
@@ -19,6 +21,12 @@ export default function Toolbar({
   onSetCameraClipEnabled,
   cameraClipDistance,
   onSetCameraClipDistance,
+  searchQuery,
+  onQueryChange,
+  searchResults,
+  isolatedKeys,
+  onToggleIsolate,
+  onClearIsolation,
 }) {
   return (
     <div className="toolbar">
@@ -50,6 +58,15 @@ export default function Toolbar({
         onSetCameraClipDistance={onSetCameraClipDistance}
         disabled={!hasModels}
       />
+      <SearchBar
+        query={searchQuery}
+        onQueryChange={onQueryChange}
+        results={searchResults}
+        isolatedKeys={isolatedKeys}
+        onToggleIsolate={onToggleIsolate}
+        onClearIsolation={onClearIsolation}
+      />
+      <ShortcutsHelp />
     </div>
   );
 }

@@ -114,12 +114,6 @@ function App() {
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
-        searchQuery={searchQuery}
-        onQueryChange={setSearchQuery}
-        searchResults={searchResults}
-        isolatedKeys={isolatedKeys}
-        onToggleIsolate={toggleIsolate}
-        onClearIsolation={clearIsolation}
       />
 
       <div className="app-body">
@@ -170,6 +164,12 @@ function App() {
             onSetCameraClipEnabled={setCameraClipEnabled}
             cameraClipDistance={cameraClipDistance}
             onSetCameraClipDistance={setCameraClipDistance}
+            searchQuery={searchQuery}
+            onQueryChange={setSearchQuery}
+            searchResults={searchResults}
+            isolatedKeys={isolatedKeys}
+            onToggleIsolate={toggleIsolate}
+            onClearIsolation={clearIsolation}
           />
           <Compass
             angleDeg={compassAngleDeg}

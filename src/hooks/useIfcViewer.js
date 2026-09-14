@@ -146,6 +146,7 @@ export function useIfcViewer() {
   const applyShowAllDimensionsRef = useRef(() => {});
   const unpinDimensionTagRef = useRef(() => {});
   const clearAllDimensionPinsRef = useRef(() => {});
+  const clearHoveredDimensionTagRef = useRef(() => {});
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1030,6 +1031,10 @@ export function useIfcViewer() {
       hovered: "#e8eaed",
       global: "#9aa0a6",
     };
+    // Muted secondary color for the optional family-name line, kept the
+    // same regardless of style so it always reads as supplementary to
+    // the (style-colored) dimension line below it.
+    const DIMENSION_TAG_FAMILY_COLOR = "#9aa0a6";
 
     const dimensionTagVisualStyle = (entry) => {
       if (entry.pinned) return "pinned";
@@ -1058,7 +1063,11 @@ export function useIfcViewer() {
         requestRender();
         return;
       }
-      const lines = [{ text, color: DIMENSION_TAG_STYLE_COLORS[style] }];
+      const lines = [];
+      if (entry.dimData?.familyName) {
+        lines.push({ text: entry.dimData.familyName, color: DIMENSION_TAG_FAMILY_COLOR });
+      }
+      lines.push({ text, color: DIMENSION_TAG_STYLE_COLORS[style] });
       if (!entry.sprite) {
         entry.sprite = createMeasureLabel(lines);
         entry.sprite.position.copy(entry.localPosition);
@@ -1318,6 +1327,7 @@ export function useIfcViewer() {
       } else if (tagToolActiveRef.current) {
         tagToolActiveRef.current = false;
         setTagToolActiveState(false);
+        clearHoveredDimensionTagRef.current?.();
       }
     };
     window.addEventListener("keydown", onMeasureKeyDown);
@@ -1691,6 +1701,7 @@ export function useIfcViewer() {
     let dimHoverGeneration = 0;
     let currentHoveredDimensionKey = null; // `${modelId}::${localId}` | null
     const onDimensionHoverMove = (event) => {
+      if (!tagToolActiveRef.current) return;
       if (pivotPending || rotating) return;
       if (measureModeActiveRef.current) return;
       if (draggingMeasurePoint) return;
@@ -1989,6 +2000,18 @@ export function useIfcViewer() {
         dimData,
       });
       setHoveredFlag(newKey, true);
+    };
+
+    // Turning the Tag tool off stops new hover raycasts from being
+    // scheduled (see onDimensionHoverMove's guard above), which means a
+    // tag left showing from a hover in progress at that exact moment
+    // would otherwise never get a further pointermove to notice the
+    // tool went off and clear it — force that here instead.
+    clearHoveredDimensionTagRef.current = () => {
+      if (!currentHoveredDimensionKey) return;
+      const key = currentHoveredDimensionKey;
+      currentHoveredDimensionKey = null;
+      setHoveredFlag(key, false);
     };
 
     // Batched, chunked category+guid lookup shared by pin-restore and
@@ -3020,6 +3043,7 @@ export function useIfcViewer() {
     const next = !tagToolActiveRef.current;
     tagToolActiveRef.current = next;
     setTagToolActiveState(next);
+    if (!next) clearHoveredDimensionTagRef.current?.();
   }, []);
 
   const toggleShowAllDimensions = useCallback(() => {

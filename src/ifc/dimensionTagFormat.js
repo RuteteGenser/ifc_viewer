@@ -6,7 +6,17 @@
 // in mm than as "0.08m".
 export function formatDimensionTag(category, dimData) {
   if (!dimData) return null;
-  const { shape, diameter, width, height, length } = dimData;
+  const { shape, diameter, width, height, length, wallThickness } = dimData;
+
+  // A hollow circular profile is a real pipe — show outside/inside
+  // diameter (ID = OD − 2×wall thickness, the wall exists on both sides
+  // of the bore) instead of a bare diameter, and skip the length suffix
+  // below entirely; a solid circular profile (a round duct) has no wall
+  // thickness at all and keeps the plain "Ø{d}mm · {len}m" format.
+  if (shape === "circular" && typeof diameter === "number" && typeof wallThickness === "number") {
+    const id = diameter - 2 * wallThickness;
+    return `OD${Math.round(diameter)}/ID${id.toFixed(1)}mm`;
+  }
 
   let head;
   if (shape === "circular" && typeof diameter === "number") {

@@ -110,7 +110,7 @@ export function findExpressIdByGuid(api, modelID, ifcType, guid) {
 // element has usable geometry (per spec, some IfcBuildingElementProxy
 // instances carry none at all).
 function extractShapeAndLength(api, modelID, expressID, mmPerUnit) {
-  const empty = { shape: null, diameter: null, width: null, height: null, length: null };
+  const empty = { shape: null, diameter: null, width: null, height: null, length: null, wallThickness: null };
   const element = api.GetLine(modelID, expressID);
   if (!element.Representation) return empty;
 
@@ -152,7 +152,22 @@ function findExtrusionInRepresentations(api, modelID, repHandles, mmPerUnit, dep
 
       if (profile.type === WEBIFC.IFCCIRCLEHOLLOWPROFILEDEF || profile.type === WEBIFC.IFCCIRCLEPROFILEDEF) {
         if (typeof profile.Radius?.value !== "number") continue;
-        return { shape: "circular", diameter: profile.Radius.value * 2 * mmPerUnit, width: null, height: null, length };
+        // Only a hollow profile carries a wall thickness (a real pipe's
+        // bore) — a solid circle (a round duct) has none, which is what
+        // lets the tag formatter tell pipes and ducts apart without any
+        // separate category/name-based classification.
+        const wallThickness =
+          profile.type === WEBIFC.IFCCIRCLEHOLLOWPROFILEDEF && typeof profile.WallThickness?.value === "number"
+            ? profile.WallThickness.value * mmPerUnit
+            : null;
+        return {
+          shape: "circular",
+          diameter: profile.Radius.value * 2 * mmPerUnit,
+          width: null,
+          height: null,
+          length,
+          wallThickness,
+        };
       }
       if (profile.type === WEBIFC.IFCRECTANGLEHOLLOWPROFILEDEF || profile.type === WEBIFC.IFCRECTANGLEPROFILEDEF) {
         if (typeof profile.XDim?.value !== "number" || typeof profile.YDim?.value !== "number") continue;
@@ -162,12 +177,34 @@ function findExtrusionInRepresentations(api, modelID, repHandles, mmPerUnit, dep
           width: profile.XDim.value * mmPerUnit,
           height: profile.YDim.value * mmPerUnit,
           length,
+          wallThickness: null,
         };
       }
       // A recognized extrusion but an unhandled profile type — length is
       // still meaningful even without a shape/diameter breakdown.
-      return { shape: null, diameter: null, width: null, height: null, length };
+      return { shape: null, diameter: null, width: null, height: null, length, wallThickness: null };
     }
+  }
+  return null;
+}
+
+// Cheap raw-web-ifc lookup of an element's "family" — its assigned
+// type's Name (e.g. a Revit "Family:Type" pair as authored). The Info
+// panel already resolves this via fragments' getItemsData with
+// IsTypedBy/IsDefinedBy relations attached (see formatElementData in
+// useIfcViewer.js), but that path is too heavy to call once per hover
+// frame — this mirrors extractSystems' pattern below (scan every line
+// of one relation type, filter by RelatedObjects) over
+// IfcRelDefinesByType instead, which exists in both IFC2x3 and IFC4.
+function extractFamilyName(api, modelID, expressID) {
+  const relIds = vectorToArray(api.GetLineIDsWithType(modelID, WEBIFC.IFCRELDEFINESBYTYPE));
+  for (const relId of relIds) {
+    const rel = api.GetLine(modelID, relId);
+    const related = Array.isArray(rel.RelatedObjects) ? rel.RelatedObjects : [];
+    if (!related.some((h) => h.value === expressID)) continue;
+    if (!rel.RelatingType) return null;
+    const type = api.GetLine(modelID, rel.RelatingType.value);
+    return type.Name?.value ?? null;
   }
   return null;
 }
@@ -248,9 +285,12 @@ export function extractElementIfcData(api, modelID, category, guid) {
 }
 
 // Cheap sibling of extractElementIfcData above, for callers that only
-// need shape/diameter/width/height/length (dimension tags, on hover or
-// in a "show all" batch pass) and can't afford extractSystems/
-// extractMaterial's full-file relation scans on every call.
+// need shape/diameter/width/height/length/wallThickness/familyName
+// (dimension tags, on hover or in a "show all" batch pass) and can't
+// afford extractSystems/extractMaterial's full-file relation scans on
+// every call. extractFamilyName is a single relation-type scan too (like
+// extractSystems), but far cheaper than the two above since most files
+// have only one IfcRelDefinesByType per type, not per element.
 export function extractDimensionTagData(api, modelID, category, guid) {
   const ifcType = NAME_TO_TYPE[category?.toUpperCase()];
   if (ifcType === undefined) return null;
@@ -258,5 +298,7 @@ export function extractDimensionTagData(api, modelID, category, guid) {
   if (expressID === null) return null;
 
   const mmPerUnit = getLengthUnitsFactorToMm(api, modelID);
-  return extractShapeAndLength(api, modelID, expressID, mmPerUnit);
+  const shapeData = extractShapeAndLength(api, modelID, expressID, mmPerUnit);
+  const familyName = extractFamilyName(api, modelID, expressID);
+  return { ...shapeData, familyName };
 }

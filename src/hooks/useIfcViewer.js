@@ -6,12 +6,10 @@ import {
   closeRawIfcModel,
   extractDimensionTagData,
   extractElementIfcData,
-  isDimensionTagEligibleCategory,
   isEligibleCategoryName,
   openRawIfcModel,
 } from "../ifc/rawIfcQuery";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
-import * as tagStore from "../ifc/tagStore";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -136,14 +134,11 @@ export function useIfcViewer() {
   // modelsGroup itself.
   const northOffsetRef = useRef(0);
   const tagToolActiveRef = useRef(false);
-  const showAllDimensionsRef = useRef(false);
   // guid -> {shape,diameter,width,height,length} | null — avoids
-  // re-extracting the same element's dimension data on every hover frame
-  // or every "show all" pass; cleared per-model in removeModel.
+  // re-extracting the same element's dimension data on every hover frame;
+  // cleared per-model in removeModel.
   const dimensionExtractionCacheRef = useRef(new Map());
-  const restorePinsForModelRef = useRef(() => {});
   const clearDimensionTagsForModelRef = useRef(() => {});
-  const applyShowAllDimensionsRef = useRef(() => {});
   const unpinDimensionTagRef = useRef(() => {});
   const clearAllDimensionPinsRef = useRef(() => {});
   const clearHoveredDimensionTagRef = useRef(() => {});
@@ -170,7 +165,6 @@ export function useIfcViewer() {
   const [northOffsetDeg, setNorthOffsetDegState] = useState(0);
   const [compassAngleDeg, setCompassAngleDeg] = useState(0);
   const [tagToolActive, setTagToolActiveState] = useState(false);
-  const [showAllDimensions, setShowAllDimensionsState] = useState(false);
   const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
 
   // A new action always invalidates the redo history — the standard
@@ -234,6 +228,22 @@ export function useIfcViewer() {
     // the cursor or in front of the camera. nearestModelHit below uses
     // these instead wherever that distinction matters.
     let modelSpheresLocal = null; // Map<modelId, { center: Vector3 local, radius }>
+    // `modelSpheresLocal` above is computed from raw geometry
+    // (Box3.setFromObject), which has no notion of per-element visibility
+    // at all — a fragments model manages "hidden" elements (isolation,
+    // right-click-hide) as a worker-side instance flag, not by touching
+    // Object3D.visible or removing geometry, so the raw box always
+    // includes hidden elements too. This second cache holds the same
+    // shape but built from only the currently-visible elements' actual
+    // boxes (via getVisible + getBoxes), so zoom distance/framing isn't
+    // thrown off by geometry the user can no longer see. It's async to
+    // compute (worker round-trips), so it's refreshed in the background
+    // whenever invalidateGroupSphere fires and getModelSpheres falls back
+    // to the raw (possibly stale-inclusive-of-hidden) sphere until it's
+    // ready — matching zoomHitCache's own "best effort, refined shortly
+    // after" pattern below.
+    let visibleModelSpheresLocal = null; // Map<modelId, { center: Vector3 local, radius }> | null
+    let visibleSpheresGeneration = 0;
     // Real per-pixel raycasting is async (worker-backed) and too slow to
     // run synchronously on every wheel tick, so the exact hit point under
     // the cursor is cached from the last resolved raycast and reused,
@@ -256,12 +266,53 @@ export function useIfcViewer() {
     // an outsized zoom step.
     let lastZoomTickPos = null; // { clientX, clientY } | null
     let lastZoomDistance = null; // number | null
+    // Background refresh for visibleModelSpheresLocal (see its
+    // declaration above) — chunked the same way this codebase's other
+    // bulk fragments queries are, and guarded by a generation counter so
+    // a later invalidation (another visibility toggle before this one
+    // finishes) discards this run's result instead of racing it.
+    const recomputeVisibleModelSpheres = async () => {
+      const myGeneration = ++visibleSpheresGeneration;
+      const CHUNK = 500;
+      const result = new Map();
+      for (const [modelId, entry] of modelsRef.current) {
+        if (!entry.object.visible) continue;
+        const allIds = await entry.model.getLocalIds();
+        if (myGeneration !== visibleSpheresGeneration) return;
+        const visibleIds = [];
+        for (let i = 0; i < allIds.length; i += CHUNK) {
+          const chunk = allIds.slice(i, i + CHUNK);
+          const flags = await entry.model.getVisible(chunk);
+          for (let j = 0; j < chunk.length; j++) if (flags[j]) visibleIds.push(chunk[j]);
+        }
+        if (myGeneration !== visibleSpheresGeneration) return;
+        if (visibleIds.length === 0) continue;
+        const box = new THREE.Box3();
+        for (let i = 0; i < visibleIds.length; i += CHUNK) {
+          const boxes = await entry.model.getBoxes(visibleIds.slice(i, i + CHUNK));
+          for (const b of boxes) box.union(b);
+        }
+        if (myGeneration !== visibleSpheresGeneration) return;
+        if (box.isEmpty()) continue;
+        const worldSphere = box.getBoundingSphere(new THREE.Sphere());
+        result.set(modelId, {
+          center: modelsGroup.worldToLocal(worldSphere.center.clone()),
+          radius: worldSphere.radius,
+        });
+      }
+      if (myGeneration !== visibleSpheresGeneration) return;
+      visibleModelSpheresLocal = result;
+    };
     const invalidateGroupSphere = () => {
       groupSphereLocal = null;
       modelSpheresLocal = null;
+      visibleModelSpheresLocal = null;
       zoomHitCache = null;
       lastZoomTickPos = null;
       lastZoomDistance = null;
+      recomputeVisibleModelSpheres().catch((err) => {
+        console.error("Failed to compute visible-only bounding spheres", err);
+      });
     };
     const getGroupSphere = () => {
       if (!groupSphereLocal) {
@@ -307,9 +358,15 @@ export function useIfcViewer() {
       for (const [modelId, local] of modelSpheresLocal) {
         const entry = modelsRef.current.get(modelId);
         if (!entry || !entry.object.visible) continue;
+        // Prefer the visible-elements-only sphere once the background
+        // computation has resolved (see visibleModelSpheresLocal above) —
+        // the raw one still includes isolated/right-click-hidden elements
+        // within an otherwise-visible model, which would otherwise throw
+        // off zoom distance/framing toward geometry the user can't see.
+        const visibleLocal = visibleModelSpheresLocal?.get(modelId) ?? local;
         spheres.push({
-          center: modelsGroup.localToWorld(local.center.clone()),
-          radius: Math.max(local.radius, 0.001),
+          center: modelsGroup.localToWorld(visibleLocal.center.clone()),
+          radius: Math.max(visibleLocal.radius, 0.001),
         });
       }
       return spheres;
@@ -1012,24 +1069,21 @@ export function useIfcViewer() {
     };
     measureManagerRef.current = measureManager;
 
-    // Dimension tags (hover / pin / "show all"): a single registry keyed
-    // by `${modelId}::${localId}` (the same composite-key convention
+    // Dimension tags (hover / pin): a single registry keyed by
+    // `${modelId}::${localId}` (the same composite-key convention
     // isolatedKeys uses elsewhere), one entry — and exactly one sprite —
-    // per tagged element. Three independent boolean flags (pinned,
-    // hovered, globalAuto) drive one precedence function that decides
-    // both visibility and style, which is what makes "never draw two
-    // tags on the same element" true by construction rather than by
-    // scattered ad hoc checks across the three trigger paths below.
+    // per tagged element. Two independent boolean flags (pinned, hovered)
+    // drive one precedence function that decides both visibility and
+    // style, which is what makes "never draw two tags on the same
+    // element" true by construction rather than by scattered ad hoc
+    // checks across the trigger paths below.
     const dimensionTags = new Map(); // key -> entry
-    const DIMENSION_TAG_MIN_PIXELS = 28; // "show all" auto-hide threshold
     // Colors distinct from the protected measurement-leg colors
     // (#ef4444/#3b82f6/#22c55e) and the clip-gizmo blue — a warm accent
-    // for a deliberate pin, a light neutral for a transient hover, and a
-    // dimmer neutral for the passive "show all" overview.
+    // for a deliberate pin, a light neutral for a transient hover.
     const DIMENSION_TAG_STYLE_COLORS = {
       pinned: "#e0a458",
       hovered: "#e8eaed",
-      global: "#9aa0a6",
     };
     // Muted secondary color for the optional family-name line, kept the
     // same regardless of style so it always reads as supplementary to
@@ -1039,7 +1093,6 @@ export function useIfcViewer() {
     const dimensionTagVisualStyle = (entry) => {
       if (entry.pinned) return "pinned";
       if (entry.hovered) return "hovered";
-      if (entry.globalAuto) return "global";
       return null;
     };
 
@@ -1057,32 +1110,30 @@ export function useIfcViewer() {
       const entry = dimensionTags.get(key);
       if (!entry) return;
       const style = dimensionTagVisualStyle(entry);
-      const text = style ? formatDimensionTag(entry.category, entry.dimData) : null;
-      if (!style || !text) {
+      const dimText = style ? formatDimensionTag(entry.category, entry.dimData) : null;
+      const familyName = style ? entry.dimData?.familyName : null;
+      // The tag tool works on any element now, not just pipes/ducts — an
+      // element with no extrudable profile (a wall, a proxy, ...) simply
+      // has no dimension line, but still gets a tag from its family name
+      // alone. Only suppress the tag entirely when neither resolves.
+      if (!style || (!dimText && !familyName)) {
         if (entry.sprite) entry.sprite.visible = false;
         requestRender();
         return;
       }
       const lines = [];
-      if (entry.dimData?.familyName) {
-        lines.push({ text: entry.dimData.familyName, color: DIMENSION_TAG_FAMILY_COLOR });
+      if (familyName) {
+        lines.push({ text: familyName, color: DIMENSION_TAG_FAMILY_COLOR });
       }
-      lines.push({ text, color: DIMENSION_TAG_STYLE_COLORS[style] });
+      if (dimText) {
+        lines.push({ text: dimText, color: DIMENSION_TAG_STYLE_COLORS[style] });
+      }
       if (!entry.sprite) {
         entry.sprite = createMeasureLabel(lines);
         entry.sprite.position.copy(entry.localPosition);
       } else {
         updateMeasureLabelText(entry.sprite, lines);
       }
-      // Pinned/hovered tags stay always-on-top (never accidentally hidden
-      // by something rotated in front of a deliberate pin/hover), but a
-      // passive "show all" tag should respect real occlusion rather than
-      // X-raying through the model — depth-test it like ordinary scene
-      // geometry. Re-applied on every refresh so a globalAuto tag that
-      // gets hovered goes always-on-top for the hover's duration, then
-      // back to depth-tested once the hover ends.
-      entry.sprite.material.depthTest = style === "global";
-      entry.sprite.material.depthWrite = false;
       entry.sprite.visible = true;
       requestRender();
     };
@@ -1103,8 +1154,8 @@ export function useIfcViewer() {
 
     // `meta.localPosition` (a modelsGroup-local THREE.Vector3) is only
     // used the first time an element is seen — once created, an entry's
-    // anchor position never moves, even as pinned/hovered/globalAuto
-    // flags come and go.
+    // anchor position never moves, even as pinned/hovered flags come and
+    // go.
     const getOrCreateDimensionTagEntry = (key, meta) => {
       let entry = dimensionTags.get(key);
       if (!entry) {
@@ -1119,7 +1170,6 @@ export function useIfcViewer() {
           dimData: meta.dimData ?? null,
           pinned: false,
           hovered: false,
-          globalAuto: false,
         };
         dimensionTags.set(key, entry);
       } else if (meta.dimData !== undefined) {
@@ -1132,7 +1182,7 @@ export function useIfcViewer() {
       const entry = dimensionTags.get(key);
       if (!entry) return;
       entry.hovered = hovered;
-      if (!hovered && !entry.pinned && !entry.globalAuto) destroyDimensionTagEntry(key);
+      if (!hovered && !entry.pinned) destroyDimensionTagEntry(key);
       else refreshDimensionTagEntry(key);
     };
 
@@ -1140,21 +1190,9 @@ export function useIfcViewer() {
       const entry = dimensionTags.get(key);
       if (!entry) return;
       entry.pinned = pinned;
-      if (entry.guid) {
-        if (pinned) tagStore.setTag(entry.guid, "dimension");
-        else tagStore.removeTag(entry.guid);
-      }
-      if (!pinned && !entry.hovered && !entry.globalAuto) destroyDimensionTagEntry(key);
+      if (!pinned && !entry.hovered) destroyDimensionTagEntry(key);
       else refreshDimensionTagEntry(key);
       syncPinnedDimensionTagsState();
-    };
-
-    const setGlobalAutoFlag = (key, on) => {
-      const entry = dimensionTags.get(key);
-      if (!entry) return;
-      entry.globalAuto = on;
-      if (!on && !entry.pinned && !entry.hovered) destroyDimensionTagEntry(key);
-      else refreshDimensionTagEntry(key);
     };
 
     const destroyAllDimensionTags = () => {
@@ -1198,13 +1236,9 @@ export function useIfcViewer() {
     };
 
     // Constant on-screen size for dimension tags (same technique as
-    // scaleMeasureMarkers above), plus — only for entries currently shown
-    // via the passive "show all" mode, never for a pinned/hovered one —
-    // hiding tags that would render too small to read once zoomed out,
-    // estimated cheaply from the cross-section size already extracted
-    // rather than any further geometry lookup.
+    // scaleMeasureMarkers above).
     const dimensionTagScratchVec3 = new THREE.Vector3();
-    const scaleAndAutoHideDimensionTags = () => {
+    const scaleDimensionTags = () => {
       if (dimensionTags.size === 0) return;
       const worldPerPixelAt = (object) => {
         const distance = camera.position.distanceTo(object.getWorldPosition(dimensionTagScratchVec3));
@@ -1216,12 +1250,6 @@ export function useIfcViewer() {
         const perPixel = worldPerPixelAt(sprite);
         const height = perPixel * MEASURE_LEG_LABEL_PIXEL_HEIGHT;
         sprite.scale.set(height * sprite.userData.aspect, height, 1);
-        if (dimensionTagVisualStyle(entry) === "global") {
-          const { diameter, width, height: h } = entry.dimData ?? {};
-          const crossSectionMm = diameter ?? Math.max(width ?? 0, h ?? 0);
-          const projectedPixels = (crossSectionMm / 1000) / perPixel;
-          sprite.visible = projectedPixels >= DIMENSION_TAG_MIN_PIXELS;
-        }
       }
     };
 
@@ -1276,13 +1304,27 @@ export function useIfcViewer() {
         mouse: new THREE.Vector2(clientX, clientY),
         dom: renderer.domElement,
       };
+      // Both branches below loop over models themselves rather than
+      // delegating to pipeline.fragments.raycast(data) (which aggregates
+      // *every* loaded model with no visibility check at all) — a whole
+      // model toggled off via the "Loaded Models" checkbox is still
+      // `entry.model`-raycastable at the fragments level (that flag only
+      // lives on the THREE object, not anything the worker knows about),
+      // so without this filter a hidden model sitting in front of a
+      // visible one would win the closest-hit race and make the visible
+      // one unpickable underneath/behind it.
+      const visibleModels = [...modelsRef.current.values()].filter((entry) => entry.object.visible);
       const activePlanes = renderer.clippingPlanes;
       if (activePlanes.length === 0) {
-        const pipeline = pipelineRef.current;
-        return pipeline ? pipeline.fragments.raycast(data) : null;
+        let closest = null;
+        for (const entry of visibleModels) {
+          const hit = await entry.model.raycast(data);
+          if (hit && (!closest || hit.distance < closest.distance)) closest = hit;
+        }
+        return closest;
       }
       const allHits = [];
-      for (const entry of modelsRef.current.values()) {
+      for (const entry of visibleModels) {
         const hits = await entry.model.raycastAll(data);
         if (hits) allHits.push(...hits);
       }
@@ -1975,7 +2017,7 @@ export function useIfcViewer() {
       if (currentHoveredDimensionKey !== newKey) return;
       const category = data?._category?.value ?? null;
       const guid = data?._guid?.value ?? null;
-      if (!guid || !isDimensionTagEligibleCategory(category)) {
+      if (!guid) {
         currentHoveredDimensionKey = null;
         return;
       }
@@ -2014,116 +2056,12 @@ export function useIfcViewer() {
       setHoveredFlag(key, false);
     };
 
-    // Batched, chunked category+guid lookup shared by pin-restore and
-    // "show all dimensions" below — both need "every eligible element's
-    // guid/category", just filtered differently (persisted-pin match vs.
-    // currently-visible).
-    const fetchEligibleElementInfo = async (modelId, model, localIds) => {
-      const CHUNK = 200;
-      const out = []; // { localId, guid, category, name }
-      for (let i = 0; i < localIds.length; i += CHUNK) {
-        const chunk = localIds.slice(i, i + CHUNK);
-        const items = await model.getItemsData(chunk, { attributesDefault: true });
-        for (let j = 0; j < chunk.length; j++) {
-          const data = items[j];
-          const guid = data?._guid?.value;
-          if (!guid) continue;
-          out.push({
-            localId: chunk[j],
-            guid,
-            category: data?._category?.value ?? null,
-            name: data?.Name?.value ?? null,
-          });
-        }
-      }
-      return out;
-    };
-
-    // Creates/updates registry entries (with a freshly-derived world
-    // position and cached dimension extraction) for a batch of elements
-    // at once, then applies `applyFlag` to each — shared by pin-restore
-    // (flags them pinned) and "show all" (flags them globalAuto).
-    const applyDimensionTagsToBatch = async (modelId, model, elements, applyFlag) => {
-      if (elements.length === 0) return;
-      const boxes = await model.getBoxes(elements.map((el) => el.localId));
-      const handle = await getOrOpenRawIfcHandle(modelId);
-      for (let i = 0; i < elements.length; i++) {
-        const { localId, guid, category, name } = elements[i];
-        const key = `${modelId}::${localId}`;
-        let dimData = dimensionExtractionCacheRef.current.get(guid);
-        if (dimData === undefined) {
-          dimData = handle ? extractDimensionTagData(handle.api, handle.modelID, category, guid) : null;
-          dimensionExtractionCacheRef.current.set(guid, dimData);
-        }
-        // Anchor at the top-center of the box rather than its volumetric
-        // center: for a typical swept pipe/duct profile that's a real
-        // point on the mesh's own surface (the scene is Y-up), which is
-        // what makes the "show all" style's depth-testing (see
-        // refreshDimensionTagEntry) behave sensibly — a center point
-        // would sit inside the solid and fail the depth test from every
-        // angle.
-        const worldPosition = boxes[i].getCenter(new THREE.Vector3());
-        worldPosition.y = boxes[i].max.y;
-        const localPosition = modelsGroup.worldToLocal(worldPosition);
-        getOrCreateDimensionTagEntry(key, { guid, category, name, localId, modelId, localPosition, dimData });
-        applyFlag(key);
-      }
-    };
-
-    // Non-blocking follow-up after a model finishes loading: cross-
-    // references its eligible elements' GUIDs against persisted
-    // "dimension"-type tags and restores any matches as pinned, with
-    // freshly-extracted (never stale/snapshotted) dimension data.
-    const restorePinsForModel = async (modelId) => {
-      const entry = modelsRef.current.get(modelId);
-      if (!entry) return;
-      const byCategory = await entry.model.getItemsOfCategories([/^IFCFLOWSEGMENT$/i, /^IFCFLOWFITTING$/i]);
-      const localIds = Object.values(byCategory).flat();
-      if (localIds.length === 0) return;
-      const elements = await fetchEligibleElementInfo(modelId, entry.model, localIds);
-      const matched = elements.filter((el) => tagStore.getTag(el.guid)?.type === "dimension");
-      await applyDimensionTagsToBatch(modelId, entry.model, matched, (key) => setPinnedFlag(key, true));
-    };
-    restorePinsForModelRef.current = restorePinsForModel;
-
     const clearDimensionTagsForModel = (modelId) => {
       for (const [key, entry] of [...dimensionTags]) {
         if (entry.modelId === modelId) destroyDimensionTagEntry(key);
       }
     };
     clearDimensionTagsForModelRef.current = clearDimensionTagsForModel;
-
-    const enableShowAllDimensions = async () => {
-      for (const [modelId, entry] of modelsRef.current) {
-        if (!entry.object.visible) continue;
-        const byCategory = await entry.model.getItemsOfCategories([/^IFCFLOWSEGMENT$/i, /^IFCFLOWFITTING$/i]);
-        const localIds = Object.values(byCategory).flat();
-        if (localIds.length === 0) continue;
-        const visibleFlags = await entry.model.getVisible(localIds);
-        const visibleIds = localIds.filter((id, i) => visibleFlags[i]);
-        if (visibleIds.length === 0) continue;
-        const elements = await fetchEligibleElementInfo(modelId, entry.model, visibleIds);
-        // Precedence: an element already pinned or currently hovered
-        // keeps that tag — "show all" never overrides or duplicates it.
-        const toShow = elements.filter((el) => {
-          const existing = dimensionTags.get(`${modelId}::${el.localId}`);
-          return !existing?.pinned && !existing?.hovered;
-        });
-        await applyDimensionTagsToBatch(modelId, entry.model, toShow, (key) => setGlobalAutoFlag(key, true));
-      }
-    };
-    const disableShowAllDimensions = () => {
-      for (const [key, entry] of [...dimensionTags]) {
-        if (entry.globalAuto) setGlobalAutoFlag(key, false);
-      }
-    };
-    applyShowAllDimensionsRef.current = (enabled) => {
-      if (enabled) {
-        enableShowAllDimensions().catch((err) => console.error("Failed to show all dimension tags", err));
-      } else {
-        disableShowAllDimensions();
-      }
-    };
 
     unpinDimensionTagRef.current = (guid) => {
       for (const [key, entry] of dimensionTags) {
@@ -2135,7 +2073,6 @@ export function useIfcViewer() {
     };
 
     clearAllDimensionPinsRef.current = () => {
-      tagStore.clearTagsOfType("dimension");
       for (const [key, entry] of [...dimensionTags]) {
         if (entry.pinned) setPinnedFlag(key, false);
       }
@@ -2774,7 +2711,7 @@ export function useIfcViewer() {
       needsRender = false;
       scalePivotMarker();
       scaleMeasureMarkers();
-      scaleAndAutoHideDimensionTags();
+      scaleDimensionTags();
       if (clipPlanesRuntime.length > 0) {
         // Each plane is authored in modelsGroup's local frame so it
         // rotates together with the model instead of staying fixed in
@@ -3044,13 +2981,6 @@ export function useIfcViewer() {
     tagToolActiveRef.current = next;
     setTagToolActiveState(next);
     if (!next) clearHoveredDimensionTagRef.current?.();
-  }, []);
-
-  const toggleShowAllDimensions = useCallback(() => {
-    const next = !showAllDimensionsRef.current;
-    showAllDimensionsRef.current = next;
-    setShowAllDimensionsState(next);
-    applyShowAllDimensionsRef.current?.(next);
   }, []);
 
   const unpinDimensionTag = useCallback((guid) => {
@@ -3444,12 +3374,6 @@ export function useIfcViewer() {
           ...prev,
           { id: modelId, name: displayName, visible: true },
         ]);
-
-        // Non-blocking: restores any previously-pinned dimension tags
-        // whose element's GUID is found in this newly-loaded model.
-        restorePinsForModelRef.current?.(modelId).catch((err) => {
-          console.error("Failed to restore pinned dimension tags", err);
-        });
       } catch (err) {
         console.error(`Failed to load ${displayName}`, err);
         appendError(`Could not parse "${displayName}" — it doesn't look like a valid IFC file.`);
@@ -3617,8 +3541,6 @@ export function useIfcViewer() {
     compassAngleDeg,
     tagToolActive,
     toggleTagTool,
-    showAllDimensions,
-    toggleShowAllDimensions,
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,

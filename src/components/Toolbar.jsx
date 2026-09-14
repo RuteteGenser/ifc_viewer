@@ -21,18 +21,6 @@ function TagIcon() {
   );
 }
 
-function ShowAllDimensionsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="1.5" />
-      <path d="M6.5 9h3.5M8.25 7.25v3.5" />
-      <path d="M13.5 8.5h4" />
-      <path d="M6.5 15h2.5" />
-      <path d="M13 14.25h4.5M15.25 12.5v3.5" />
-    </svg>
-  );
-}
-
 export default function Toolbar({
   hasModels,
   onResetView,
@@ -44,8 +32,6 @@ export default function Toolbar({
   onSetCameraClipDistance,
   tagToolActive,
   onToggleTagTool,
-  showAllDimensions,
-  onToggleShowAllDimensions,
   searchQuery,
   onQueryChange,
   searchResults,
@@ -83,7 +69,7 @@ export default function Toolbar({
         onSetCameraClipDistance={onSetCameraClipDistance}
         disabled={!hasModels}
       />
-      <Tooltip description="Tag tool — click a hovered dimension tag to pin it" hotkey="T">
+      <Tooltip description="Tag tool — hover an element, click to pin its tag" hotkey="T">
         <button
           type="button"
           className={`top-bar__icon-button${tagToolActive ? " top-bar__icon-button--active" : ""}`}
@@ -92,17 +78,6 @@ export default function Toolbar({
           aria-label="Toggle tag tool"
         >
           <TagIcon />
-        </button>
-      </Tooltip>
-      <Tooltip description="Show dimension tags on every visible segment">
-        <button
-          type="button"
-          className={`top-bar__icon-button${showAllDimensions ? " top-bar__icon-button--active" : ""}`}
-          onClick={onToggleShowAllDimensions}
-          disabled={!hasModels}
-          aria-label="Toggle show all dimensions"
-        >
-          <ShowAllDimensionsIcon />
         </button>
       </Tooltip>
       <SearchBar

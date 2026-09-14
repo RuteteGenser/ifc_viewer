@@ -63,8 +63,6 @@ function App() {
     compassAngleDeg,
     tagToolActive,
     toggleTagTool,
-    showAllDimensions,
-    toggleShowAllDimensions,
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,
@@ -173,8 +171,6 @@ function App() {
             onSetCameraClipDistance={setCameraClipDistance}
             tagToolActive={tagToolActive}
             onToggleTagTool={toggleTagTool}
-            showAllDimensions={showAllDimensions}
-            onToggleShowAllDimensions={toggleShowAllDimensions}
             searchQuery={searchQuery}
             onQueryChange={setSearchQuery}
             searchResults={searchResults}

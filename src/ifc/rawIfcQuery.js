@@ -28,15 +28,6 @@ export function isEligibleCategoryName(category) {
   return !!category && NAME_TO_TYPE[category.toUpperCase()] !== undefined;
 }
 
-// Narrower than isEligibleCategoryName above (which also covers
-// terminals/controllers/treatment devices/proxies for the Info panel):
-// dimension tags only make sense for a straight pipe/duct run and its
-// fittings, per the dimension-tag feature's own scope.
-export function isDimensionTagEligibleCategory(category) {
-  const c = category?.toUpperCase();
-  return c === "IFCFLOWSEGMENT" || c === "IFCFLOWFITTING";
-}
-
 // Opens an independent web-ifc model from raw bytes, using the same wasm
 // path already configured for the app's main IfcLoader (setupComponents.js).
 export async function openRawIfcModel(sourceBytes) {
@@ -95,6 +86,23 @@ export function getLengthUnitsFactorToMm(api, modelID) {
 // original IFC expressID, which is not a documented/guaranteed mapping.
 export function findExpressIdByGuid(api, modelID, ifcType, guid) {
   const ids = vectorToArray(api.GetLineIDsWithType(modelID, ifcType));
+  for (const id of ids) {
+    const line = api.GetLine(modelID, id);
+    if (line.GlobalId?.value === guid) return id;
+  }
+  return null;
+}
+
+// Same idea as findExpressIdByGuid, but not restricted to one IFC type —
+// scans every IfcRoot-derived entity (the common supertype carrying
+// GlobalId, so effectively every identifiable element regardless of its
+// specific class) via web-ifc's `includeInherited` flag. Used by the
+// dimension-tag tool, which — unlike the Info panel's NAME_TO_TYPE-gated
+// lookup — needs to resolve *any* element the user hovers (a wall, a
+// door, anything), not just the handful of MEP categories that also
+// happen to carry dimension geometry.
+export function findExpressIdByGuidAnyType(api, modelID, guid) {
+  const ids = vectorToArray(api.GetLineIDsWithType(modelID, WEBIFC.IFCROOT, true));
   for (const id of ids) {
     const line = api.GetLine(modelID, id);
     if (line.GlobalId?.value === guid) return id;
@@ -286,15 +294,20 @@ export function extractElementIfcData(api, modelID, category, guid) {
 
 // Cheap sibling of extractElementIfcData above, for callers that only
 // need shape/diameter/width/height/length/wallThickness/familyName
-// (dimension tags, on hover or in a "show all" batch pass) and can't
-// afford extractSystems/extractMaterial's full-file relation scans on
-// every call. extractFamilyName is a single relation-type scan too (like
+// (the dimension-tag tool, on hover or click-to-pin) and can't afford
+// extractSystems/extractMaterial's full-file relation scans on every
+// call. extractFamilyName is a single relation-type scan too (like
 // extractSystems), but far cheaper than the two above since most files
 // have only one IfcRelDefinesByType per type, not per element.
+//
+// Unlike extractElementIfcData, this isn't restricted to the six
+// NAME_TO_TYPE categories — the tag tool works on any element (the
+// family-name line is useful everywhere; the shape/dimension line
+// simply comes back null for anything without extrudable profile
+// geometry, which formatDimensionTag already treats as "no dimension
+// line" rather than "no tag at all").
 export function extractDimensionTagData(api, modelID, category, guid) {
-  const ifcType = NAME_TO_TYPE[category?.toUpperCase()];
-  if (ifcType === undefined) return null;
-  const expressID = findExpressIdByGuid(api, modelID, ifcType, guid);
+  const expressID = findExpressIdByGuidAnyType(api, modelID, guid);
   if (expressID === null) return null;
 
   const mmPerUnit = getLengthUnitsFactorToMm(api, modelID);

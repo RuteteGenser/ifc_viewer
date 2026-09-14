@@ -1065,6 +1065,15 @@ export function useIfcViewer() {
       } else {
         updateMeasureLabelText(entry.sprite, lines);
       }
+      // Pinned/hovered tags stay always-on-top (never accidentally hidden
+      // by something rotated in front of a deliberate pin/hover), but a
+      // passive "show all" tag should respect real occlusion rather than
+      // X-raying through the model — depth-test it like ordinary scene
+      // geometry. Re-applied on every refresh so a globalAuto tag that
+      // gets hovered goes always-on-top for the hover's duration, then
+      // back to depth-tested once the hover ends.
+      entry.sprite.material.depthTest = style === "global";
+      entry.sprite.material.depthWrite = false;
       entry.sprite.visible = true;
       requestRender();
     };
@@ -2023,7 +2032,15 @@ export function useIfcViewer() {
           dimData = handle ? extractDimensionTagData(handle.api, handle.modelID, category, guid) : null;
           dimensionExtractionCacheRef.current.set(guid, dimData);
         }
+        // Anchor at the top-center of the box rather than its volumetric
+        // center: for a typical swept pipe/duct profile that's a real
+        // point on the mesh's own surface (the scene is Y-up), which is
+        // what makes the "show all" style's depth-testing (see
+        // refreshDimensionTagEntry) behave sensibly — a center point
+        // would sit inside the solid and fail the depth test from every
+        // angle.
         const worldPosition = boxes[i].getCenter(new THREE.Vector3());
+        worldPosition.y = boxes[i].max.y;
         const localPosition = modelsGroup.worldToLocal(worldPosition);
         getOrCreateDimensionTagEntry(key, { guid, category, name, localId, modelId, localPosition, dimData });
         applyFlag(key);

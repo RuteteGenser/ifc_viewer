@@ -24,9 +24,11 @@ function TagIcon() {
 function ShowAllDimensionsIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="7" width="7" height="4" rx="0.5" />
-      <rect x="13" y="13" width="7" height="4" rx="0.5" />
-      <path d="M4 15.5h5M15.5 7v3.5" />
+      <rect x="3" y="4" width="18" height="16" rx="1.5" />
+      <path d="M6.5 9h3.5M8.25 7.25v3.5" />
+      <path d="M13.5 8.5h4" />
+      <path d="M6.5 15h2.5" />
+      <path d="M13 14.25h4.5M15.25 12.5v3.5" />
     </svg>
   );
 }

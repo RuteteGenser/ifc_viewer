@@ -740,11 +740,19 @@ export function useIfcViewer() {
     // recreating it. The per-axis ΔX/ΔY/ΔZ breakdown lives on the three
     // dogleg leg labels instead (see createMeasureLeg usage in addPoint),
     // so this main label stays length-only.
+    // Shared with scaleDimensionTags below, which needs to know exactly
+    // how many canvas pixels one line (plus the fixed vertical padding)
+    // takes up in order to scale a multi-line dimension tag at the same
+    // per-line size as a single-line one — keep these two in sync with
+    // drawMeasureLabelCanvas's own layout rather than duplicating the
+    // literals.
+    const MEASURE_LABEL_LINE_HEIGHT = 44;
+    const MEASURE_LABEL_PADDING_Y = 16;
     const drawMeasureLabelCanvas = (canvas, ctx, lines) => {
       const font = "600 36px sans-serif";
-      const lineHeight = 44;
+      const lineHeight = MEASURE_LABEL_LINE_HEIGHT;
       const paddingX = 28;
-      const paddingY = 16;
+      const paddingY = MEASURE_LABEL_PADDING_Y;
       ctx.font = font;
       const width = Math.max(...lines.map((l) => ctx.measureText(l.text).width));
       canvas.width = Math.ceil(width + paddingX * 2);
@@ -1110,23 +1118,23 @@ export function useIfcViewer() {
       const entry = dimensionTags.get(key);
       if (!entry) return;
       const style = dimensionTagVisualStyle(entry);
-      const dimText = style ? formatDimensionTag(entry.category, entry.dimData) : null;
+      const dimLines = style ? formatDimensionTag(entry.category, entry.dimData) : null;
       const familyName = style ? entry.dimData?.familyName : null;
       // The tag tool works on any element now, not just pipes/ducts — an
       // element with no extrudable profile (a wall, a proxy, ...) simply
       // has no dimension line, but still gets a tag from its family name
       // alone. Only suppress the tag entirely when neither resolves.
-      if (!style || (!dimText && !familyName)) {
+      if (!style || (!dimLines && !familyName)) {
         if (entry.sprite) entry.sprite.visible = false;
         requestRender();
         return;
       }
       const lines = [];
       if (familyName) {
-        lines.push({ text: familyName, color: DIMENSION_TAG_FAMILY_COLOR });
+        lines.push({ text: `Name: ${familyName}`, color: DIMENSION_TAG_FAMILY_COLOR });
       }
-      if (dimText) {
-        lines.push({ text: dimText, color: DIMENSION_TAG_STYLE_COLORS[style] });
+      if (dimLines) {
+        for (const text of dimLines) lines.push({ text, color: DIMENSION_TAG_STYLE_COLORS[style] });
       }
       if (!entry.sprite) {
         entry.sprite = createMeasureLabel(lines);
@@ -1236,8 +1244,17 @@ export function useIfcViewer() {
     };
 
     // Constant on-screen size for dimension tags (same technique as
-    // scaleMeasureMarkers above).
+    // scaleMeasureMarkers above) — but scaled by a constant *canvas-
+    // pixel-to-world* ratio rather than a constant total sprite height,
+    // so a multi-line tag (e.g. a family-name line above the dimension
+    // line) renders each line at the same size as a single-line tag
+    // instead of the whole canvas being squeezed into the same overall
+    // height and every line shrinking as more are added. The ratio is
+    // calibrated against a single line's own canvas height so a
+    // one-line tag's on-screen size is unchanged from before.
     const dimensionTagScratchVec3 = new THREE.Vector3();
+    const DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT = MEASURE_LABEL_LINE_HEIGHT + MEASURE_LABEL_PADDING_Y * 2;
+    const DIMENSION_TAG_CANVAS_TO_WORLD_RATIO = MEASURE_LEG_LABEL_PIXEL_HEIGHT / DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT;
     const scaleDimensionTags = () => {
       if (dimensionTags.size === 0) return;
       const worldPerPixelAt = (object) => {
@@ -1247,9 +1264,9 @@ export function useIfcViewer() {
       for (const entry of dimensionTags.values()) {
         const sprite = entry.sprite;
         if (!sprite) continue;
-        const perPixel = worldPerPixelAt(sprite);
-        const height = perPixel * MEASURE_LEG_LABEL_PIXEL_HEIGHT;
-        sprite.scale.set(height * sprite.userData.aspect, height, 1);
+        const scale = worldPerPixelAt(sprite) * DIMENSION_TAG_CANVAS_TO_WORLD_RATIO;
+        const canvas = sprite.userData.canvas;
+        sprite.scale.set(canvas.width * scale, canvas.height * scale, 1);
       }
     };
 
@@ -2007,7 +2024,23 @@ export function useIfcViewer() {
     // user has since moved off never clobbers whatever's hovered by then.
     const handleDimensionHoverResult = async (hit) => {
       const newKey = hit ? `${hit.fragments.modelId}::${hit.localId}` : null;
-      if (newKey === currentHoveredDimensionKey) return;
+      if (newKey === currentHoveredDimensionKey) {
+        // Still hovering the same element — keep the tag anchored under
+        // the cursor's current point on its surface rather than frozen at
+        // wherever hover first landed (which could be far from where the
+        // cursor now is, on a long run). Skipped once pinned: a placed
+        // pin must stay exactly where it was pinned.
+        if (newKey && hit) {
+          const entry = dimensionTags.get(newKey);
+          if (entry && !entry.pinned) {
+            modelsGroup.updateMatrixWorld(true);
+            entry.localPosition = modelsGroup.worldToLocal(hit.point.clone());
+            if (entry.sprite) entry.sprite.position.copy(entry.localPosition);
+            requestRender();
+          }
+        }
+        return;
+      }
       const previousKey = currentHoveredDimensionKey;
       currentHoveredDimensionKey = newKey;
       if (previousKey) setHoveredFlag(previousKey, false);

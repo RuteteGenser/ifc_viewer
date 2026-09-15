@@ -17,7 +17,7 @@ export function formatDimensionTag(category, dimData) {
   // wall thickness at all and keeps the plain "Ø{d}mm · {len}m" format.
   if (shape === "circular" && typeof diameter === "number" && typeof wallThickness === "number") {
     const id = diameter - 2 * wallThickness;
-    return [`OD: Ø${Math.round(diameter)}mm`, `ID: ${id.toFixed(1)}mm`];
+    return [`OD: Ø${Math.round(diameter)}`, `ID: ${id.toFixed(1)}mm`];
   }
 
   let head;

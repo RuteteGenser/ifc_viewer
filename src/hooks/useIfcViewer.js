@@ -748,7 +748,10 @@ export function useIfcViewer() {
     // literals.
     const MEASURE_LABEL_LINE_HEIGHT = 44;
     const MEASURE_LABEL_PADDING_Y = 16;
-    const drawMeasureLabelCanvas = (canvas, ctx, lines) => {
+    // `align` defaults to "center" for measurement labels (main/leg
+    // labels, always centered on their measured point); dimension tags
+    // pass "left" instead so their text reads left-aligned in the box.
+    const drawMeasureLabelCanvas = (canvas, ctx, lines, align = "center") => {
       const font = "600 36px sans-serif";
       const lineHeight = MEASURE_LABEL_LINE_HEIGHT;
       const paddingX = 28;
@@ -764,17 +767,18 @@ export function useIfcViewer() {
       ctx.beginPath();
       ctx.roundRect(0, 0, canvas.width, canvas.height, 10);
       ctx.fill();
-      ctx.textAlign = "center";
+      ctx.textAlign = align;
       ctx.textBaseline = "middle";
+      const textX = align === "left" ? paddingX : canvas.width / 2;
       lines.forEach((line, i) => {
         ctx.fillStyle = line.color;
-        ctx.fillText(line.text, canvas.width / 2, paddingY + lineHeight * (i + 0.5));
+        ctx.fillText(line.text, textX, paddingY + lineHeight * (i + 0.5));
       });
     };
-    const createMeasureLabel = (lines) => {
+    const createMeasureLabel = (lines, align = "center") => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
-      drawMeasureLabelCanvas(canvas, ctx, lines);
+      drawMeasureLabelCanvas(canvas, ctx, lines, align);
 
       const texture = new THREE.CanvasTexture(canvas);
       texture.minFilter = THREE.LinearFilter;
@@ -785,8 +789,8 @@ export function useIfcViewer() {
       modelsGroup.add(sprite);
       return sprite;
     };
-    const updateMeasureLabelText = (sprite, lines) => {
-      drawMeasureLabelCanvas(sprite.userData.canvas, sprite.userData.ctx, lines);
+    const updateMeasureLabelText = (sprite, lines, align = "center") => {
+      drawMeasureLabelCanvas(sprite.userData.canvas, sprite.userData.ctx, lines, align);
       sprite.userData.aspect = sprite.userData.canvas.width / sprite.userData.canvas.height;
       sprite.material.map.needsUpdate = true;
     };
@@ -1104,6 +1108,13 @@ export function useIfcViewer() {
       return null;
     };
 
+    // "Family name" prefers the type-relation name, but many elements —
+    // IFCBUILDINGELEMENTPROXY especially, IFC's generic catch-all — have
+    // no IfcRelDefinesByType relation at all, only their own instance
+    // Name attribute (already fetched on every hover into entry.name).
+    // Falling back to it is what makes such elements taggable at all.
+    const resolveTagDisplayName = (entry) => entry.dimData?.familyName ?? entry.name ?? null;
+
     const syncPinnedDimensionTagsState = () => {
       const list = [];
       for (const [key, entry] of dimensionTags) {
@@ -1119,7 +1130,7 @@ export function useIfcViewer() {
       if (!entry) return;
       const style = dimensionTagVisualStyle(entry);
       const dimLines = style ? formatDimensionTag(entry.category, entry.dimData) : null;
-      const familyName = style ? entry.dimData?.familyName : null;
+      const familyName = style ? resolveTagDisplayName(entry) : null;
       // The tag tool works on any element now, not just pipes/ducts — an
       // element with no extrudable profile (a wall, a proxy, ...) simply
       // has no dimension line, but still gets a tag from its family name
@@ -1131,16 +1142,20 @@ export function useIfcViewer() {
       }
       const lines = [];
       if (familyName) {
-        lines.push({ text: `Name: ${familyName}`, color: DIMENSION_TAG_FAMILY_COLOR });
+        lines.push({ text: familyName, color: DIMENSION_TAG_FAMILY_COLOR });
       }
       if (dimLines) {
         for (const text of dimLines) lines.push({ text, color: DIMENSION_TAG_STYLE_COLORS[style] });
       }
       if (!entry.sprite) {
-        entry.sprite = createMeasureLabel(lines);
+        entry.sprite = createMeasureLabel(lines, "left");
+        // Anchor the sprite's right edge (not its center) at the world
+        // point, so the box renders to the left of the cursor/hit point
+        // it's tracking instead of straddling it.
+        entry.sprite.center.set(1, 0.5);
         entry.sprite.position.copy(entry.localPosition);
       } else {
-        updateMeasureLabelText(entry.sprite, lines);
+        updateMeasureLabelText(entry.sprite, lines, "left");
       }
       entry.sprite.visible = true;
       requestRender();
@@ -2259,7 +2274,7 @@ export function useIfcViewer() {
       // family-name-only tag (no dimension geometry) must still be
       // pinnable, not just one with a resolvable dimension line.
       const hasDimText = !!formatDimensionTag(entry?.category, entry?.dimData);
-      const hasFamilyName = !!entry?.dimData?.familyName;
+      const hasFamilyName = !!(entry && resolveTagDisplayName(entry));
       if (!entry || (!hasDimText && !hasFamilyName)) return;
       setPinnedFlag(key, true);
     };

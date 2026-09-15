@@ -20,7 +20,7 @@ export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins
           <div className="clip-control__plane" key={tag.key}>
             <div className="measure-control__length">{tag.name || "(unnamed)"}</div>
             <div className="measure-control__values">
-              <span>{tag.dimData?.familyName || tag.category}</span>
+              <span>{tag.dimData?.familyName || tag.name || tag.category}</span>
               <span>{formatDimensionTag(tag.category, tag.dimData)?.join(" / ") ?? "—"}</span>
             </div>
             <div className="clip-control__buttons">

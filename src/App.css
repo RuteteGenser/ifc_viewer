@@ -1120,6 +1120,43 @@
   font-size: 11px;
 }
 
+.element-panel__copyable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.element-panel__copyable > span {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.element-panel__copy-button {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-faint);
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.element-panel__copy-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.element-panel__copy-button:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
 .element-panel__pset {
   margin-bottom: 16px;
   padding-top: 12px;

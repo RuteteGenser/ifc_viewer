@@ -2194,6 +2194,33 @@ export function useIfcViewer() {
               setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, ifcInfo: null } : prev));
             });
         }
+
+        // Non-blocking follow-up: overall bounding box, for every
+        // element regardless of category (unlike ifcInfo above, this
+        // isn't limited to the handful of MEP-ish categories — a wall or
+        // a proxy has a bounding box just as much as a pipe does).
+        // getBoxes already returns world-space boxes (transformed by the
+        // model's own matrixWorld), so its size is meaningful regardless
+        // of modelsGroup's current rotation. Height is the vertical (Y)
+        // extent; length/width are the two horizontal extents sorted
+        // largest-first, since there's no reliable way to know which
+        // horizontal axis an arbitrary element's own "front" is.
+        if (formatted && formatted.guid) {
+          const targetGuid = formatted.guid;
+          hit.fragments
+            .getBoxes([hit.localId])
+            .then(([box]) => {
+              if (!box) return;
+              const size = box.getSize(new THREE.Vector3());
+              const [length, width] = [size.x, size.z].sort((a, b) => b - a);
+              const boundingBox = { height: size.y * 1000, length: length * 1000, width: width * 1000 };
+              setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, boundingBox } : prev));
+            })
+            .catch((err) => {
+              console.error("Failed to compute bounding box", err);
+              setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, boundingBox: null } : prev));
+            });
+        }
       } catch (err) {
         console.error("Failed to fetch element properties", err);
         setSelectedElement(null);

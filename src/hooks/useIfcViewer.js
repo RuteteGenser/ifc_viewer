@@ -1211,10 +1211,20 @@ export function useIfcViewer() {
     // scalePivotMarker below), since — unlike the transient pivot marker —
     // these persist and need to stay a sane size at any zoom level.
     const measureScratchVec3 = new THREE.Vector3();
+    const measureForwardScratch = new THREE.Vector3();
     const scaleMeasureMarkers = () => {
+      // Apparent on-screen size in a perspective camera is governed by
+      // *depth* (distance along the camera's forward axis), not
+      // straight-line distance to the camera — using distanceTo() here
+      // over-scales anything off-axis (near the edge of the frustum),
+      // since its Euclidean distance is larger than its depth for the
+      // same "how far into the scene" position. Project onto the
+      // camera's current forward direction instead (computed once here,
+      // not per object, since it doesn't change within one scaling pass).
+      camera.getWorldDirection(measureForwardScratch);
       const worldPerPixelAt = (object) => {
-        const distance = camera.position.distanceTo(object.getWorldPosition(measureScratchVec3));
-        return (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) / renderer.domElement.clientHeight;
+        const depth = object.getWorldPosition(measureScratchVec3).sub(camera.position).dot(measureForwardScratch);
+        return (2 * Math.tan((camera.fov * Math.PI) / 360) * depth) / renderer.domElement.clientHeight;
       };
       const scaleOne = (marker) => {
         marker.scale.setScalar(worldPerPixelAt(marker) * MEASURE_MARKER_PIXELS);
@@ -1253,13 +1263,19 @@ export function useIfcViewer() {
     // calibrated against a single line's own canvas height so a
     // one-line tag's on-screen size is unchanged from before.
     const dimensionTagScratchVec3 = new THREE.Vector3();
+    const dimensionTagForwardScratch = new THREE.Vector3();
     const DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT = MEASURE_LABEL_LINE_HEIGHT + MEASURE_LABEL_PADDING_Y * 2;
     const DIMENSION_TAG_CANVAS_TO_WORLD_RATIO = MEASURE_LEG_LABEL_PIXEL_HEIGHT / DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT;
     const scaleDimensionTags = () => {
       if (dimensionTags.size === 0) return;
+      // See scaleMeasureMarkers above for why this uses forward-projected
+      // depth rather than camera.position.distanceTo() — the latter
+      // over-scales a tag the further off-axis (closer to the screen
+      // edge) it sits.
+      camera.getWorldDirection(dimensionTagForwardScratch);
       const worldPerPixelAt = (object) => {
-        const distance = camera.position.distanceTo(object.getWorldPosition(dimensionTagScratchVec3));
-        return (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) / renderer.domElement.clientHeight;
+        const depth = object.getWorldPosition(dimensionTagScratchVec3).sub(camera.position).dot(dimensionTagForwardScratch);
+        return (2 * Math.tan((camera.fov * Math.PI) / 360) * depth) / renderer.domElement.clientHeight;
       };
       for (const entry of dimensionTags.values()) {
         const sprite = entry.sprite;

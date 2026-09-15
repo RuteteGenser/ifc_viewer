@@ -249,7 +249,7 @@
 }
 
 .tooltip:hover .tooltip__box--center,
-.tooltip:focus-within .tooltip__box--center {
+.tooltip:has(:focus-visible) .tooltip__box--center {
   transform: translateX(-50%) translateY(0);
 }
 
@@ -259,12 +259,12 @@
 }
 
 .tooltip:hover .tooltip__box--right,
-.tooltip:focus-within .tooltip__box--right {
+.tooltip:has(:focus-visible) .tooltip__box--right {
   transform: translateY(0);
 }
 
 .tooltip:hover .tooltip__box,
-.tooltip:focus-within .tooltip__box {
+.tooltip:has(:focus-visible) .tooltip__box {
   opacity: 1;
   visibility: visible;
 }

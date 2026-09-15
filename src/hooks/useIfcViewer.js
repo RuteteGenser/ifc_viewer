@@ -1299,6 +1299,24 @@ export function useIfcViewer() {
       suppressMiddleClickAutoscroll,
     );
 
+    // The canvas has no tabIndex, so clicking it never moves
+    // `document.activeElement` away from whatever was focused before —
+    // once the user so much as clicks into the search box, it silently
+    // keeps focus forever (even while rotating/clicking the model),
+    // which permanently disables the global h/c/m/t keyboard shortcuts
+    // below (they intentionally skip themselves while an input has
+    // focus, so typing in the search box isn't hijacked). Blur whatever
+    // that stray focus is on any interaction with the viewport, for
+    // every button (not just rotate's left-button one), so hotkeys keep
+    // working after the search box has been used.
+    const blurStrayFocus = () => {
+      const active = document.activeElement;
+      if (active && active !== document.body && !renderer.domElement.contains(active)) {
+        active.blur();
+      }
+    };
+    renderer.domElement.addEventListener("pointerdown", blurStrayFocus);
+
     // Explicit middle-button-held tracking for tryMiddleScrollClipPlane
     // (see onZoomWheel below) — WheelEvent.buttons is unreliable across
     // real browsers/input devices/trackpad-middle-click emulation for a
@@ -2209,7 +2227,13 @@ export function useIfcViewer() {
       const key = `${hit.fragments.modelId}::${hit.localId}`;
       if (key !== currentHoveredDimensionKey) return;
       const entry = dimensionTags.get(key);
-      if (!entry || !formatDimensionTag(entry.category, entry.dimData)) return;
+      // Mirrors refreshDimensionTagEntry's own "anything to show?" check
+      // — the tag tool works on any element, not just pipes/ducts, so a
+      // family-name-only tag (no dimension geometry) must still be
+      // pinnable, not just one with a resolvable dimension line.
+      const hasDimText = !!formatDimensionTag(entry?.category, entry?.dimData);
+      const hasFamilyName = !!entry?.dimData?.familyName;
+      if (!entry || (!hasDimText && !hasFamilyName)) return;
       setPinnedFlag(key, true);
     };
 
@@ -2848,6 +2872,7 @@ export function useIfcViewer() {
         "mousedown",
         suppressMiddleClickAutoscroll,
       );
+      renderer.domElement.removeEventListener("pointerdown", blurStrayFocus);
       window.removeEventListener("mousedown", onMiddleButtonDown);
       window.removeEventListener("mouseup", onMiddleButtonUp);
       window.removeEventListener("blur", onMiddleButtonReset);

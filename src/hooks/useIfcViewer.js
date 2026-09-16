@@ -134,6 +134,7 @@ export function useIfcViewer() {
   // modelsGroup itself.
   const northOffsetRef = useRef(0);
   const tagToolActiveRef = useRef(false);
+  const tagsVisibleRef = useRef(true);
   // guid -> {shape,diameter,width,height,length} | null — avoids
   // re-extracting the same element's dimension data on every hover frame;
   // cleared per-model in removeModel.
@@ -142,6 +143,7 @@ export function useIfcViewer() {
   const unpinDimensionTagRef = useRef(() => {});
   const clearAllDimensionPinsRef = useRef(() => {});
   const clearHoveredDimensionTagRef = useRef(() => {});
+  const refreshAllDimensionTagsVisibilityRef = useRef(() => {});
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -165,6 +167,7 @@ export function useIfcViewer() {
   const [northOffsetDeg, setNorthOffsetDegState] = useState(0);
   const [compassAngleDeg, setCompassAngleDeg] = useState(0);
   const [tagToolActive, setTagToolActiveState] = useState(false);
+  const [tagsVisible, setTagsVisibleState] = useState(true);
   const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
 
   // A new action always invalidates the redo history — the standard
@@ -1157,7 +1160,10 @@ export function useIfcViewer() {
       } else {
         updateMeasureLabelText(entry.sprite, lines, "left");
       }
-      entry.sprite.visible = true;
+      // Gated by the user's own show/hide toggle, on top of the "is
+      // there anything to show" check above — pinned and hovered tags
+      // alike stay in the scene but invisible while toggled off.
+      entry.sprite.visible = tagsVisibleRef.current;
       requestRender();
     };
 
@@ -2160,6 +2166,11 @@ export function useIfcViewer() {
       }
     };
 
+    refreshAllDimensionTagsVisibilityRef.current = () => {
+      for (const key of dimensionTags.keys()) refreshDimensionTagEntry(key);
+      requestRender();
+    };
+
     const selectElementFrom = async (raycastPromise) => {
       if (!raycastPromise) {
         clearHighlight();
@@ -3099,6 +3110,13 @@ export function useIfcViewer() {
     if (!next) clearHoveredDimensionTagRef.current?.();
   }, []);
 
+  const toggleTagsVisibility = useCallback(() => {
+    const next = !tagsVisibleRef.current;
+    tagsVisibleRef.current = next;
+    setTagsVisibleState(next);
+    refreshAllDimensionTagsVisibilityRef.current?.();
+  }, []);
+
   const unpinDimensionTag = useCallback((guid) => {
     unpinDimensionTagRef.current?.(guid);
   }, []);
@@ -3236,13 +3254,16 @@ export function useIfcViewer() {
         case "t":
           toggleTagTool();
           break;
+        case "v":
+          toggleTagsVisibility();
+          break;
         default:
           return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, undo, redo]);
+  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, toggleTagsVisibility, undo, redo]);
 
   const resetVisibility = useCallback(async () => {
     // Also exits isolate mode — otherwise the search checkboxes would
@@ -3657,6 +3678,8 @@ export function useIfcViewer() {
     compassAngleDeg,
     tagToolActive,
     toggleTagTool,
+    tagsVisible,
+    toggleTagsVisibility,
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,

@@ -7,11 +7,22 @@ import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
 import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
+import MeasureLegEditPopup from "./components/MeasureLegEditPopup";
 import ConfirmDialog from "./components/ConfirmDialog";
 import Header from "./components/Header";
 import Toolbar from "./components/Toolbar";
 import Compass from "./components/Compass";
 import "./App.css";
+
+// Matches the colors already used for each leg in the 3D dogleg
+// (useIfcViewer.js's legRight/legUp/legDepth) and in MeasureControl.jsx's
+// read-only display, so the edit popup reads as "the same leg" as
+// whichever colored label was clicked.
+const MEASURE_LEG_META = {
+  depth: { label: "Depth", color: "#ef4444" },
+  horizontal: { label: "Horizontal", color: "#3b82f6" },
+  vertical: { label: "Vertical", color: "#22c55e" },
+};
 
 function App() {
   const {
@@ -53,6 +64,8 @@ function App() {
     setMeasurementLeg,
     measureDeletePopup,
     closeMeasureDeletePopup,
+    measureLegEditPopup,
+    closeMeasureLegEditPopup,
     searchQuery,
     setSearchQuery,
     searchResults,
@@ -177,6 +190,7 @@ function App() {
             tagsVisible={tagsVisible}
             onToggleTagsVisibility={toggleTagsVisibility}
             hasPinnedTags={pinnedDimensionTags.length > 0}
+            hasMeasurements={measurements.length > 0}
             searchQuery={searchQuery}
             onQueryChange={setSearchQuery}
             searchResults={searchResults}
@@ -217,7 +231,6 @@ function App() {
           measurements={measurements}
           pendingMeasurePreview={pendingMeasurePreview}
           onRemoveMeasurement={removeMeasurement}
-          onSetMeasurementLeg={setMeasurementLeg}
           pinnedDimensionTags={pinnedDimensionTags}
           onUnpinDimensionTag={unpinDimensionTag}
           onClearAllDimensionPins={clearAllDimensionPins}
@@ -232,6 +245,21 @@ function App() {
               closeMeasureDeletePopup();
             }}
             onClose={closeMeasureDeletePopup}
+          />
+        )}
+
+        {measureLegEditPopup && (
+          <MeasureLegEditPopup
+            x={measureLegEditPopup.x}
+            y={measureLegEditPopup.y}
+            label={MEASURE_LEG_META[measureLegEditPopup.which].label}
+            color={MEASURE_LEG_META[measureLegEditPopup.which].color}
+            valueMm={(measurements.find((m) => m.id === measureLegEditPopup.entryId)?.[measureLegEditPopup.which] ?? 0) * 1000}
+            onCommit={(value) => {
+              setMeasurementLeg(measureLegEditPopup.entryId, measureLegEditPopup.which, value);
+              closeMeasureLegEditPopup();
+            }}
+            onClose={closeMeasureLegEditPopup}
           />
         )}
 

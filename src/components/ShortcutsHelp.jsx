@@ -10,7 +10,7 @@ const SHORTCUTS = [
   { keys: "C", description: "Create a clip plane under the cursor" },
   { keys: "M", description: "Toggle measure mode" },
   { keys: "T", description: "Toggle tag tool (pin a hovered dimension tag)" },
-  { keys: "V", description: "Toggle pinned tag visibility" },
+  { keys: "V", description: "Toggle tag & measurement visibility" },
   { keys: "Esc", description: "Exit the current tool" },
   { keys: "Ctrl+Z", description: "Undo" },
   { keys: "Ctrl+Y / Ctrl+Shift+Z", description: "Redo" },

@@ -675,22 +675,6 @@
   opacity: 0.85;
 }
 
-.measure-control__leg-edit {
-  display: inline-flex;
-  align-items: center;
-}
-
-.measure-control__leg-edit input {
-  width: 64px;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 4px;
-}
-
 /* ---------- Confirm dialog ---------- */
 
 .confirm-dialog-backdrop {
@@ -833,6 +817,33 @@
 
 .measure-delete-button:hover {
   background: #dc2626;
+}
+
+.measure-leg-edit-popup {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+}
+
+.measure-leg-edit-popup input {
+  width: 60px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-subtle);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
 }
 
 /* ---------- Search bar ---------- */

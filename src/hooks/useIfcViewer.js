@@ -118,6 +118,7 @@ export function useIfcViewer() {
   const measureModeActiveRef = useRef(false);
   const showMeasureDeletePopupRef = useRef(() => {});
   const measureDeletePopupRef = useRef(null); // mirrors measureDeletePopup state, for the imperative animate() loop
+  const measureLegEditPopupRef = useRef(null); // mirrors measureLegEditPopup state, for the imperative animate() loop
   const raycastVisibleRef = useRef(async () => null); // bridges the effect-scoped raycastVisible out to top-level callbacks
   const lastPointerClientRef = useRef({ x: 0, y: 0 }); // last known mouse position, for keyboard shortcuts that need a cursor-relative raycast
   // Undo/redo history for the "modeling" actions below (hide element,
@@ -144,6 +145,7 @@ export function useIfcViewer() {
   const clearAllDimensionPinsRef = useRef(() => {});
   const clearHoveredDimensionTagRef = useRef(() => {});
   const refreshAllDimensionTagsVisibilityRef = useRef(() => {});
+  const refreshMeasurementsVisibilityRef = useRef(() => {});
 
   const [models, setModels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -160,6 +162,7 @@ export function useIfcViewer() {
   const [measurements, setMeasurements] = useState([]); // [{ id, depth, horizontal, vertical, length }]
   const [pendingMeasurePreview, setPendingMeasurePreview] = useState(null); // { depth, horizontal, vertical, length } | null — live readout while point B hasn't been placed yet
   const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
+  const [measureLegEditPopup, setMeasureLegEditPopup] = useState(null); // { entryId, which, x, y } | null — which: "depth" | "horizontal" | "vertical"
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]); // { key, modelId, localId, name, category, modelName }[]
   const [isolatedKeys, setIsolatedKeys] = useState(() => new Set()); // `${modelId}::${localId}`
@@ -835,7 +838,7 @@ export function useIfcViewer() {
         measurePreviewEntry = { markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel };
       }
       const entry = measurePreviewEntry;
-      entry.markerB.visible = true;
+      entry.markerB.visible = tagsVisibleRef.current;
       entry.markerB.position.copy(b);
 
       const pos = entry.line.geometry.attributes.position;
@@ -871,6 +874,16 @@ export function useIfcViewer() {
       updateMeasureLabelText(entry.legUpLabel, [{ text: formatMm(Math.abs(up)), color: "#22c55e" }]);
       entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(Math.abs(depth)), color: "#ef4444" }]);
+
+      const visible = tagsVisibleRef.current;
+      entry.line.visible = visible;
+      entry.legRight.visible = visible;
+      entry.legUp.visible = visible;
+      entry.legDepth.visible = visible;
+      entry.label.visible = visible;
+      entry.legRightLabel.visible = visible;
+      entry.legUpLabel.visible = visible;
+      entry.legDepthLabel.visible = visible;
 
       // Mirrors the 3D labels above into the right panel's Measurements
       // tab, so its numbers track the cursor live too instead of only
@@ -928,6 +941,26 @@ export function useIfcViewer() {
     // same block. Assumes the entry's THREE objects already exist;
     // callers handle any React state sync (`setMeasurements`) and their
     // own reasons for the update themselves.
+    // Shared with dimension tags' own visibility toggle (tagsVisibleRef)
+    // — one eye icon hides both. Applied here (called at the end of
+    // every recompute, i.e. on creation, drag, and leg-length edits
+    // alike) so a measurement always picks up the current toggle state
+    // the moment it's touched, and again in bulk by the toggle's own
+    // bridge below for everything already on screen.
+    const applyMeasurementEntryVisibility = (entry) => {
+      const visible = tagsVisibleRef.current;
+      entry.markerA.visible = visible;
+      entry.markerB.visible = visible;
+      entry.line.visible = visible;
+      entry.legRight.visible = visible;
+      entry.legUp.visible = visible;
+      entry.legDepth.visible = visible;
+      entry.label.visible = visible;
+      entry.legRightLabel.visible = visible;
+      entry.legUpLabel.visible = visible;
+      entry.legDepthLabel.visible = visible;
+    };
+
     const recomputeMeasurementEntry = (entry) => {
       const a = entry.markerA.position;
       const b = entry.markerB.position;
@@ -966,6 +999,7 @@ export function useIfcViewer() {
       entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
       updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(entry.depth), color: "#ef4444" }]);
 
+      applyMeasurementEntryVisibility(entry);
       requestRender();
     };
 
@@ -1035,6 +1069,7 @@ export function useIfcViewer() {
           measurePendingPoint = localPoint;
           measurePendingMarker = createMeasureMarker();
           measurePendingMarker.position.copy(localPoint);
+          measurePendingMarker.visible = tagsVisibleRef.current;
           requestRender();
           return "started";
         }
@@ -2234,6 +2269,24 @@ export function useIfcViewer() {
       requestRender();
     };
 
+    refreshMeasurementsVisibilityRef.current = () => {
+      for (const entry of measurementsRuntime) applyMeasurementEntryVisibility(entry);
+      if (measurePendingMarker) measurePendingMarker.visible = tagsVisibleRef.current;
+      if (measurePreviewEntry) {
+        const visible = tagsVisibleRef.current;
+        measurePreviewEntry.markerB.visible = visible;
+        measurePreviewEntry.line.visible = visible;
+        measurePreviewEntry.legRight.visible = visible;
+        measurePreviewEntry.legUp.visible = visible;
+        measurePreviewEntry.legDepth.visible = visible;
+        measurePreviewEntry.label.visible = visible;
+        measurePreviewEntry.legRightLabel.visible = visible;
+        measurePreviewEntry.legUpLabel.visible = visible;
+        measurePreviewEntry.legDepthLabel.visible = visible;
+      }
+      requestRender();
+    };
+
     const selectElementFrom = async (raycastPromise) => {
       if (!raycastPromise) {
         clearHighlight();
@@ -2480,6 +2533,7 @@ export function useIfcViewer() {
       event.preventDefault();
       event.stopPropagation();
       setMeasureDeletePopup(null); // don't leave a stale popup from a previous click open
+      setMeasureLegEditPopup(null); // the two popups are mutually exclusive
       draggingMeasurePoint = { entryId: hit.entry.id, which: hit.which };
       measureDragGeneration++;
       measureDragStartClient = { clientX: event.clientX, clientY: event.clientY };
@@ -2489,23 +2543,6 @@ export function useIfcViewer() {
       window.addEventListener("pointerup", onMeasureMarkerDragEnd);
       return true;
     };
-    // Same hit-test as tryStartMeasureMarkerDrag's own raycast (markers
-    // are draggable regardless of whether Measure mode is currently
-    // toggled on), just on hover rather than pointerdown — flips the
-    // cursor to the standard "clickable" pointer so a draggable endpoint
-    // reads as such before the user commits to grabbing it.
-    const onMeasureMarkerHoverCursor = (event) => {
-      if (draggingMeasurePoint || measurementsRuntime.length === 0) {
-        if (!draggingMeasurePoint) renderer.domElement.style.cursor = "";
-        return;
-      }
-      const hittable = [];
-      for (const entry of measurementsRuntime) hittable.push(entry.markerA, entry.markerB);
-      raycaster.setFromCamera(getNdc(event), camera);
-      const hits = raycaster.intersectObjects(hittable, false);
-      renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "";
-    };
-    renderer.domElement.addEventListener("pointermove", onMeasureMarkerHoverCursor);
     // Offset up-and-right from the marker's own screen position (not
     // centered on top of it) so the marker stays reachable underneath
     // for dragging to a new position, with a small, deliberate gap
@@ -2522,6 +2559,65 @@ export function useIfcViewer() {
       const { x, y } = measureDeletePopupPosition(marker);
       setMeasureDeletePopup({ entryId, which, x, y });
     };
+
+    const MEASURE_LEG_LABEL_MAP = {
+      depth: "legDepthLabel",
+      horizontal: "legRightLabel",
+      vertical: "legUpLabel",
+    };
+    const measureLegLabelPosition = (label) => worldToClient(label.getWorldPosition(new THREE.Vector3()));
+    // Editing a leg's length is a click on that leg's own floating 3D
+    // label — no drag semantics needed (unlike a marker, the label
+    // doesn't move), so this is a plain hit-test-and-open rather than a
+    // start/move/end trio. Only pinned/visible measurements are
+    // clickable — nothing to click when the visibility toggle has
+    // hidden them (see tagsVisibleRef, wired in by the visibility-
+    // toggle work below).
+    const tryClickMeasureLegLabel = (event) => {
+      if (!tagsVisibleRef.current) return false;
+      if (event.button !== 0 || measurementsRuntime.length === 0) return false;
+      const owner = new Map();
+      const hittable = [];
+      for (const entry of measurementsRuntime) {
+        for (const [which, key] of Object.entries(MEASURE_LEG_LABEL_MAP)) {
+          hittable.push(entry[key]);
+          owner.set(entry[key], { entry, which });
+        }
+      }
+      const ndc = getNdc(event);
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(hittable, false);
+      if (hits.length === 0) return false;
+      const hit = owner.get(hits[0].object);
+      if (!hit) return false;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setMeasureDeletePopup(null); // the two popups are mutually exclusive
+      const { x, y } = measureLegLabelPosition(hit.entry[MEASURE_LEG_LABEL_MAP[hit.which]]);
+      setMeasureLegEditPopup({ entryId: hit.entry.id, which: hit.which, x, y });
+      return true;
+    };
+    // Same hit-test as tryStartMeasureMarkerDrag's own raycast (markers
+    // are draggable regardless of whether Measure mode is currently
+    // toggled on), just on hover rather than pointerdown — flips the
+    // cursor to the standard "clickable" pointer so a draggable endpoint
+    // (or, now, an editable leg label) reads as such before the user
+    // commits to clicking it.
+    const onMeasureMarkerHoverCursor = (event) => {
+      if (draggingMeasurePoint || measurementsRuntime.length === 0 || !tagsVisibleRef.current) {
+        if (!draggingMeasurePoint) renderer.domElement.style.cursor = "";
+        return;
+      }
+      const hittable = [];
+      for (const entry of measurementsRuntime) {
+        hittable.push(entry.markerA, entry.markerB, entry.legDepthLabel, entry.legRightLabel, entry.legUpLabel);
+      }
+      raycaster.setFromCamera(getNdc(event), camera);
+      const hits = raycaster.intersectObjects(hittable, false);
+      renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "";
+    };
+    renderer.domElement.addEventListener("pointermove", onMeasureMarkerHoverCursor);
 
     let draggingClipPlaneId = null;
     let dragAxisWorld = null; // THREE.Vector3 | null — world-space plane normal at drag start
@@ -2661,6 +2757,7 @@ export function useIfcViewer() {
 
     const onRotateStart = (event) => {
       if (tryStartMeasureMarkerDrag(event)) return;
+      if (tryClickMeasureLegLabel(event)) return;
       if (tryStartClipPlaneDrag(event)) return;
       // A second touch point landing mid-drag means the gesture just
       // became a pinch/two-finger pan — hand off to OrbitControls' own
@@ -2878,6 +2975,20 @@ export function useIfcViewer() {
           }
         }
       }
+      // Same per-frame screen-position tracking as the delete popup
+      // above, for the leg-length edit popup.
+      if (measureLegEditPopupRef.current) {
+        const { entryId, which } = measureLegEditPopupRef.current;
+        const entry = measurementsRuntime.find((m) => m.id === entryId);
+        if (!entry) {
+          setMeasureLegEditPopup(null); // measurement was deleted from elsewhere
+        } else {
+          const { x, y } = measureLegLabelPosition(entry[MEASURE_LEG_LABEL_MAP[which]]);
+          if (x !== measureLegEditPopupRef.current.x || y !== measureLegEditPopupRef.current.y) {
+            setMeasureLegEditPopup({ entryId, which, x, y });
+          }
+        }
+      }
       // Camera never actually moves via user input in this app (see
       // controls.enableRotate = false above) except through pan/dolly,
       // which translate camera+target together and never change its
@@ -3062,6 +3173,10 @@ export function useIfcViewer() {
     measureDeletePopupRef.current = measureDeletePopup;
   }, [measureDeletePopup]);
 
+  useEffect(() => {
+    measureLegEditPopupRef.current = measureLegEditPopup;
+  }, [measureLegEditPopup]);
+
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
       // The kept region is whatever lies *beyond* cameraClipDistance
@@ -3082,6 +3197,7 @@ export function useIfcViewer() {
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const closeMeasureDeletePopup = useCallback(() => setMeasureDeletePopup(null), []);
+  const closeMeasureLegEditPopup = useCallback(() => setMeasureLegEditPopup(null), []);
 
   // Shared by the right-click "Create clip plane here" menu item and the
   // "c" keyboard shortcut (which raycasts under the cursor itself rather
@@ -3204,6 +3320,7 @@ export function useIfcViewer() {
     tagsVisibleRef.current = next;
     setTagsVisibleState(next);
     refreshAllDimensionTagsVisibilityRef.current?.();
+    refreshMeasurementsVisibilityRef.current?.();
   }, []);
 
   const unpinDimensionTag = useCallback((guid) => {
@@ -3779,6 +3896,8 @@ export function useIfcViewer() {
     setMeasurementLeg,
     measureDeletePopup,
     closeMeasureDeletePopup,
+    measureLegEditPopup,
+    closeMeasureLegEditPopup,
     searchQuery,
     setSearchQuery,
     searchResults,

@@ -54,6 +54,7 @@ export default function Toolbar({
   tagsVisible,
   onToggleTagsVisibility,
   hasPinnedTags,
+  hasMeasurements,
   searchQuery,
   onQueryChange,
   searchResults,
@@ -102,13 +103,13 @@ export default function Toolbar({
           <TagIcon />
         </button>
       </Tooltip>
-      <Tooltip description="Toggle pinned tag visibility" hotkey="V">
+      <Tooltip description="Toggle tag & measurement visibility" hotkey="V">
         <button
           type="button"
           className={`top-bar__icon-button${tagsVisible ? "" : " top-bar__icon-button--active"}`}
           onClick={onToggleTagsVisibility}
-          disabled={!hasModels || !hasPinnedTags}
-          aria-label="Toggle pinned tag visibility"
+          disabled={!hasModels || (!hasPinnedTags && !hasMeasurements)}
+          aria-label="Toggle tag & measurement visibility"
         >
           {tagsVisible ? <EyeIcon /> : <EyeOffIcon />}
         </button>

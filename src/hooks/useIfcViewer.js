@@ -1152,10 +1152,10 @@ export function useIfcViewer() {
       }
       if (!entry.sprite) {
         entry.sprite = createMeasureLabel(lines, "left");
-        // Anchor the sprite's right edge (not its center) at the world
-        // point, so the box renders to the left of the cursor/hit point
+        // Anchor the sprite's left edge (not its center) at the world
+        // point, so the box renders to the right of the cursor/hit point
         // it's tracking instead of straddling it.
-        entry.sprite.center.set(1, 0.5);
+        entry.sprite.center.set(0, 0.5);
         entry.sprite.position.copy(entry.localPosition);
       } else {
         updateMeasureLabelText(entry.sprite, lines, "left");
@@ -2464,6 +2464,23 @@ export function useIfcViewer() {
       window.addEventListener("pointerup", onMeasureMarkerDragEnd);
       return true;
     };
+    // Same hit-test as tryStartMeasureMarkerDrag's own raycast (markers
+    // are draggable regardless of whether Measure mode is currently
+    // toggled on), just on hover rather than pointerdown — flips the
+    // cursor to the standard "clickable" pointer so a draggable endpoint
+    // reads as such before the user commits to grabbing it.
+    const onMeasureMarkerHoverCursor = (event) => {
+      if (draggingMeasurePoint || measurementsRuntime.length === 0) {
+        if (!draggingMeasurePoint) renderer.domElement.style.cursor = "";
+        return;
+      }
+      const hittable = [];
+      for (const entry of measurementsRuntime) hittable.push(entry.markerA, entry.markerB);
+      raycaster.setFromCamera(getNdc(event), camera);
+      const hits = raycaster.intersectObjects(hittable, false);
+      renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "";
+    };
+    renderer.domElement.addEventListener("pointermove", onMeasureMarkerHoverCursor);
     // Offset up-and-right from the marker's own screen position (not
     // centered on top of it) so the marker stays reachable underneath
     // for dragging to a new position, with a small, deliberate gap
@@ -2921,6 +2938,8 @@ export function useIfcViewer() {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onRotateStart);
+      renderer.domElement.removeEventListener("pointermove", onMeasureMarkerHoverCursor);
+      renderer.domElement.style.cursor = "";
       renderer.domElement.removeEventListener(
         "mousedown",
         suppressMiddleClickAutoscroll,
@@ -3096,18 +3115,34 @@ export function useIfcViewer() {
     });
   }, [pushUndo]);
 
+  // Measure and Tag are mutually exclusive — turning one on turns the
+  // other off, the same way a real toolbar's tool selection works,
+  // rather than letting both be active (and both fight over clicks/hover)
+  // at once.
   const toggleMeasureMode = useCallback(() => {
     const next = !measureModeActiveRef.current;
     measureModeActiveRef.current = next;
     setMeasureModeActiveState(next);
-    if (!next) measureManagerRef.current?.cancelPending();
+    if (!next) {
+      measureManagerRef.current?.cancelPending();
+    } else if (tagToolActiveRef.current) {
+      tagToolActiveRef.current = false;
+      setTagToolActiveState(false);
+      clearHoveredDimensionTagRef.current?.();
+    }
   }, []);
 
   const toggleTagTool = useCallback(() => {
     const next = !tagToolActiveRef.current;
     tagToolActiveRef.current = next;
     setTagToolActiveState(next);
-    if (!next) clearHoveredDimensionTagRef.current?.();
+    if (!next) {
+      clearHoveredDimensionTagRef.current?.();
+    } else if (measureModeActiveRef.current) {
+      measureModeActiveRef.current = false;
+      setMeasureModeActiveState(false);
+      measureManagerRef.current?.cancelPending();
+    }
   }, []);
 
   const toggleTagsVisibility = useCallback(() => {

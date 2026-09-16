@@ -26,6 +26,7 @@ export default function RightPanel({
   measurements,
   pendingMeasurePreview,
   onRemoveMeasurement,
+  onSetMeasurementLeg,
   pinnedDimensionTags,
   onUnpinDimensionTag,
   onClearAllDimensionPins,
@@ -75,6 +76,7 @@ export default function RightPanel({
             measurements={measurements}
             pendingMeasurePreview={pendingMeasurePreview}
             onRemoveMeasurement={onRemoveMeasurement}
+            onSetMeasurementLeg={onSetMeasurementLeg}
           />
         ) : (
           <DimensionTagsPanel

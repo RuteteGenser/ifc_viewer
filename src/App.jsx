@@ -50,6 +50,7 @@ function App() {
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,
+    setMeasurementLeg,
     measureDeletePopup,
     closeMeasureDeletePopup,
     searchQuery,
@@ -216,6 +217,7 @@ function App() {
           measurements={measurements}
           pendingMeasurePreview={pendingMeasurePreview}
           onRemoveMeasurement={removeMeasurement}
+          onSetMeasurementLeg={setMeasurementLeg}
           pinnedDimensionTags={pinnedDimensionTags}
           onUnpinDimensionTag={unpinDimensionTag}
           onClearAllDimensionPins={clearAllDimensionPins}

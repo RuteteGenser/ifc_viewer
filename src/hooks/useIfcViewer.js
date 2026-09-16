@@ -661,22 +661,23 @@ export function useIfcViewer() {
     const MEASURE_UP = new THREE.Vector3(0, 1, 0);
     const MEASURE_FALLBACK_TANGENT = new THREE.Vector3(0, 0, 1);
     // Builds the orthonormal basis a measurement's dogleg is decomposed
-    // into: `normal` is the reference surface's own normal (point B's, by
-    // convention — see addPoint below), and `tangentUp`/`tangentRight`
-    // span that surface's own plane, so "distance to the wall" always
-    // means distance along the wall's normal rather than some arbitrary
-    // global axis. `tangentUp` is world-up projected onto the surface
-    // plane (i.e. "up, as seen while facing the surface") unless the
-    // surface is itself (near-)horizontal — measuring across a floor or
-    // ceiling — in which case world-up IS the normal and can't define an
-    // in-plane direction, so a fixed fallback axis is used instead to
-    // keep the basis well-defined and stable.
+    // into. `tangentUp` ("Vertical") is always true world-Y — it must
+    // never depend on which surface was clicked, or reversing the click
+    // order (wall-then-floor vs floor-then-wall) would silently swap
+    // what "Vertical" even means. `normal` ("Depth") is instead always a
+    // *horizontal* direction: the reference surface's own normal
+    // projected onto the horizontal plane (unchanged from before for a
+    // vertical wall, whose normal is already horizontal), falling back
+    // to a fixed horizontal axis only when that projection is
+    // degenerate — i.e. the surface itself is horizontal (a floor or
+    // ceiling), which has no horizontal normal component of its own to
+    // measure "depth into" at all.
     const measureBasis = (localNormal) => {
       const normal = (localNormal ?? MEASURE_UP).clone().normalize();
-      const upRef = Math.abs(normal.dot(MEASURE_UP)) > 0.999 ? MEASURE_FALLBACK_TANGENT : MEASURE_UP;
-      const tangentUp = upRef.clone().sub(normal.clone().multiplyScalar(upRef.dot(normal))).normalize();
-      const tangentRight = new THREE.Vector3().crossVectors(normal, tangentUp).normalize();
-      return { normal, tangentUp, tangentRight };
+      const horizNormal = new THREE.Vector3(normal.x, 0, normal.z);
+      const depthDir = horizNormal.lengthSq() > 1e-6 ? horizNormal.normalize() : MEASURE_FALLBACK_TANGENT.clone();
+      const tangentRight = new THREE.Vector3().crossVectors(MEASURE_UP, depthDir).normalize();
+      return { normal: depthDir, tangentUp: MEASURE_UP.clone(), tangentRight };
     };
     // Decomposes the vector from a to b into that basis: `depth` is the
     // (signed) distance along the reference surface's normal, `right`/
@@ -707,7 +708,13 @@ export function useIfcViewer() {
     // torn down as soon as the real point B is placed or the pending
     // point is cancelled).
     let measurePreviewEntry = null; // { markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel } | null
-    let measurePreviewRaycastPending = false;
+    // Same "stash latest cursor position, raycast at most once per
+    // rendered frame" pattern as the measure-marker drag and dimension-
+    // tag hover below (see their own comments) — processed inside
+    // animate().
+    let measurePreviewPendingClient = null; // { clientX, clientY } | null
+    let measurePreviewRaycastBusy = false;
+    let measurePreviewGeneration = 0;
 
     const createMeasureMarker = () => {
       // Dark fill (not white) so the marker stays visible against the
@@ -913,6 +920,55 @@ export function useIfcViewer() {
       requestRender();
     };
 
+    // Recomputes an entry's whole dogleg (line + three leg geometries +
+    // all four labels) plus its stored depth/horizontal/vertical/length
+    // from its current markerA/markerB positions and referenceNormal —
+    // shared by initial creation, dragging an endpoint, and numerically
+    // editing a leg's length, so those three don't each duplicate this
+    // same block. Assumes the entry's THREE objects already exist;
+    // callers handle any React state sync (`setMeasurements`) and their
+    // own reasons for the update themselves.
+    const recomputeMeasurementEntry = (entry) => {
+      const a = entry.markerA.position;
+      const b = entry.markerB.position;
+      const pos = entry.line.geometry.attributes.position;
+      pos.setXYZ(0, a.x, a.y, a.z);
+      pos.setXYZ(1, b.x, b.y, b.z);
+      pos.needsUpdate = true;
+      entry.line.geometry.computeBoundingSphere();
+
+      const basis = measureBasis(entry.referenceNormal);
+      const { depth, right, up } = measureComponents(a, b, basis);
+      const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
+      const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
+      const setLeg = (leg, p1, p2) => {
+        const legPos = leg.geometry.attributes.position;
+        legPos.setXYZ(0, p1.x, p1.y, p1.z);
+        legPos.setXYZ(1, p2.x, p2.y, p2.z);
+        legPos.needsUpdate = true;
+        leg.geometry.computeBoundingSphere();
+      };
+      setLeg(entry.legRight, a, cornerRight);
+      setLeg(entry.legUp, cornerRight, cornerRightUp);
+      setLeg(entry.legDepth, cornerRightUp, b);
+
+      entry.depth = Math.abs(depth);
+      entry.horizontal = Math.abs(right);
+      entry.vertical = Math.abs(up);
+      entry.length = a.distanceTo(b);
+      entry.label.position.copy(a).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.label, measureLabelLines(entry.length));
+
+      entry.legRightLabel.position.copy(a).add(cornerRight).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legRightLabel, [{ text: formatMm(entry.horizontal), color: "#3b82f6" }]);
+      entry.legUpLabel.position.copy(cornerRight).add(cornerRightUp).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legUpLabel, [{ text: formatMm(entry.vertical), color: "#22c55e" }]);
+      entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
+      updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(entry.depth), color: "#ef4444" }]);
+
+      requestRender();
+    };
+
     // Builds a full measurement (marker/line/legs/labels) from two known
     // local-space points — shared by the normal click-to-place flow
     // (addPoint below) and by undo/redo, which need to recreate a
@@ -923,7 +979,11 @@ export function useIfcViewer() {
     // normal (local space) — B, by convention, is "the surface you're
     // measuring to" (see addPoint below) — and is stored on the entry so
     // later dragging point A can recompute the decomposition without
-    // losing track of which surface it's still relative to.
+    // losing track of which surface it's still relative to. The three
+    // dogleg legs and four labels are created with placeholder geometry/
+    // text (same convention as the live preview's lazy creation below) —
+    // `recomputeMeasurementEntry` immediately fills in their real
+    // positions and values.
     const createMeasurementEntry = (a, b, existingMarkerA, localNormal) => {
       const markerA = existingMarkerA ?? createMeasureMarker();
       markerA.position.copy(a);
@@ -935,29 +995,13 @@ export function useIfcViewer() {
       line.renderOrder = 999;
       modelsGroup.add(line);
       const referenceNormal = (localNormal ?? MEASURE_UP).clone();
-      // Right-angle "dogleg" path from a to b via two corners, visually
-      // breaking the straight-line hypotenuse above into its
-      // depth/horizontal/vertical contributions relative to the
-      // reference surface (see measureBasis/measureComponents above),
-      // rather than raw global X/Y/Z.
-      const basis = measureBasis(referenceNormal);
-      const { depth, right, up } = measureComponents(a, b, basis);
-      const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
-      const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
-      const legRight = createMeasureLeg(a, cornerRight, 0x3b82f6);
-      const legUp = createMeasureLeg(cornerRight, cornerRightUp, 0x22c55e);
-      const legDepth = createMeasureLeg(cornerRightUp, b, 0xef4444);
-      const length = a.distanceTo(b);
-      const label = createMeasureLabel(measureLabelLines(length));
-      label.position.copy(a).add(b).multiplyScalar(0.5);
-      // One small single-line label per leg, at that leg's own
-      // midpoint, showing just that component's own distance.
-      const legRightLabel = createMeasureLabel([{ text: formatMm(Math.abs(right)), color: "#3b82f6" }]);
-      legRightLabel.position.copy(a).add(cornerRight).multiplyScalar(0.5);
-      const legUpLabel = createMeasureLabel([{ text: formatMm(Math.abs(up)), color: "#22c55e" }]);
-      legUpLabel.position.copy(cornerRight).add(cornerRightUp).multiplyScalar(0.5);
-      const legDepthLabel = createMeasureLabel([{ text: formatMm(Math.abs(depth)), color: "#ef4444" }]);
-      legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
+      const legRight = createMeasureLeg(a, a, 0x3b82f6);
+      const legUp = createMeasureLeg(a, a, 0x22c55e);
+      const legDepth = createMeasureLeg(a, a, 0xef4444);
+      const label = createMeasureLabel(measureLabelLines(0));
+      const legRightLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }]);
+      const legUpLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }]);
+      const legDepthLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }]);
       const entry = {
         id: `measure-${++measureUid}`,
         markerA,
@@ -971,13 +1015,13 @@ export function useIfcViewer() {
         legRightLabel,
         legUpLabel,
         referenceNormal,
-        depth: Math.abs(depth),
-        horizontal: Math.abs(right),
-        vertical: Math.abs(up),
-        length,
+        depth: 0,
+        horizontal: 0,
+        vertical: 0,
+        length: 0,
       };
       measurementsRuntime.push(entry);
-      requestRender();
+      recomputeMeasurementEntry(entry);
       return entry;
     };
 
@@ -1081,6 +1125,42 @@ export function useIfcViewer() {
       },
       list: () =>
         measurementsRuntime.map((m) => ({ id: m.id, depth: m.depth, horizontal: m.horizontal, vertical: m.vertical, length: m.length })),
+      // Repositions B to an exact known local-space point and recomputes
+      // everything from it — used both by setLeg below and directly by
+      // the edit feature's own undo/redo (which just replays a snapshot
+      // position rather than re-deriving one from a typed value).
+      setBPosition: (id, bLocal) => {
+        const entry = measurementsRuntime.find((m) => m.id === id);
+        if (!entry) return false;
+        entry.markerB.position.copy(bLocal);
+        recomputeMeasurementEntry(entry);
+        return true;
+      },
+      // Moves B so that one leg (depth/horizontal/vertical) becomes
+      // exactly `valueMm`, keeping the other two legs' current signed
+      // components — and A — unchanged. Returns the old and new B
+      // positions (for the caller to build an undo entry from) or null
+      // if the measurement no longer exists.
+      setLeg: (id, which, valueMm) => {
+        const entry = measurementsRuntime.find((m) => m.id === id);
+        if (!entry) return null;
+        const a = entry.markerA.position;
+        const oldB = entry.markerB.position.clone();
+        const basis = measureBasis(entry.referenceNormal);
+        const { depth, right, up } = measureComponents(a, oldB, basis);
+        const newAbs = Math.max(0, valueMm) / 1000;
+        // A component sitting at ~0 has an ambiguous sign — default to
+        // positive rather than flipping direction on every re-edit.
+        const sign = (current) => (current < 0 ? -1 : 1);
+        const newB = a
+          .clone()
+          .addScaledVector(basis.normal, which === "depth" ? sign(depth) * newAbs : depth)
+          .addScaledVector(basis.tangentRight, which === "horizontal" ? sign(right) * newAbs : right)
+          .addScaledVector(basis.tangentUp, which === "vertical" ? sign(up) * newAbs : up);
+        entry.markerB.position.copy(newB);
+        recomputeMeasurementEntry(entry);
+        return { oldB, newB: newB.clone() };
+      },
     };
     measureManagerRef.current = measureManager;
 
@@ -1781,24 +1861,7 @@ export function useIfcViewer() {
       if (!measureModeActiveRef.current || measurePendingPoint === null) return;
       if (pivotPending || rotating) return;
       if (!renderer.domElement.contains(event.target)) return;
-      if (measurePreviewRaycastPending) return;
-      measurePreviewRaycastPending = true;
-      raycastVisible(event.clientX, event.clientY)
-        .then((hit) => {
-          if (disposed || measurePendingPoint === null) return;
-          if (!hit) {
-            if (measurePreviewEntry) measurePreviewEntry.markerB.visible = false;
-            return;
-          }
-          modelsGroup.updateMatrixWorld(true);
-          const b = modelsGroup.worldToLocal(hit.point.clone());
-          const localNormal = hit.normal ? localDirectionFromWorld(hit.normal) : null;
-          updateMeasurePreview(measurePendingPoint, b, localNormal);
-        })
-        .catch(() => {})
-        .finally(() => {
-          measurePreviewRaycastPending = false;
-        });
+      measurePreviewPendingClient = { clientX: event.clientX, clientY: event.clientY };
     };
     renderer.domElement.addEventListener("pointermove", onMeasureHoverMove);
 
@@ -2370,46 +2433,8 @@ export function useIfcViewer() {
       if (draggingMeasurePoint.which === "B" && hit.normal) {
         entry.referenceNormal = localDirectionFromWorld(hit.normal);
       }
-
-      const a = entry.markerA.position;
-      const b = entry.markerB.position;
-      const pos = entry.line.geometry.attributes.position;
-      pos.setXYZ(0, a.x, a.y, a.z);
-      pos.setXYZ(1, b.x, b.y, b.z);
-      pos.needsUpdate = true;
-      entry.line.geometry.computeBoundingSphere();
-
-      const basis = measureBasis(entry.referenceNormal);
-      const { depth, right, up } = measureComponents(a, b, basis);
-      const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
-      const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
-      const setLeg = (leg, p1, p2) => {
-        const legPos = leg.geometry.attributes.position;
-        legPos.setXYZ(0, p1.x, p1.y, p1.z);
-        legPos.setXYZ(1, p2.x, p2.y, p2.z);
-        legPos.needsUpdate = true;
-        leg.geometry.computeBoundingSphere();
-      };
-      setLeg(entry.legRight, a, cornerRight);
-      setLeg(entry.legUp, cornerRight, cornerRightUp);
-      setLeg(entry.legDepth, cornerRightUp, b);
-
-      entry.depth = Math.abs(depth);
-      entry.horizontal = Math.abs(right);
-      entry.vertical = Math.abs(up);
-      entry.length = a.distanceTo(b);
-      entry.label.position.copy(a).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.label, measureLabelLines(entry.length));
-
-      entry.legRightLabel.position.copy(a).add(cornerRight).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legRightLabel, [{ text: formatMm(entry.horizontal), color: "#3b82f6" }]);
-      entry.legUpLabel.position.copy(cornerRight).add(cornerRightUp).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legUpLabel, [{ text: formatMm(entry.vertical), color: "#22c55e" }]);
-      entry.legDepthLabel.position.copy(cornerRightUp).add(b).multiplyScalar(0.5);
-      updateMeasureLabelText(entry.legDepthLabel, [{ text: formatMm(entry.depth), color: "#ef4444" }]);
-
+      recomputeMeasurementEntry(entry);
       setMeasurements(measureManager.list());
-      requestRender();
     };
     const onMeasureMarkerDragMove = (event) => {
       if (!draggingMeasurePoint) return;
@@ -2807,6 +2832,35 @@ export function useIfcViewer() {
             console.error("Dimension hover raycast failed", err);
           });
       }
+      // Same one-raycast-per-rendered-frame cap as the two blocks above,
+      // for the measure tool's own live "point B" preview — previously
+      // raycast directly inside the pointermove handler behind a plain
+      // busy flag, which silently dropped the mouse's final resting
+      // position whenever it moved again before the in-flight raycast
+      // resolved, freezing the live preview on a stale point.
+      if (measurePreviewPendingClient && !measurePreviewRaycastBusy) {
+        const { clientX, clientY } = measurePreviewPendingClient;
+        measurePreviewPendingClient = null;
+        measurePreviewRaycastBusy = true;
+        const myGeneration = ++measurePreviewGeneration;
+        raycastVisible(clientX, clientY)
+          .then((hit) => {
+            measurePreviewRaycastBusy = false;
+            if (myGeneration !== measurePreviewGeneration || measurePendingPoint === null) return;
+            if (!hit) {
+              clearMeasurePreview();
+              return;
+            }
+            modelsGroup.updateMatrixWorld(true);
+            const b = modelsGroup.worldToLocal(hit.point.clone());
+            const localNormal = hit.normal ? localDirectionFromWorld(hit.normal) : null;
+            updateMeasurePreview(measurePendingPoint, b, localNormal);
+          })
+          .catch((err) => {
+            measurePreviewRaycastBusy = false;
+            console.error("Measure preview raycast failed", err);
+          });
+      }
       // The delete popup is an HTML overlay anchored to a 3D point, so
       // (unlike the 3D sprites) its screen position needs recomputing
       // every frame the camera could have moved, not just when the
@@ -3176,6 +3230,28 @@ export function useIfcViewer() {
       },
       redo: () => {
         manager.remove(idBox.id);
+        setMeasurements(manager.list());
+      },
+    });
+  }, [pushUndo]);
+
+  // `which` is "depth" | "horizontal" | "vertical"; `valueMm` the new
+  // length typed for that leg. Only point B moves — A and the other two
+  // legs' current values stay exactly as they were.
+  const setMeasurementLeg = useCallback((id, which, valueMm) => {
+    const manager = measureManagerRef.current;
+    if (!manager || !Number.isFinite(valueMm) || valueMm <= 0) return;
+    const result = manager.setLeg(id, which, valueMm);
+    if (!result) return;
+    setMeasurements(manager.list());
+    const { oldB, newB } = result;
+    pushUndo({
+      undo: () => {
+        manager.setBPosition(id, oldB);
+        setMeasurements(manager.list());
+      },
+      redo: () => {
+        manager.setBPosition(id, newB);
         setMeasurements(manager.list());
       },
     });
@@ -3700,6 +3776,7 @@ export function useIfcViewer() {
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,
+    setMeasurementLeg,
     measureDeletePopup,
     closeMeasureDeletePopup,
     searchQuery,

@@ -675,6 +675,22 @@
   opacity: 0.85;
 }
 
+.measure-control__leg-edit {
+  display: inline-flex;
+  align-items: center;
+}
+
+.measure-control__leg-edit input {
+  width: 64px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
 /* ---------- Confirm dialog ---------- */
 
 .confirm-dialog-backdrop {

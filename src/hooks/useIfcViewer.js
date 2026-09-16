@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { LineGeometry } from "three/addons/lines/LineGeometry.js";
 import { unzip, zip } from "fflate";
 import {
   closeRawIfcModel,
@@ -160,7 +163,6 @@ export function useIfcViewer() {
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
   const [measurements, setMeasurements] = useState([]); // [{ id, depth, horizontal, vertical, length }]
-  const [pendingMeasurePreview, setPendingMeasurePreview] = useState(null); // { depth, horizontal, vertical, length } | null — live readout while point B hasn't been placed yet
   const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
   const [measureLegEditPopup, setMeasureLegEditPopup] = useState(null); // { entryId, which, x, y } | null — which: "depth" | "horizontal" | "vertical"
   const [searchQuery, setSearchQuery] = useState("");
@@ -421,6 +423,13 @@ export function useIfcViewer() {
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
+    // Shared by every measurement line/leg's LineMaterial (see
+    // createMeasureLeg etc. below) — Line2's fat-line shader needs the
+    // viewport size in pixels to convert `linewidth` (in CSS pixels) into
+    // clip space, so this must stay in sync with the renderer's actual
+    // size (updated alongside the ResizeObserver's renderer.setSize call).
+    const measureLineResolution = new THREE.Vector2(container.clientWidth, container.clientHeight);
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
     controls.screenSpacePanning = true;
@@ -662,25 +671,21 @@ export function useIfcViewer() {
     };
 
     const MEASURE_UP = new THREE.Vector3(0, 1, 0);
-    const MEASURE_FALLBACK_TANGENT = new THREE.Vector3(0, 0, 1);
+    const MEASURE_DEPTH_AXIS = new THREE.Vector3(1, 0, 0);
+    const MEASURE_RIGHT_AXIS = new THREE.Vector3(0, 0, 1);
     // Builds the orthonormal basis a measurement's dogleg is decomposed
-    // into. `tangentUp` ("Vertical") is always true world-Y — it must
-    // never depend on which surface was clicked, or reversing the click
-    // order (wall-then-floor vs floor-then-wall) would silently swap
-    // what "Vertical" even means. `normal` ("Depth") is instead always a
-    // *horizontal* direction: the reference surface's own normal
-    // projected onto the horizontal plane (unchanged from before for a
-    // vertical wall, whose normal is already horizontal), falling back
-    // to a fixed horizontal axis only when that projection is
-    // degenerate — i.e. the surface itself is horizontal (a floor or
-    // ceiling), which has no horizontal normal component of its own to
-    // measure "depth into" at all.
-    const measureBasis = (localNormal) => {
-      const normal = (localNormal ?? MEASURE_UP).clone().normalize();
-      const horizNormal = new THREE.Vector3(normal.x, 0, normal.z);
-      const depthDir = horizNormal.lengthSq() > 1e-6 ? horizNormal.normalize() : MEASURE_FALLBACK_TANGENT.clone();
-      const tangentRight = new THREE.Vector3().crossVectors(MEASURE_UP, depthDir).normalize();
-      return { normal: depthDir, tangentUp: MEASURE_UP.clone(), tangentRight };
+    // into. Always the fixed world axes — Depth = world X, Vertical =
+    // world Y, Horizontal = world Z — regardless of which surface was
+    // clicked or its angle. This keeps the dogleg's three legs axis-
+    // aligned in every case (previously "Depth" tracked the reference
+    // surface's own normal, which made the dogleg look skewed/non-
+    // rectilinear whenever a measurement spanned surfaces at different
+    // angles, e.g. horizontal-to-vertical). `localNormal` is accepted
+    // but intentionally unused now — kept only so call sites (and the
+    // still-stored `referenceNormal` on each measurement entry) don't
+    // need to change.
+    const measureBasis = () => {
+      return { normal: MEASURE_DEPTH_AXIS.clone(), tangentUp: MEASURE_UP.clone(), tangentRight: MEASURE_RIGHT_AXIS.clone() };
     };
     // Decomposes the vector from a to b into that basis: `depth` is the
     // (signed) distance along the reference surface's normal, `right`/
@@ -737,9 +742,17 @@ export function useIfcViewer() {
     // points, colored to match the existing ΔX/ΔY/ΔZ convention, drawn
     // alongside (not instead of) the straight hypotenuse line.
     const createMeasureLeg = (p1, p2, color) => {
-      const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-      const material = new THREE.LineBasicMaterial({ color, depthTest: false });
-      const leg = new THREE.Line(geometry, material);
+      // THREE.LineBasicMaterial's `linewidth` is a documented no-op on
+      // most desktop browsers (ANGLE/OpenGL-core restricts native GL line
+      // width to 1px) — Line2/LineMaterial is three.js's "fat line" addon
+      // that actually renders at the requested pixel width via a screen-
+      // space shader, hence needing `resolution` kept in sync with the
+      // renderer's size (see measureLineResolution above).
+      const geometry = new LineGeometry();
+      geometry.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+      const material = new LineMaterial({ color, depthTest: false, linewidth: 3, resolution: measureLineResolution });
+      const leg = new Line2(geometry, material);
+      leg.computeLineDistances();
       leg.renderOrder = 999;
       modelsGroup.add(leg);
       return leg;
@@ -823,9 +836,11 @@ export function useIfcViewer() {
     const updateMeasurePreview = (a, b, localNormal) => {
       if (!measurePreviewEntry) {
         const markerB = createMeasureMarker();
-        const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
-        const material = new THREE.LineBasicMaterial({ color: 0x2a2622, depthTest: false });
-        const line = new THREE.Line(geometry, material);
+        const geometry = new LineGeometry();
+        geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
+        const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 3, resolution: measureLineResolution });
+        const line = new Line2(geometry, material);
+        line.computeLineDistances();
         line.renderOrder = 999;
         modelsGroup.add(line);
         const legDepth = createMeasureLeg(a, a, 0xef4444);
@@ -841,25 +856,19 @@ export function useIfcViewer() {
       entry.markerB.visible = tagsVisibleRef.current;
       entry.markerB.position.copy(b);
 
-      const pos = entry.line.geometry.attributes.position;
-      pos.setXYZ(0, a.x, a.y, a.z);
-      pos.setXYZ(1, b.x, b.y, b.z);
-      pos.needsUpdate = true;
-      entry.line.geometry.computeBoundingSphere();
+      entry.line.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
+      entry.line.computeLineDistances();
 
-      // Dogleg via the reference surface's own basis (see measureBasis
-      // above) instead of raw X/Y/Z, so the legs mean "along the wall"
-      // and "distance to the wall" rather than arbitrary global axes.
+      // Dogleg via the fixed world-axis basis (see measureBasis above) —
+      // Depth/Horizontal/Vertical always mean world X/Z/Y, regardless of
+      // which surface either point was clicked on.
       const basis = measureBasis(localNormal);
       const { depth, right, up } = measureComponents(a, b, basis);
       const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
       const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
       const setLeg = (leg, p1, p2) => {
-        const legPos = leg.geometry.attributes.position;
-        legPos.setXYZ(0, p1.x, p1.y, p1.z);
-        legPos.setXYZ(1, p2.x, p2.y, p2.z);
-        legPos.needsUpdate = true;
-        leg.geometry.computeBoundingSphere();
+        leg.geometry.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+        leg.computeLineDistances();
       };
       setLeg(entry.legRight, a, cornerRight);
       setLeg(entry.legUp, cornerRight, cornerRightUp);
@@ -884,11 +893,6 @@ export function useIfcViewer() {
       entry.legRightLabel.visible = visible;
       entry.legUpLabel.visible = visible;
       entry.legDepthLabel.visible = visible;
-
-      // Mirrors the 3D labels above into the right panel's Measurements
-      // tab, so its numbers track the cursor live too instead of only
-      // appearing once point B is actually placed.
-      setPendingMeasurePreview({ length, depth: Math.abs(depth), horizontal: Math.abs(right), vertical: Math.abs(up) });
 
       requestRender();
     };
@@ -929,7 +933,6 @@ export function useIfcViewer() {
       entry.legUpLabel.material.map.dispose();
       entry.legUpLabel.material.dispose();
       measurePreviewEntry = null;
-      setPendingMeasurePreview(null);
       requestRender();
     };
 
@@ -964,22 +967,16 @@ export function useIfcViewer() {
     const recomputeMeasurementEntry = (entry) => {
       const a = entry.markerA.position;
       const b = entry.markerB.position;
-      const pos = entry.line.geometry.attributes.position;
-      pos.setXYZ(0, a.x, a.y, a.z);
-      pos.setXYZ(1, b.x, b.y, b.z);
-      pos.needsUpdate = true;
-      entry.line.geometry.computeBoundingSphere();
+      entry.line.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
+      entry.line.computeLineDistances();
 
       const basis = measureBasis(entry.referenceNormal);
       const { depth, right, up } = measureComponents(a, b, basis);
       const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
       const cornerRightUp = cornerRight.clone().addScaledVector(basis.tangentUp, up);
       const setLeg = (leg, p1, p2) => {
-        const legPos = leg.geometry.attributes.position;
-        legPos.setXYZ(0, p1.x, p1.y, p1.z);
-        legPos.setXYZ(1, p2.x, p2.y, p2.z);
-        legPos.needsUpdate = true;
-        leg.geometry.computeBoundingSphere();
+        leg.geometry.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+        leg.computeLineDistances();
       };
       setLeg(entry.legRight, a, cornerRight);
       setLeg(entry.legUp, cornerRight, cornerRightUp);
@@ -1023,9 +1020,11 @@ export function useIfcViewer() {
       markerA.position.copy(a);
       const markerB = createMeasureMarker();
       markerB.position.copy(b);
-      const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
-      const material = new THREE.LineBasicMaterial({ color: 0x2a2622, depthTest: false });
-      const line = new THREE.Line(geometry, material);
+      const geometry = new LineGeometry();
+      geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
+      const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 3, resolution: measureLineResolution });
+      const line = new Line2(geometry, material);
+      line.computeLineDistances();
       line.renderOrder = 999;
       modelsGroup.add(line);
       const referenceNormal = (localNormal ?? MEASURE_UP).clone();
@@ -3074,6 +3073,7 @@ export function useIfcViewer() {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      measureLineResolution.set(width, height);
       requestRender();
     });
     resizeObserver.observe(container);
@@ -3889,7 +3889,6 @@ export function useIfcViewer() {
     selectedElementLoading,
     clearSelection,
     measurements,
-    pendingMeasurePreview,
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,

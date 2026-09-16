@@ -57,7 +57,6 @@ function App() {
     selectedElementLoading,
     clearSelection,
     measurements,
-    pendingMeasurePreview,
     measureModeActive,
     toggleMeasureMode,
     removeMeasurement,
@@ -229,7 +228,6 @@ function App() {
           element={selectedElement}
           loading={selectedElementLoading}
           measurements={measurements}
-          pendingMeasurePreview={pendingMeasurePreview}
           onRemoveMeasurement={removeMeasurement}
           pinnedDimensionTags={pinnedDimensionTags}
           onUnpinDimensionTag={unpinDimensionTag}

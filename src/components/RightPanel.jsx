@@ -24,7 +24,6 @@ export default function RightPanel({
   element,
   loading,
   measurements,
-  pendingMeasurePreview,
   onRemoveMeasurement,
   pinnedDimensionTags,
   onUnpinDimensionTag,
@@ -73,7 +72,6 @@ export default function RightPanel({
         ) : activeTab === "measurements" ? (
           <MeasureControl
             measurements={measurements}
-            pendingMeasurePreview={pendingMeasurePreview}
             onRemoveMeasurement={onRemoveMeasurement}
           />
         ) : (

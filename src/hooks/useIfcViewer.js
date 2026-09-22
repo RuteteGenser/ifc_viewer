@@ -206,16 +206,18 @@ export function useIfcViewer() {
 
   // Shared by the hide-category tool's in-view click (armed via
   // categoryHideModeActiveRef, dispatched from inside the imperative
-  // effect below) and the sidebar's "restore" button on a hidden-
-  // category row — both just need to flip every item of one category,
-  // across every loaded model, to a given visibility. Uses
-  // getItemsOfCategories (an exact, case-insensitive match on the
-  // category name) rather than tracking individual local IDs, since a
-  // "category" here always means "every instance of this IFC type",
-  // not a specific selection.
-  const setCategoryHidden = useCallback(async (category, hidden) => {
+  // effect below), the sidebar's "restore" button on a hidden-category
+  // row, and setCategoryHidden's own undo/redo below — all just need to
+  // flip every item of one category, across every loaded model, to a
+  // given visibility. Uses getItemsOfCategories (an exact, case-
+  // insensitive match on the category name) rather than tracking
+  // individual local IDs, since a "category" here always means "every
+  // instance of this IFC type", not a specific selection. Unconditional
+  // — no "already in that state" guard — so undo/redo can always
+  // deterministically flip back regardless of hiddenCategoriesRef's
+  // current contents.
+  const applyCategoryVisibility = useCallback(async (category, hidden) => {
     const key = category.toUpperCase();
-    if (hiddenCategoriesRef.current.has(key) === hidden) return; // already in that state
     renderForAWhile(() => requestRenderRef.current());
     const categoryRegex = new RegExp(`^${key}$`, "i");
     const entries = [...modelsRef.current.values()];
@@ -239,6 +241,16 @@ export function useIfcViewer() {
     setHiddenCategories([...hiddenCategoriesRef.current]);
     requestRenderRef.current();
   }, []);
+
+  const setCategoryHidden = useCallback(async (category, hidden) => {
+    const key = category.toUpperCase();
+    if (hiddenCategoriesRef.current.has(key) === hidden) return; // already in that state
+    await applyCategoryVisibility(category, hidden);
+    pushUndo({
+      undo: () => applyCategoryVisibility(category, !hidden),
+      redo: () => applyCategoryVisibility(category, hidden),
+    });
+  }, [applyCategoryVisibility, pushUndo]);
 
   // Recalibrates which direction the compass calls "true north" without
   // ever touching modelsGroup — the model itself never rotates from this.
@@ -2304,6 +2316,10 @@ export function useIfcViewer() {
       for (const [key, entry] of dimensionTags) {
         if (entry.guid === guid && entry.pinned) {
           setPinnedFlag(key, false);
+          pushUndo({
+            undo: () => setPinnedFlag(key, true),
+            redo: () => setPinnedFlag(key, false),
+          });
           break;
         }
       }
@@ -2454,7 +2470,12 @@ export function useIfcViewer() {
       const hasDimText = !!formatDimensionTag(entry?.category, entry?.dimData);
       const hasFamilyName = !!(entry && resolveTagDisplayName(entry));
       if (!entry || (!hasDimText && !hasFamilyName)) return;
+      if (entry.pinned) return; // already pinned — avoid a duplicate no-op undo entry
       setPinnedFlag(key, true);
+      pushUndo({
+        undo: () => setPinnedFlag(key, false),
+        redo: () => setPinnedFlag(key, true),
+      });
     };
 
     // Hide-category tool: a click just needs to identify which category
@@ -2553,6 +2574,20 @@ export function useIfcViewer() {
     let measureDragPendingClient = null; // { clientX, clientY } | null
     let measureDragRaycastBusy = false; // single-flight guard
     let measureDragStartClient = null; // {clientX, clientY} at pointerdown, to tell a click from a drag
+    // Becomes true only once the cursor has actually moved past
+    // CLICK_MOVE_THRESHOLD since pointerdown — the animate() consumption
+    // block below only applies a raycast result once this is true, so a
+    // plain click on a marker (down and up with no real movement) never
+    // relocates it. Without this, the down-position's own async raycast
+    // (queued immediately in tryStartMeasureMarkerDrag, resolved a frame
+    // or two later regardless of whether the gesture turns out to be a
+    // click) would unconditionally overwrite the marker's position with
+    // a tight, exact-geometry hit-test — a different tolerance than the
+    // generous 5px sphere used just to select the marker, so a click a
+    // pixel or two off-center (routine at a wall/column corner, where
+    // dimension endpoints usually sit) could snap the point to an
+    // unrelated, distant surface.
+    let measureDragMoved = false;
 
     const applyMeasureMarkerDrag = (hit) => {
       const entry = measurementsRuntime.find((m) => m.id === draggingMeasurePoint.entryId);
@@ -2572,6 +2607,13 @@ export function useIfcViewer() {
     };
     const onMeasureMarkerDragMove = (event) => {
       if (!draggingMeasurePoint) return;
+      if (!measureDragMoved && measureDragStartClient) {
+        const moved = Math.hypot(
+          event.clientX - measureDragStartClient.clientX,
+          event.clientY - measureDragStartClient.clientY,
+        );
+        if (moved >= CLICK_MOVE_THRESHOLD) measureDragMoved = true;
+      }
       measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
     };
     const onMeasureMarkerDragEnd = (event) => {
@@ -2589,6 +2631,7 @@ export function useIfcViewer() {
       draggingMeasurePoint = null;
       measureDragStartClient = null;
       measureDragPendingClient = null;
+      measureDragMoved = false;
       measureDragGeneration++; // discard any raycast still in flight from this drag
       window.removeEventListener("pointermove", onMeasureMarkerDragMove);
       window.removeEventListener("pointerup", onMeasureMarkerDragEnd);
@@ -2625,6 +2668,7 @@ export function useIfcViewer() {
       measureDragStartClient = { clientX: event.clientX, clientY: event.clientY };
       measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
       measureDragRaycastBusy = false;
+      measureDragMoved = false;
       window.addEventListener("pointermove", onMeasureMarkerDragMove);
       window.addEventListener("pointerup", onMeasureMarkerDragEnd);
       window.addEventListener("pointercancel", onMeasureMarkerDragEnd);
@@ -2984,8 +3028,11 @@ export function useIfcViewer() {
       // the actual raycast is kicked off here, once per frame, gated by a
       // single-flight guard so overlapping/out-of-order results can't
       // corrupt the drag — always using whichever position is latest once
-      // the previous raycast clears.
-      if (draggingMeasurePoint && measureDragPendingClient && !measureDragRaycastBusy) {
+      // the previous raycast clears. Also gated on measureDragMoved: a
+      // plain click's own down-position raycast would otherwise still
+      // fire and relocate the marker before pointerup is even processed
+      // (see measureDragMoved's own comment above).
+      if (draggingMeasurePoint && measureDragMoved && measureDragPendingClient && !measureDragRaycastBusy) {
         const { clientX, clientY } = measureDragPendingClient;
         measureDragPendingClient = null;
         measureDragRaycastBusy = true;

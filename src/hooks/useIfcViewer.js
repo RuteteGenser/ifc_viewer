@@ -671,21 +671,25 @@ export function useIfcViewer() {
     };
 
     const MEASURE_UP = new THREE.Vector3(0, 1, 0);
-    const MEASURE_DEPTH_AXIS = new THREE.Vector3(1, 0, 0);
-    const MEASURE_RIGHT_AXIS = new THREE.Vector3(0, 0, 1);
+    const MEASURE_FALLBACK_TANGENT = new THREE.Vector3(0, 0, 1);
     // Builds the orthonormal basis a measurement's dogleg is decomposed
-    // into. Always the fixed world axes — Depth = world X, Vertical =
-    // world Y, Horizontal = world Z — regardless of which surface was
-    // clicked or its angle. This keeps the dogleg's three legs axis-
-    // aligned in every case (previously "Depth" tracked the reference
-    // surface's own normal, which made the dogleg look skewed/non-
-    // rectilinear whenever a measurement spanned surfaces at different
-    // angles, e.g. horizontal-to-vertical). `localNormal` is accepted
-    // but intentionally unused now — kept only so call sites (and the
-    // still-stored `referenceNormal` on each measurement entry) don't
-    // need to change.
-    const measureBasis = () => {
-      return { normal: MEASURE_DEPTH_AXIS.clone(), tangentUp: MEASURE_UP.clone(), tangentRight: MEASURE_RIGHT_AXIS.clone() };
+    // into. `tangentUp` ("Vertical") is always true world-Y — it must
+    // never depend on which surface was clicked, or reversing the click
+    // order (wall-then-floor vs floor-then-wall) would silently swap
+    // what "Vertical" even means. `normal` ("Depth") is instead always a
+    // *horizontal* direction: the reference surface's own normal
+    // projected onto the horizontal plane (unchanged from before for a
+    // vertical wall, whose normal is already horizontal), falling back
+    // to a fixed horizontal axis only when that projection is
+    // degenerate — i.e. the surface itself is horizontal (a floor or
+    // ceiling), which has no horizontal normal component of its own to
+    // measure "depth into" at all.
+    const measureBasis = (localNormal) => {
+      const normal = (localNormal ?? MEASURE_UP).clone().normalize();
+      const horizNormal = new THREE.Vector3(normal.x, 0, normal.z);
+      const depthDir = horizNormal.lengthSq() > 1e-6 ? horizNormal.normalize() : MEASURE_FALLBACK_TANGENT.clone();
+      const tangentRight = new THREE.Vector3().crossVectors(MEASURE_UP, depthDir).normalize();
+      return { normal: depthDir, tangentUp: MEASURE_UP.clone(), tangentRight };
     };
     // Decomposes the vector from a to b into that basis: `depth` is the
     // (signed) distance along the reference surface's normal, `right`/
@@ -750,7 +754,7 @@ export function useIfcViewer() {
       // renderer's size (see measureLineResolution above).
       const geometry = new LineGeometry();
       geometry.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
-      const material = new LineMaterial({ color, depthTest: false, linewidth: 3, resolution: measureLineResolution });
+      const material = new LineMaterial({ color, depthTest: false, linewidth: 2, resolution: measureLineResolution });
       const leg = new Line2(geometry, material);
       leg.computeLineDistances();
       leg.renderOrder = 999;
@@ -838,7 +842,7 @@ export function useIfcViewer() {
         const markerB = createMeasureMarker();
         const geometry = new LineGeometry();
         geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
-        const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 3, resolution: measureLineResolution });
+        const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 2, resolution: measureLineResolution });
         const line = new Line2(geometry, material);
         line.computeLineDistances();
         line.renderOrder = 999;
@@ -859,9 +863,9 @@ export function useIfcViewer() {
       entry.line.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
       entry.line.computeLineDistances();
 
-      // Dogleg via the fixed world-axis basis (see measureBasis above) —
-      // Depth/Horizontal/Vertical always mean world X/Z/Y, regardless of
-      // which surface either point was clicked on.
+      // Dogleg via the reference surface's own basis (see measureBasis
+      // above) instead of raw X/Y/Z, so the legs mean "along the wall"
+      // and "distance to the wall" rather than arbitrary global axes.
       const basis = measureBasis(localNormal);
       const { depth, right, up } = measureComponents(a, b, basis);
       const cornerRight = a.clone().addScaledVector(basis.tangentRight, right);
@@ -1022,7 +1026,7 @@ export function useIfcViewer() {
       markerB.position.copy(b);
       const geometry = new LineGeometry();
       geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
-      const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 3, resolution: measureLineResolution });
+      const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 2, resolution: measureLineResolution });
       const line = new Line2(geometry, material);
       line.computeLineDistances();
       line.renderOrder = 999;
@@ -2426,8 +2430,17 @@ export function useIfcViewer() {
       requestRender();
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
+      window.removeEventListener("pointercancel", onRotateEnd);
 
-      if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+      // A "pointercancel" (the browser aborting the gesture mid-drag —
+      // an OS/system gesture taking over, a right-click context menu
+      // interrupting a left-button drag on some platforms, a touch/pen
+      // interaction losing capture — see the `window` "blur" fallback
+      // for `middleButtonHeld` above for the same class of "no normal
+      // end event ever fires" hazard) only needs the state reset above;
+      // treating it as a completed click here would risk selecting an
+      // element or placing a measurement point the user never intended.
+      if (event.type !== "pointercancel" && typeof event.clientX === "number" && typeof event.clientY === "number") {
         const moved = Math.hypot(event.clientX - downClientX, event.clientY - downClientY);
         if (moved < CLICK_MOVE_THRESHOLD) {
           if (measureModeActiveRef.current) {
@@ -2493,7 +2506,11 @@ export function useIfcViewer() {
       measureDragPendingClient = { clientX: event.clientX, clientY: event.clientY };
     };
     const onMeasureMarkerDragEnd = (event) => {
+      // A "pointercancel" (browser aborting the gesture mid-drag — see
+      // onRotateEnd's own comment on this) never counts as a click, only
+      // as a reason to drop the drag state below.
       const wasClick =
+        event.type !== "pointercancel" &&
         measureDragStartClient &&
         Math.hypot(
           event.clientX - measureDragStartClient.clientX,
@@ -2506,6 +2523,7 @@ export function useIfcViewer() {
       measureDragGeneration++; // discard any raycast still in flight from this drag
       window.removeEventListener("pointermove", onMeasureMarkerDragMove);
       window.removeEventListener("pointerup", onMeasureMarkerDragEnd);
+      window.removeEventListener("pointercancel", onMeasureMarkerDragEnd);
       if (clicked) showMeasureDeletePopupRef.current(clicked.entryId, clicked.which);
       requestRender();
     };
@@ -2540,6 +2558,7 @@ export function useIfcViewer() {
       measureDragRaycastBusy = false;
       window.addEventListener("pointermove", onMeasureMarkerDragMove);
       window.addEventListener("pointerup", onMeasureMarkerDragEnd);
+      window.addEventListener("pointercancel", onMeasureMarkerDragEnd);
       return true;
     };
     // Offset up-and-right from the marker's own screen position (not
@@ -2653,6 +2672,7 @@ export function useIfcViewer() {
       dragAxisPointWorld = null;
       window.removeEventListener("pointermove", onClipPlaneDragMove);
       window.removeEventListener("pointerup", onClipPlaneDragEnd);
+      window.removeEventListener("pointercancel", onClipPlaneDragEnd);
     };
     // Returns true if a drag was started (caller should not also start a
     // rotate gesture for this same pointerdown).
@@ -2693,6 +2713,7 @@ export function useIfcViewer() {
 
       window.addEventListener("pointermove", onClipPlaneDragMove);
       window.addEventListener("pointerup", onClipPlaneDragEnd);
+      window.addEventListener("pointercancel", onClipPlaneDragEnd);
       return true;
     };
 
@@ -2800,6 +2821,7 @@ export function useIfcViewer() {
       pivotPending = true;
       window.addEventListener("pointermove", onRotateMove);
       window.addEventListener("pointerup", onRotateEnd);
+      window.addEventListener("pointercancel", onRotateEnd);
 
       const pipeline = pipelineRef.current;
       // Also reused by onRotateEnd for element selection if this turns
@@ -3124,10 +3146,13 @@ export function useIfcViewer() {
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
       window.removeEventListener("pointermove", onRotateMove);
       window.removeEventListener("pointerup", onRotateEnd);
+      window.removeEventListener("pointercancel", onRotateEnd);
       window.removeEventListener("pointermove", onClipPlaneDragMove);
       window.removeEventListener("pointerup", onClipPlaneDragEnd);
+      window.removeEventListener("pointercancel", onClipPlaneDragEnd);
       window.removeEventListener("pointermove", onMeasureMarkerDragMove);
       window.removeEventListener("pointerup", onMeasureMarkerDragEnd);
+      window.removeEventListener("pointercancel", onMeasureMarkerDragEnd);
       for (const entry of clipPlanesRuntime) {
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();

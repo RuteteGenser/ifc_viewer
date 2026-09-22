@@ -16,10 +16,10 @@ export default function MeasureControl({ measurements, onRemoveMeasurement }) {
           <div className="clip-control__plane" key={m.id}>
             <div className="measure-control__length">Length: {(m.length * 1000).toFixed(1)} mm</div>
             <div className="measure-control__values">
-              <span style={{ color: "#ef4444" }} title="Distance along the world X axis — click its label in the 3D view to edit">
+              <span style={{ color: "#ef4444" }} title="Perpendicular distance to the second point's surface — click its label in the 3D view to edit">
                 Depth: {(m.depth * 1000).toFixed(1)} mm
               </span>
-              <span style={{ color: "#3b82f6" }} title="Distance along the world Z axis — click its label in the 3D view to edit">
+              <span style={{ color: "#3b82f6" }} title="Click its label in the 3D view to edit">
                 Horizontal: {(m.horizontal * 1000).toFixed(1)} mm
               </span>
               <span style={{ color: "#22c55e" }} title="Click its label in the 3D view to edit">

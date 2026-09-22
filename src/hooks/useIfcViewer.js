@@ -139,6 +139,13 @@ export function useIfcViewer() {
   const northOffsetRef = useRef(0);
   const tagToolActiveRef = useRef(false);
   const tagsVisibleRef = useRef(true);
+  const categoryHideModeActiveRef = useRef(false);
+  // Uppercase IFC category names (e.g. "IFCWALLSTANDARDCASE") currently
+  // hidden via the hide-category tool — the source of truth read/written
+  // from inside the imperative effect below; `hiddenCategories` state
+  // (declared with the other useState calls) is a derived snapshot kept
+  // in sync for the sidebar's list to render from.
+  const hiddenCategoriesRef = useRef(new Set());
   // guid -> {shape,diameter,width,height,length} | null — avoids
   // re-extracting the same element's dimension data on every hover frame;
   // cleared per-model in removeModel.
@@ -174,6 +181,8 @@ export function useIfcViewer() {
   const [tagToolActive, setTagToolActiveState] = useState(false);
   const [tagsVisible, setTagsVisibleState] = useState(true);
   const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
+  const [categoryHideModeActive, setCategoryHideModeActiveState] = useState(false);
+  const [hiddenCategories, setHiddenCategories] = useState([]); // string[] — categories currently hidden via the hide-category tool
 
   // A new action always invalidates the redo history — the standard
   // undo/redo convention (you can't "redo" something that's no longer
@@ -193,6 +202,42 @@ export function useIfcViewer() {
     if (!entry) return;
     await entry.redo();
     undoStackRef.current.push(entry);
+  }, []);
+
+  // Shared by the hide-category tool's in-view click (armed via
+  // categoryHideModeActiveRef, dispatched from inside the imperative
+  // effect below) and the sidebar's "restore" button on a hidden-
+  // category row — both just need to flip every item of one category,
+  // across every loaded model, to a given visibility. Uses
+  // getItemsOfCategories (an exact, case-insensitive match on the
+  // category name) rather than tracking individual local IDs, since a
+  // "category" here always means "every instance of this IFC type",
+  // not a specific selection.
+  const setCategoryHidden = useCallback(async (category, hidden) => {
+    const key = category.toUpperCase();
+    if (hiddenCategoriesRef.current.has(key) === hidden) return; // already in that state
+    renderForAWhile(() => requestRenderRef.current());
+    const categoryRegex = new RegExp(`^${key}$`, "i");
+    const entries = [...modelsRef.current.values()];
+    await Promise.all(
+      entries.map(async ({ model }) => {
+        let idsByCategory;
+        try {
+          idsByCategory = await model.getItemsOfCategories([categoryRegex]);
+        } catch (err) {
+          console.error("Failed to query category for visibility toggle", err);
+          return;
+        }
+        const ids = Object.values(idsByCategory).flat();
+        if (ids.length > 0) await model.setVisible(ids, !hidden);
+      }),
+    );
+    await pipelineRef.current?.fragments.core.update(true);
+    invalidateGroupSphereRef.current();
+    if (hidden) hiddenCategoriesRef.current.add(key);
+    else hiddenCategoriesRef.current.delete(key);
+    setHiddenCategories([...hiddenCategoriesRef.current]);
+    requestRenderRef.current();
   }, []);
 
   // Recalibrates which direction the compass calls "true north" without
@@ -1560,6 +1605,9 @@ export function useIfcViewer() {
         tagToolActiveRef.current = false;
         setTagToolActiveState(false);
         clearHoveredDimensionTagRef.current?.();
+      } else if (categoryHideModeActiveRef.current) {
+        categoryHideModeActiveRef.current = false;
+        setCategoryHideModeActiveState(false);
       }
     };
     window.addEventListener("keydown", onMeasureKeyDown);
@@ -2409,6 +2457,25 @@ export function useIfcViewer() {
       setPinnedFlag(key, true);
     };
 
+    // Hide-category tool: a click just needs to identify which category
+    // the clicked element belongs to — setCategoryHidden (declared
+    // outside this effect, a stable [] useCallback like pushUndo above)
+    // does the actual visibility work and hiddenCategoriesRef bookkeeping.
+    // Toggling means a second click on a still-visible instance of an
+    // already-hidden category re-shows it; the sidebar's hidden-category
+    // list is the only way back once every instance is hidden, since a
+    // hidden element can no longer be raycast-clicked at all.
+    const handleCategoryHideClick = async (raycastPromise) => {
+      if (!raycastPromise) return;
+      const hit = await raycastPromise;
+      if (!hit) return;
+      const [data] = await hit.fragments.getItemsData([hit.localId], { attributesDefault: true });
+      const category = data?._category?.value;
+      if (!category) return;
+      const alreadyHidden = hiddenCategoriesRef.current.has(category.toUpperCase());
+      await setCategoryHidden(category, !alreadyHidden);
+    };
+
     let activePointerId = null;
     let gestureSeq = 0;
     // True from mousedown until the pivot raycast below resolves (or the
@@ -2447,6 +2514,8 @@ export function useIfcViewer() {
             handleMeasureClick(pivotRaycastPromise);
           } else if (tagToolActiveRef.current) {
             handleTagToolClick(pivotRaycastPromise);
+          } else if (categoryHideModeActiveRef.current) {
+            handleCategoryHideClick(pivotRaycastPromise);
           } else {
             selectElementFrom(pivotRaycastPromise);
           }
@@ -3175,10 +3244,12 @@ export function useIfcViewer() {
       for (const handle of rawIfcHandlesRef.current.values()) closeRawIfcModel(handle);
       rawIfcHandlesRef.current.clear();
     };
-    // pushUndo is a stable ([]) useCallback, so including it here doesn't
-    // change this effect's run-once behavior — it only satisfies
-    // exhaustive-deps for the addPoint-internal pushUndo call above.
-  }, [pushUndo]);
+    // pushUndo and setCategoryHidden are both stable ([]) useCallbacks,
+    // so including them here doesn't change this effect's run-once
+    // behavior — it only satisfies exhaustive-deps for the addPoint-
+    // internal pushUndo call and handleCategoryHideClick's
+    // setCategoryHidden call above.
+  }, [pushUndo, setCategoryHidden]);
 
   useEffect(() => {
     cameraClipEnabledRef.current = cameraClipEnabled;
@@ -3310,9 +3381,9 @@ export function useIfcViewer() {
     });
   }, [pushUndo]);
 
-  // Measure and Tag are mutually exclusive — turning one on turns the
-  // other off, the same way a real toolbar's tool selection works,
-  // rather than letting both be active (and both fight over clicks/hover)
+  // Measure, Tag, and Hide-category are mutually exclusive — turning one
+  // on turns the others off, the same way a real toolbar's tool
+  // selection works, rather than letting several fight over clicks/hover
   // at once.
   const toggleMeasureMode = useCallback(() => {
     const next = !measureModeActiveRef.current;
@@ -3320,10 +3391,16 @@ export function useIfcViewer() {
     setMeasureModeActiveState(next);
     if (!next) {
       measureManagerRef.current?.cancelPending();
-    } else if (tagToolActiveRef.current) {
-      tagToolActiveRef.current = false;
-      setTagToolActiveState(false);
-      clearHoveredDimensionTagRef.current?.();
+    } else {
+      if (tagToolActiveRef.current) {
+        tagToolActiveRef.current = false;
+        setTagToolActiveState(false);
+        clearHoveredDimensionTagRef.current?.();
+      }
+      if (categoryHideModeActiveRef.current) {
+        categoryHideModeActiveRef.current = false;
+        setCategoryHideModeActiveState(false);
+      }
     }
   }, []);
 
@@ -3333,10 +3410,34 @@ export function useIfcViewer() {
     setTagToolActiveState(next);
     if (!next) {
       clearHoveredDimensionTagRef.current?.();
-    } else if (measureModeActiveRef.current) {
-      measureModeActiveRef.current = false;
-      setMeasureModeActiveState(false);
-      measureManagerRef.current?.cancelPending();
+    } else {
+      if (measureModeActiveRef.current) {
+        measureModeActiveRef.current = false;
+        setMeasureModeActiveState(false);
+        measureManagerRef.current?.cancelPending();
+      }
+      if (categoryHideModeActiveRef.current) {
+        categoryHideModeActiveRef.current = false;
+        setCategoryHideModeActiveState(false);
+      }
+    }
+  }, []);
+
+  const toggleCategoryHideMode = useCallback(() => {
+    const next = !categoryHideModeActiveRef.current;
+    categoryHideModeActiveRef.current = next;
+    setCategoryHideModeActiveState(next);
+    if (next) {
+      if (measureModeActiveRef.current) {
+        measureModeActiveRef.current = false;
+        setMeasureModeActiveState(false);
+        measureManagerRef.current?.cancelPending();
+      }
+      if (tagToolActiveRef.current) {
+        tagToolActiveRef.current = false;
+        setTagToolActiveState(false);
+        clearHoveredDimensionTagRef.current?.();
+      }
     }
   }, []);
 
@@ -3507,6 +3608,9 @@ export function useIfcViewer() {
         case "t":
           toggleTagTool();
           break;
+        case "g":
+          toggleCategoryHideMode();
+          break;
         case "v":
           toggleTagsVisibility();
           break;
@@ -3516,13 +3620,16 @@ export function useIfcViewer() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, toggleTagsVisibility, undo, redo]);
+  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode, toggleTagsVisibility, undo, redo]);
 
   const resetVisibility = useCallback(async () => {
     // Also exits isolate mode — otherwise the search checkboxes would
     // stay checked while a subsequent toggle silently re-applies the
-    // stale isolation set, undoing this reset.
+    // stale isolation set, undoing this reset. Same reasoning for the
+    // hide-category tool's own bookkeeping below.
     setIsolatedKeys(new Set());
+    hiddenCategoriesRef.current.clear();
+    setHiddenCategories([]);
     const entries = [...modelsRef.current.values()];
     renderForAWhile(() => requestRenderRef.current());
     await Promise.all(entries.map(({ model }) => model.resetVisible()));
@@ -3935,6 +4042,10 @@ export function useIfcViewer() {
     toggleTagTool,
     tagsVisible,
     toggleTagsVisibility,
+    categoryHideModeActive,
+    toggleCategoryHideMode,
+    hiddenCategories,
+    setCategoryHidden,
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,

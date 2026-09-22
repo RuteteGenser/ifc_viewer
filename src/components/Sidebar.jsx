@@ -27,6 +27,30 @@ function ModelRow({ model, onToggleVisible, onRemove }) {
   );
 }
 
+// A category hidden via the hide-category tool can no longer be clicked
+// in the 3D view once every instance is hidden (a hidden element isn't
+// raycastable), so this list is the only way back for a fully-hidden
+// category — "Reset visibility" also works, but clears everything
+// (individually hidden elements, isolation) rather than just this one.
+function HiddenCategoryRow({ category, onShow }) {
+  return (
+    <li className="model-row">
+      <span className="model-row__name" title={category}>
+        {category}
+      </span>
+      <button
+        type="button"
+        className="model-row__remove"
+        aria-label={`Show ${category}`}
+        title="Show this category again"
+        onClick={() => onShow(category)}
+      >
+        ✕
+      </button>
+    </li>
+  );
+}
+
 export default function Sidebar({
   className = "",
   models,
@@ -42,6 +66,8 @@ export default function Sidebar({
   onSetClipPlaneGizmoVisible,
   onFlipClipPlane,
   onRemoveClipPlane,
+  hiddenCategories,
+  onShowCategory,
 }) {
   const fileInputRef = useRef(null);
 
@@ -107,6 +133,17 @@ export default function Sidebar({
       >
         Reset visibility
       </button>
+
+      {hiddenCategories.length > 0 && (
+        <>
+          <div className="sidebar__section-title">Hidden categories</div>
+          <ul className="model-list">
+            {hiddenCategories.map((category) => (
+              <HiddenCategoryRow key={category} category={category} onShow={onShowCategory} />
+            ))}
+          </ul>
+        </>
+      )}
 
       <ClipPlaneControl
         clipPlanes={clipPlanes}

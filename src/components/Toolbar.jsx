@@ -40,6 +40,17 @@ function EyeOffIcon() {
   );
 }
 
+function HideCategoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+      <path d="M4 7.5l8 4.5 8-4.5" />
+      <path d="M12 12v9" />
+      <path d="M3 3l18 18" />
+    </svg>
+  );
+}
+
 export default function Toolbar({
   hasModels,
   onResetView,
@@ -51,6 +62,8 @@ export default function Toolbar({
   onSetCameraClipDistance,
   tagToolActive,
   onToggleTagTool,
+  categoryHideModeActive,
+  onToggleCategoryHideMode,
   tagsVisible,
   onToggleTagsVisibility,
   hasPinnedTags,
@@ -101,6 +114,17 @@ export default function Toolbar({
           aria-label="Toggle tag tool"
         >
           <TagIcon />
+        </button>
+      </Tooltip>
+      <Tooltip description="Hide category — click an element to hide/show its whole category" hotkey="G">
+        <button
+          type="button"
+          className={`top-bar__icon-button${categoryHideModeActive ? " top-bar__icon-button--active" : ""}`}
+          onClick={onToggleCategoryHideMode}
+          disabled={!hasModels}
+          aria-label="Toggle hide-category tool"
+        >
+          <HideCategoryIcon />
         </button>
       </Tooltip>
       <Tooltip description="Toggle tag & measurement visibility" hotkey="V">

@@ -78,6 +78,10 @@ function App() {
     toggleTagTool,
     tagsVisible,
     toggleTagsVisibility,
+    categoryHideModeActive,
+    toggleCategoryHideMode,
+    hiddenCategories,
+    setCategoryHidden,
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,
@@ -164,6 +168,8 @@ function App() {
           onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
           onFlipClipPlane={flipClipPlane}
           onRemoveClipPlane={removeClipPlane}
+          hiddenCategories={hiddenCategories}
+          onShowCategory={(category) => setCategoryHidden(category, false)}
         />
 
         <div
@@ -186,6 +192,8 @@ function App() {
             onSetCameraClipDistance={setCameraClipDistance}
             tagToolActive={tagToolActive}
             onToggleTagTool={toggleTagTool}
+            categoryHideModeActive={categoryHideModeActive}
+            onToggleCategoryHideMode={toggleCategoryHideMode}
             tagsVisible={tagsVisible}
             onToggleTagsVisibility={toggleTagsVisibility}
             hasPinnedTags={pinnedDimensionTags.length > 0}

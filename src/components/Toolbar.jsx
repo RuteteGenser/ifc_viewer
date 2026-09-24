@@ -68,6 +68,7 @@ export default function Toolbar({
   onToggleTagsVisibility,
   hasPinnedTags,
   hasMeasurements,
+  hasModelColors,
   searchQuery,
   onQueryChange,
   searchResults,
@@ -127,12 +128,12 @@ export default function Toolbar({
           <HideCategoryIcon />
         </button>
       </Tooltip>
-      <Tooltip description="Toggle tag & measurement visibility" hotkey="V">
+      <Tooltip description="Toggle tag/measurement visibility & model color overrides" hotkey="V">
         <button
           type="button"
           className={`top-bar__icon-button${tagsVisible ? "" : " top-bar__icon-button--active"}`}
           onClick={onToggleTagsVisibility}
-          disabled={!hasModels || (!hasPinnedTags && !hasMeasurements)}
+          disabled={!hasModels || (!hasPinnedTags && !hasMeasurements && !hasModelColors)}
           aria-label="Toggle tag & measurement visibility"
         >
           {tagsVisible ? <EyeIcon /> : <EyeOffIcon />}

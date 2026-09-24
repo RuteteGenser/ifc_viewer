@@ -52,6 +52,49 @@ function renderForAWhile(requestRender, durationMs = 1000) {
   tick();
 }
 
+// Visual-only whole-model color override. Deliberately does NOT use
+// FragmentsModel's own setColor()/resetColor()/highlight() API — a
+// rigorous check confirmed those calls resolve successfully (and
+// getHighlight() would report the change) but never actually change
+// what's rendered, the same silent-no-op this codebase already hit with
+// per-item highlight() (see showHighlightFill's own comment on that).
+// This instead walks the model's real THREE.Mesh children directly and
+// swaps in a cloned, recolored material — each mesh's *original*
+// material is stashed on `userData.originalMaterial` the first time an
+// override is applied (never disposed — it may still be owned/shared by
+// fragments' own MaterialManager) so resetting is exact, not a lossy
+// "put back some default." Passing `color: null` restores it. Called
+// both directly (picking a new color) and defensively from a model's
+// onViewUpdated event (tiles regenerate in the background on LOD/
+// visibility changes, which would otherwise silently drop the override
+// on a rebuilt tile — see where onViewUpdated is wired up below).
+function applyModelColorOverride(object, color) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    const wasOverridden = !!child.userData.originalMaterial;
+    const disposeCurrentMaterial = () => {
+      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+      else child.material.dispose();
+    };
+    if (color) {
+      if (!wasOverridden) child.userData.originalMaterial = child.material;
+      else disposeCurrentMaterial(); // drop the previous override clone, not the stashed original
+      const source = child.userData.originalMaterial;
+      const sourceMats = Array.isArray(source) ? source : [source];
+      const overridden = sourceMats.map((m) => {
+        const clone = m.clone();
+        clone.color.set(color);
+        return clone;
+      });
+      child.material = Array.isArray(source) ? overridden : overridden[0];
+    } else if (wasOverridden) {
+      disposeCurrentMaterial();
+      child.material = child.userData.originalMaterial;
+      delete child.userData.originalMaterial;
+    }
+  });
+}
+
 // `object` reflects the *current* world transform (including any rotation
 // applied by the arcball drag below), unlike the fragments library's own
 // `model.box`, which is fixed at load time and would go stale once the
@@ -109,6 +152,7 @@ export function useIfcViewer() {
   const modelsRef = useRef(new Map()); // modelId -> { model: FragmentsModel, object: THREE.Object3D }
   const rawIfcHandlesRef = useRef(new Map()); // modelId -> { api, modelID } | never entered if sourceBytes is unavailable — lazily opened raw web-ifc models, for data getItemsData can't reach (see rawIfcQuery.js)
   const modelNamesRef = useRef(new Map()); // modelId -> display name, kept in sync with `models` state
+  const modelColorsRef = useRef(new Map()); // modelId -> hex color string | null, kept in sync with `models` state
   const invalidateGroupSphereRef = useRef(() => {});
   const requestRenderRef = useRef(() => {});
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
@@ -3313,6 +3357,10 @@ export function useIfcViewer() {
   }, [models]);
 
   useEffect(() => {
+    modelColorsRef.current = new Map(models.map((m) => [m.id, m.color]));
+  }, [models]);
+
+  useEffect(() => {
     measureDeletePopupRef.current = measureDeletePopup;
   }, [measureDeletePopup]);
 
@@ -3494,6 +3542,12 @@ export function useIfcViewer() {
     setTagsVisibleState(next);
     refreshAllDimensionTagsVisibilityRef.current?.();
     refreshMeasurementsVisibilityRef.current?.();
+    for (const [modelId, color] of modelColorsRef.current) {
+      if (!color) continue;
+      const entry = modelsRef.current.get(modelId);
+      if (entry) applyModelColorOverride(entry.object, next ? color : null);
+    }
+    requestRenderRef.current();
   }, []);
 
   const unpinDimensionTag = useCallback((guid) => {
@@ -3811,12 +3865,28 @@ export function useIfcViewer() {
     [],
   );
 
+  // Visual-only per-model color override, picked from the sidebar.
+  // `color` is a hex string, or `null` to clear it. Stores the choice in
+  // `models` state regardless of whether overlays ("V") are currently
+  // shown — only actually paints it on screen when they are, so a color
+  // picked while overlays are hidden shows up as soon as "V" is pressed,
+  // without needing to be re-picked (see toggleTagsVisibility below).
+  const setModelColor = useCallback((modelId, color) => {
+    setModels((prev) => prev.map((m) => (m.id === modelId ? { ...m, color } : m)));
+    const entry = modelsRef.current.get(modelId);
+    if (entry && tagsVisibleRef.current) {
+      applyModelColorOverride(entry.object, color);
+      requestRenderRef.current();
+    }
+  }, []);
+
   const removeModel = useCallback(async (modelId) => {
     const pipeline = pipelineRef.current;
     const modelsGroup = modelsGroupRef.current;
     const entry = modelsRef.current.get(modelId);
 
     if (entry && modelsGroup) modelsGroup.remove(entry.object);
+    if (entry?.onViewUpdatedHandler) entry.model.onViewUpdated.remove(entry.onViewUpdatedHandler);
     modelsRef.current.delete(modelId);
     clearDimensionTagsForModelRef.current?.(modelId);
     const rawHandle = rawIfcHandlesRef.current.get(modelId);
@@ -3910,13 +3980,25 @@ export function useIfcViewer() {
 
         if (cameraRef.current) model.useCamera(cameraRef.current);
         modelsGroup.add(model.object);
-        modelsRef.current.set(modelId, { model, object: model.object, sourceBytes, fileName: displayName });
+        const entry = { model, object: model.object, sourceBytes, fileName: displayName };
+        modelsRef.current.set(modelId, entry);
+        // Tiles regenerate in the background (LOD/visibility changes),
+        // which would otherwise silently drop a manual color override on
+        // whatever tile gets rebuilt — reapply it every time using
+        // whatever's currently stored, not what it was when this model
+        // first loaded.
+        const handleViewUpdated = () => {
+          const color = tagsVisibleRef.current ? (modelColorsRef.current.get(modelId) ?? null) : null;
+          if (color) applyModelColorOverride(entry.object, color);
+        };
+        model.onViewUpdated.add(handleViewUpdated);
+        entry.onViewUpdatedHandler = handleViewUpdated;
         invalidateGroupSphereRef.current();
         requestRenderRef.current();
 
         setModels((prev) => [
           ...prev,
-          { id: modelId, name: displayName, visible: true },
+          { id: modelId, name: displayName, visible: true, color: null },
         ]);
       } catch (err) {
         console.error(`Failed to load ${displayName}`, err);
@@ -4047,6 +4129,7 @@ export function useIfcViewer() {
     confirmReplace,
     confirmReplaceAnswer,
     setVisible,
+    setModelColor,
     removeModel,
     resetView,
     clearError,

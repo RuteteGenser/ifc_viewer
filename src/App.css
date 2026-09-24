@@ -552,6 +552,33 @@
   color: var(--danger);
 }
 
+.model-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.model-row__color {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.model-row__color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.model-row__color::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
 /* ---------- Clip plane control ---------- */
 
 .clip-control {

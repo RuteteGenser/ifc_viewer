@@ -36,6 +36,7 @@ function App() {
     confirmReplace,
     confirmReplaceAnswer,
     setVisible,
+    setModelColor,
     removeModel,
     resetView,
     resetVisibility,
@@ -158,6 +159,7 @@ function App() {
             setSidebarOpen(false);
           }}
           onToggleVisible={setVisible}
+          onSetModelColor={setModelColor}
           onRemove={removeModel}
           onSaveIfcZip={saveAsIfcZip}
           onResetVisibility={resetVisibility}
@@ -198,6 +200,7 @@ function App() {
             onToggleTagsVisibility={toggleTagsVisibility}
             hasPinnedTags={pinnedDimensionTags.length > 0}
             hasMeasurements={measurements.length > 0}
+            hasModelColors={models.some((m) => m.color)}
             searchQuery={searchQuery}
             onQueryChange={setSearchQuery}
             searchResults={searchResults}

@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 
-function ModelRow({ model, onToggleVisible, onRemove }) {
+function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   return (
     <li className="model-row">
       <label className="model-row__label">
@@ -14,15 +14,36 @@ function ModelRow({ model, onToggleVisible, onRemove }) {
           {model.name}
         </span>
       </label>
-      <button
-        type="button"
-        className="model-row__remove"
-        aria-label={`Remove ${model.name}`}
-        title="Remove model"
-        onClick={() => onRemove(model.id)}
-      >
-        ✕
-      </button>
+      <div className="model-row__actions">
+        <input
+          type="color"
+          className="model-row__color"
+          value={model.color ?? "#ffffff"}
+          onChange={(e) => onSetColor(model.id, e.target.value)}
+          aria-label={`Override ${model.name}'s color`}
+          title="Override this model's color (visual only) — toggle with V"
+        />
+        {model.color && (
+          <button
+            type="button"
+            className="model-row__remove"
+            aria-label={`Clear ${model.name}'s color override`}
+            title="Clear color override"
+            onClick={() => onSetColor(model.id, null)}
+          >
+            ✕
+          </button>
+        )}
+        <button
+          type="button"
+          className="model-row__remove"
+          aria-label={`Remove ${model.name}`}
+          title="Remove model"
+          onClick={() => onRemove(model.id)}
+        >
+          ✕
+        </button>
+      </div>
     </li>
   );
 }
@@ -57,6 +78,7 @@ export default function Sidebar({
   onFilesSelected,
   onToggleVisible,
   onRemove,
+  onSetModelColor,
   onSaveIfcZip,
   onResetVisibility,
   isLoading,
@@ -119,6 +141,7 @@ export default function Sidebar({
               model={model}
               onToggleVisible={onToggleVisible}
               onRemove={onRemove}
+              onSetColor={onSetModelColor}
             />
           ))}
         </ul>

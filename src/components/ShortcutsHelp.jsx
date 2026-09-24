@@ -11,7 +11,7 @@ const SHORTCUTS = [
   { keys: "M", description: "Toggle measure mode" },
   { keys: "T", description: "Toggle tag tool (pin a hovered dimension tag)" },
   { keys: "G", description: "Toggle hide-category tool (click an element to hide/show its whole category)" },
-  { keys: "V", description: "Toggle tag & measurement visibility" },
+  { keys: "V", description: "Toggle tag/measurement visibility & model color overrides" },
   { keys: "Esc", description: "Exit the current tool" },
   { keys: "Ctrl+Z", description: "Undo" },
   { keys: "Ctrl+Y / Ctrl+Shift+Z", description: "Redo" },

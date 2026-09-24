@@ -72,25 +72,96 @@ function applyModelColorOverride(object, color) {
   object.traverse((child) => {
     if (!child.isMesh) return;
     const wasOverridden = !!child.userData.originalMaterial;
-    const disposeCurrentMaterial = () => {
-      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
-      else child.material.dispose();
-    };
+
     if (color) {
-      if (!wasOverridden) child.userData.originalMaterial = child.material;
-      else disposeCurrentMaterial(); // drop the previous override clone, not the stashed original
-      const source = child.userData.originalMaterial;
-      const sourceMats = Array.isArray(source) ? source : [source];
-      const overridden = sourceMats.map((m) => {
-        const clone = m.clone();
-        clone.color.set(color);
-        return clone;
-      });
-      child.material = Array.isArray(source) ? overridden : overridden[0];
+      // Per-mesh try/catch is load-bearing, not defensive fluff: some
+      // tile materials (confirmed for fragments' own LOD placeholder
+      // tiles, streamed in the background for any model complex enough
+      // to trigger LOD) aren't a plain color-bearing material at all —
+      // cloning one throws (three.js's Material.clone() calls `new
+      // this.constructor()` with no arguments, and that material's
+      // constructor dereferences a required argument and throws on
+      // undefined). Object3D.traverse() has no per-child error
+      // isolation, so one uncaught throw here used to abort the *entire*
+      // traversal, silently leaving every mesh visited afterward
+      // uncolored — exactly the "not all elements changed" bug. A
+      // skipped mesh here is harmless: if it's a transient LOD
+      // placeholder, the next onViewUpdated cycle retries once fragments
+      // swaps in real geometry with a normal material.
+      try {
+        const previousOverride = wasOverridden ? child.material : null;
+        if (!wasOverridden) child.userData.originalMaterial = child.material;
+        const source = child.userData.originalMaterial;
+        const sourceMats = Array.isArray(source) ? source : [source];
+        const overridden = sourceMats.map((m) => {
+          // LOD placeholder tiles use `LodMaterial`, a THREE.ShaderMaterial
+          // with no plain `.color` — its color lives in a `lodColor`
+          // uniform, and its instances are shared across every tile using
+          // the same base color (fragments' own MaterialManager caches
+          // them by definition). Mutate the shared instance's uniform in
+          // place instead of cloning: cloning would throw (see above), and
+          // even if it didn't, tiles would need re-pointing at the clone
+          // every time fragments regenerates them.
+          if (m.isLodMaterial) {
+            if (!m.userData.originalLodColor) m.userData.originalLodColor = m.lodColor.clone();
+            m.lodColor.set(color);
+            return m;
+          }
+          const clone = m.clone();
+          clone.color.set(color);
+          return clone;
+        });
+        child.material = Array.isArray(source) ? overridden : overridden[0];
+        // Only dispose the previous override *after* the new one is
+        // built successfully — disposing first (as this used to do)
+        // would leave the mesh materialless if the clone above threw.
+        // Never dispose a LodMaterial here — it's the same shared
+        // instance as `source`/`overridden` (mutated, not cloned), still
+        // in active use by other tiles.
+        if (previousOverride) {
+          const prevMats = Array.isArray(previousOverride) ? previousOverride : [previousOverride];
+          prevMats.forEach((m) => {
+            if (!m.isLodMaterial) m.dispose();
+          });
+        }
+        // Repeated-geometry instances (bolts, windows, structural
+        // members) can carry their own per-instance tint in
+        // `instanceColor`, which three.js's instancing shader multiplies
+        // into the material's base color — left alone, that would blend
+        // the override with each instance's original hue instead of a
+        // flat color. Suppress it for the duration of the override
+        // (nulling it makes the shader skip the multiply entirely) and
+        // restore it on clear, symmetric with the material itself.
+        if (child.isInstancedMesh && child.instanceColor && !child.userData.originalInstanceColor) {
+          child.userData.originalInstanceColor = child.instanceColor;
+          child.instanceColor = null;
+        }
+      } catch (err) {
+        if (!wasOverridden) delete child.userData.originalMaterial;
+        if (!child.userData.colorOverrideSkipped) {
+          child.userData.colorOverrideSkipped = true;
+          console.warn("Skipped color override for a mesh with a non-standard material", err);
+        }
+      }
     } else if (wasOverridden) {
-      disposeCurrentMaterial();
-      child.material = child.userData.originalMaterial;
+      const source = child.userData.originalMaterial;
+      const currentMats = Array.isArray(child.material) ? child.material : [child.material];
+      currentMats.forEach((m) => {
+        if (m.isLodMaterial) {
+          if (m.userData.originalLodColor) {
+            m.lodColor.set(m.userData.originalLodColor);
+            delete m.userData.originalLodColor;
+          }
+        } else {
+          m.dispose();
+        }
+      });
+      child.material = source;
       delete child.userData.originalMaterial;
+      if (child.userData.originalInstanceColor) {
+        child.instanceColor = child.userData.originalInstanceColor;
+        delete child.userData.originalInstanceColor;
+      }
     }
   });
 }

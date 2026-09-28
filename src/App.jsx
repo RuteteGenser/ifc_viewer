@@ -3,6 +3,7 @@ import { useIfcViewer } from "./hooks/useIfcViewer";
 import Viewport from "./components/Viewport";
 import Sidebar from "./components/Sidebar";
 import DropOverlay from "./components/DropOverlay";
+import LoadingOverlay from "./components/LoadingOverlay";
 import StatusBanner from "./components/StatusBanner";
 import ContextMenu from "./components/ContextMenu";
 import RightPanel from "./components/RightPanel";
@@ -183,6 +184,7 @@ function App() {
         >
           <Viewport containerRef={containerRef} />
           <DropOverlay visible={isDragging} />
+          <LoadingOverlay visible={isLoading} label={loadingLabel} />
           <Toolbar
             hasModels={models.length > 0}
             onResetView={resetView}
@@ -214,12 +216,7 @@ function App() {
             onOffsetChange={setNorthOffset}
             disabled={models.length === 0}
           />
-          <StatusBanner
-            isLoading={isLoading}
-            loadingLabel={loadingLabel}
-            error={error}
-            onDismissError={clearError}
-          />
+          <StatusBanner error={error} onDismissError={clearError} />
         </div>
 
         {contextMenu && (

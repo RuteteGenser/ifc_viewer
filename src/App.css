@@ -1265,6 +1265,45 @@
   color: var(--text);
 }
 
+/* Blocks all interaction with the viewport (canvas, toolbar, compass —
+   everything else in .viewport-wrapper) until the models being loaded
+   are parsed and placed in the scene. z-index above .toolbar (41) so it
+   sits over the tool buttons too, not just the canvas underneath them. */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(42, 38, 34, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 42;
+}
+
+.loading-overlay__box {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+  padding: 16px 24px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.loading-overlay__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
 /* ---------- Compass ---------- */
 
 .compass {
@@ -1349,12 +1388,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-.status-banner--loading {
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-}
-
 .status-banner--error {
   background: var(--danger-bg);
   border: 1px solid var(--danger-border);
@@ -1368,16 +1401,6 @@
   color: inherit;
   cursor: pointer;
   font-size: 13px;
-  flex-shrink: 0;
-}
-
-.spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
   flex-shrink: 0;
 }
 

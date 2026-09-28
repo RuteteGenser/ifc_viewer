@@ -335,9 +335,9 @@ export function useIfcViewer() {
     const key = category.toUpperCase();
     renderForAWhile(() => requestRenderRef.current());
     const categoryRegex = new RegExp(`^${key}$`, "i");
-    const entries = [...modelsRef.current.values()];
+    const entries = [...modelsRef.current.entries()];
     await Promise.all(
-      entries.map(async ({ model }) => {
+      entries.map(async ([modelId, { model }]) => {
         let idsByCategory;
         try {
           idsByCategory = await model.getItemsOfCategories([categoryRegex]);
@@ -347,6 +347,18 @@ export function useIfcViewer() {
         }
         const ids = Object.values(idsByCategory).flat();
         if (ids.length > 0) await model.setVisible(ids, !hidden);
+        // Hiding a category that contains the currently selected/highlighted
+        // element leaves the same stale highlight/panel as hiding just that
+        // one element does (see hideHit/setVisible above) — the highlight
+        // overlay is a separate mesh outside fragments' own visibility
+        // system, so it doesn't disappear on its own just because the
+        // underlying element got hidden.
+        const sel = selectedHitRef.current;
+        if (hidden && sel && sel.modelId === modelId && ids.includes(sel.localId)) {
+          clearHighlightRef.current?.();
+          selectedHitRef.current = null;
+          setSelectedElement(null);
+        }
       }),
     );
     await pipelineRef.current?.fragments.core.update(true);
@@ -1735,6 +1747,15 @@ export function useIfcViewer() {
       } else if (categoryHideModeActiveRef.current) {
         categoryHideModeActiveRef.current = false;
         setCategoryHideModeActiveState(false);
+      } else if (selectedHitRef.current) {
+        // Inlined rather than calling the `clearSelection` callback
+        // directly — that's defined later in this same hook function via
+        // its own useCallback, so referencing it here would depend on
+        // this effect's closure being invoked only after that later
+        // assignment has run (true today, but fragile to rely on).
+        clearHighlightRef.current?.();
+        selectedHitRef.current = null;
+        setSelectedElement(null);
       }
     };
     window.addEventListener("keydown", onMeasureKeyDown);
@@ -3830,6 +3851,18 @@ export function useIfcViewer() {
         }
         await model.setVisible(undefined, false);
         if (idsToShow.length > 0) await model.setVisible(idsToShow, true);
+        // Isolating a set that excludes the currently selected/highlighted
+        // element leaves the same stale highlight/panel as hiding just that
+        // one element does (see hideHit/setVisible above) — the highlight
+        // overlay is a separate mesh outside fragments' own visibility
+        // system, so it doesn't disappear on its own just because the
+        // underlying element got hidden.
+        const sel = selectedHitRef.current;
+        if (sel && sel.modelId === modelId && !idsToShow.includes(sel.localId)) {
+          clearHighlightRef.current?.();
+          selectedHitRef.current = null;
+          setSelectedElement(null);
+        }
       }),
     );
     await pipelineRef.current?.fragments.core.update(true);
@@ -3871,22 +3904,39 @@ export function useIfcViewer() {
     // "exclusive" aggregation in getItemsByQuery requires an item to match
     // every entry, so this finds names containing all the typed words in
     // any order, rather than the whole query as one exact-order phrase.
-    const terms = query.trim().split(/\s+/).filter(Boolean);
+    const trimmed = query.trim();
+    const terms = trimmed.split(/\s+/).filter(Boolean);
     const termQueries = terms.map((term) => {
       const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return { name: /^Name$/, value: new RegExp(escaped, "i") };
     });
+    // Also match the whole query against the element's category/type (e.g.
+    // typing "IfcBuildingElementProxy" or just "proxy") — Name and category
+    // are unrelated fields, so the Name-only query above never finds
+    // anything for a type name unless it coincidentally also appears in
+    // some element's Name. Unanchored substring match, unlike the exact
+    // `^key$` regex the hide-category tool uses, since here we don't
+    // already know the exact category name being searched for.
+    const categoryEscaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const categoryRegex = new RegExp(categoryEscaped, "i");
     const rows = [];
     for (const [modelId, { model }] of modelsRef.current) {
       if (rows.length >= 50) break;
-      let ids;
+      let nameIds = [];
       try {
-        ids = await model.getItemsByQuery({ attributes: { queries: termQueries } });
+        nameIds = await model.getItemsByQuery({ attributes: { queries: termQueries } });
       } catch (err) {
         console.error("Search query failed", err);
-        continue;
       }
-      if (!ids || ids.length === 0) continue;
+      let categoryIds = [];
+      try {
+        const idsByCategory = await model.getItemsOfCategories([categoryRegex]);
+        categoryIds = Object.values(idsByCategory).flat();
+      } catch (err) {
+        console.error("Category search failed", err);
+      }
+      const ids = [...new Set([...(nameIds ?? []), ...categoryIds])];
+      if (ids.length === 0) continue;
       const capped = ids.slice(0, 50 - rows.length);
       const items = await model.getItemsData(capped, { attributesDefault: true });
       const modelName = modelNamesRef.current.get(modelId);

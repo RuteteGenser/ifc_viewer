@@ -41,7 +41,7 @@ export default function SearchBar({
       <input
         type="text"
         className="search-bar__input"
-        placeholder="Search elements by name…"
+        placeholder="Search elements by name or type…"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
         onFocus={() => setOpen(true)}

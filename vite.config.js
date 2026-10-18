@@ -10,7 +10,8 @@ export default defineConfig(({ command }) => ({
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
   resolve: {
-    alias: [
+    // Build only: the dev server pre-bundles dependencies and would trip over these.
+    alias: command !== 'build' ? [] : [
       // The package's "./worker" export is the 3.3 MB unminified build; the
       // minified build of the same worker ships next to it (1.4 MB).
       {
@@ -18,11 +19,6 @@ export default defineConfig(({ command }) => ({
         replacement: fileURLToPath(
           new URL('./node_modules/@thatopen/fragments/dist/Worker/worker.min.mjs', import.meta.url),
         ) + '$1',
-      },
-      // WebGPU code that @thatopen/components bundles but the viewer never runs.
-      {
-        find: /^three\/(webgpu|tsl)$/,
-        replacement: fileURLToPath(new URL('./src/stubs/unused-webgpu.js', import.meta.url)),
       },
     ],
   },

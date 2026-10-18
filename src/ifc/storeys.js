@@ -1,0 +1,86 @@
+// Reads the building storeys (levels) of the loaded models, with every
+// element that sits on each one, so the viewer can isolate a floor through
+// its ordinary isolate logic.
+
+// Storey elevations are plain numbers in the file's length unit. The unit
+// declaration sits near the top of an IFC file, so a quick scan of the first
+// few KB is enough (metres is the fallback).
+export function lengthUnitToMetres(bytes) {
+  if (!bytes) return 1;
+  const head = new TextDecoder().decode(bytes.subarray(0, 200000));
+  const si = /IFCSIUNIT\(\s*\*\s*,\s*\.LENGTHUNIT\.\s*,\s*(\$|\.[A-Z]+\.)\s*,\s*\.METRE\.\s*\)/i.exec(head);
+  if (si) {
+    const prefix = si[1].toUpperCase();
+    if (prefix === ".MILLI.") return 0.001;
+    if (prefix === ".CENTI.") return 0.01;
+    if (prefix === ".DECI.") return 0.1;
+    if (prefix === ".KILO.") return 1000;
+    return 1;
+  }
+  if (/IFCCONVERSIONBASEDUNIT\([^;]*LENGTHUNIT[^;]*'(FOOT|FEET)'/i.test(head)) return 0.3048;
+  if (/IFCCONVERSIONBASEDUNIT\([^;]*LENGTHUNIT[^;]*'(INCH)'/i.test(head)) return 0.0254;
+  return 1;
+}
+
+function collectLocalIds(node, out) {
+  for (const child of node.children ?? []) {
+    if (child.localId != null) out.push(child.localId);
+    collectLocalIds(child, out);
+  }
+}
+
+// The spatial tree alternates two kinds of node: a category node (category
+// set, no localId) whose children are the instances of that category (localId
+// set), each with further category nodes beneath it.
+function findStoreys(node, out) {
+  if (node.category && /^IFCBUILDINGSTOREY$/i.test(node.category)) {
+    for (const instance of node.children ?? []) if (instance.localId != null) out.push(instance);
+  }
+  for (const child of node.children ?? []) findStoreys(child, out);
+}
+
+// -> [{ id, name, elevation (metres), keys: string[] }] sorted lowest first.
+// Storeys with the same name and elevation in different models are merged.
+export async function readLevels(entries) {
+  const merged = new Map();
+  for (const [modelId, { model, sourceBytes }] of entries) {
+    let tree;
+    try {
+      tree = await model.getSpatialStructure();
+    } catch (err) {
+      console.error("Could not read the spatial structure", err);
+      continue;
+    }
+    const storeys = [];
+    findStoreys(tree, storeys);
+    if (storeys.length === 0) continue;
+    const unit = lengthUnitToMetres(sourceBytes);
+    let data = [];
+    try {
+      data = await model.getItemsData(
+        storeys.map((s) => s.localId),
+        { attributesDefault: true, relations: {} },
+      );
+    } catch (err) {
+      console.error("Could not read storey names", err);
+    }
+    storeys.forEach((storey, i) => {
+      const name = String(data[i]?.Name?.value ?? data[i]?.LongName?.value ?? "").trim() || `Level ${i + 1}`;
+      const raw = Number(data[i]?.Elevation?.value);
+      const elevation = Number.isFinite(raw) ? raw * unit : null;
+      const ids = [];
+      collectLocalIds(storey, ids);
+      const mergeKey = `${name}|${elevation === null ? "?" : elevation.toFixed(2)}`;
+      const level = merged.get(mergeKey) ?? { id: mergeKey, name, elevation, keys: [] };
+      for (const id of ids) level.keys.push(`${modelId}::${id}`);
+      merged.set(mergeKey, level);
+    });
+  }
+  return [...merged.values()].sort((a, b) => (a.elevation ?? 0) - (b.elevation ?? 0));
+}
+
+export function formatElevation(metres) {
+  if (metres === null || metres === undefined) return "";
+  const sign = metres > 0.005 ? "+" : metres < -0.005 ? "-" : "";
+  return `${sign}${Math.abs(metres).toFixed(2)} m`;
+}

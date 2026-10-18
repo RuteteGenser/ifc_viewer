@@ -14,6 +14,7 @@ import {
 } from "../ifc/rawIfcQuery";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { importIfcInWorker } from "../ifc/ifcImportClient";
+import { useViewFeatures } from "./useViewFeatures";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -964,6 +965,14 @@ export function useIfcViewer() {
         if (!entry) return;
         entry.localPlane.normal.negate();
         entry.localPlane.constant *= -1;
+        syncGizmoMesh(entry);
+        requestRender();
+      },
+      // Slides a plane along its own normal (used by the section slider).
+      setConstant: (id, constant) => {
+        const entry = clipPlanesRuntime.find((p) => p.id === id);
+        if (!entry) return;
+        entry.localPlane.constant = constant;
         syncGizmoMesh(entry);
         requestRender();
       },
@@ -4552,6 +4561,16 @@ export function useIfcViewer() {
     resetVisibility();
   }, [resetVisibility]);
 
+  // Replaces the whole isolate set at once (used by the Levels control).
+  const isolateKeys = useCallback(
+    (keys) => {
+      const next = new Set(keys);
+      setIsolatedKeys(next);
+      applyIsolation(next);
+    },
+    [applyIsolation],
+  );
+
   // Isolates / un-isolates the selected element (same keys as the search
   // checkboxes use, so both stay in sync).
   const isolateSelection = useCallback(() => {
@@ -5191,7 +5210,34 @@ export function useIfcViewer() {
     setSelectedElement(null);
   }, []);
 
+  const viewFeatures = useViewFeatures({
+    cameraRef,
+    controlsRef,
+    modelsGroupRef,
+    modelsRef,
+    rendererRef,
+    sceneRef,
+    requestRenderRef,
+    autoFramedRef,
+    cameraAnimRef,
+    cancelCameraAnim,
+    getVisibleFrac,
+    helpers: { getSceneBox, computeFit, applyPose },
+    models,
+    isLoading,
+    isolatedKeys,
+    isolateKeys,
+    showToast,
+    clipPlaneManagerRef,
+    clipPlanes,
+    setClipPlanes,
+    pushUndo,
+    flipClipPlane,
+    removeClipPlane,
+  });
+
   return {
+    viewFeatures,
     containerRef,
     models,
     isLoading,

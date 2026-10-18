@@ -8,6 +8,9 @@ function FlipIcon() {
   );
 }
 
+// Touch screens have no right-click or Shift key.
+const TOUCH_UI = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
 export default function ClipPlaneControl({
   clipPlanes,
   onSetClipPlaneEnabled,
@@ -23,7 +26,7 @@ export default function ClipPlaneControl({
 
       {clipPlanes.length === 0 ? (
         <p className="clip-control__hint">
-          Right-click a surface to place a clip plane there.
+          {TOUCH_UI ? "Press and hold a surface to place a clip plane there." : "Right-click a surface to place a clip plane there."}
         </p>
       ) : (
         <>
@@ -73,8 +76,9 @@ export default function ClipPlaneControl({
           ))}
 
           <p className="clip-control__hint">
-            Right-click a surface to add another. Shift+drag a visible
-            handle to move it along its own normal.
+            {TOUCH_UI
+              ? "Press and hold a surface to add another. Drag the blue sheet to move it along its own normal."
+              : "Right-click a surface to add another. Shift+drag a visible handle to move it along its own normal."}
           </p>
         </>
       )}

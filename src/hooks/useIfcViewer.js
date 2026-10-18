@@ -184,6 +184,8 @@ function getSceneBox(entries) {
   return hasContent ? box : null;
 }
 
+const TOUCH_UI = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
 function frameCameraOnScene(camera, controls, entries) {
   const box = getSceneBox(entries);
   if (!box) return;
@@ -231,7 +233,7 @@ export function useIfcViewer() {
   const selectedHitRef = useRef(null); // { modelId, localId } | null — identifies the current selection
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
-  const cameraClipDistanceRef = useRef(1);
+  const cameraClipDistanceRef = useRef(0);
   const measureManagerRef = useRef(null); // { addPoint, cancelPending, remove, list } | null
   const measureModeActiveRef = useRef(false);
   const showMeasureDeletePopupRef = useRef(() => {});
@@ -283,7 +285,8 @@ export function useIfcViewer() {
   const [clipPlanes, setClipPlanes] = useState([]); // [{ id, enabled, gizmoVisible }]
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
   const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
-  const [cameraClipDistance, setCameraClipDistanceState] = useState(1);
+  const [cameraClipDistance, setCameraClipDistanceState] = useState(0);
+  const [cameraClipMax, setCameraClipMax] = useState(1);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
@@ -730,7 +733,9 @@ export function useIfcViewer() {
     const syncGizmoMesh = (entry) => {
       const { localPlane, mesh } = entry;
       const sphere = getGroupSphere();
-      const scale = sphere ? Math.max(sphere.radius * 2.6, 1) : 10;
+      // A finger-sized screen can't spare a sheet 2.6x the model's radius
+      // (it would cover everything), so on touch the gizmo is smaller.
+      const scale = sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 1) : 10;
       const pointOnPlaneLocal = localPlane.normal.clone().multiplyScalar(-localPlane.constant);
       // The gizmo sits exactly at the clip plane's own boundary — which
       // this very plane also clips against — so at that exact distance,
@@ -772,7 +777,7 @@ export function useIfcViewer() {
         const material = new THREE.MeshBasicMaterial({
           color: 0x3b82f6,
           transparent: true,
-          opacity: 0.25,
+          opacity: TOUCH_UI ? 0.12 : 0.25,
           side: THREE.DoubleSide,
           depthWrite: false,
           // The gizmo sits exactly on the clip plane — which is also
@@ -909,7 +914,10 @@ export function useIfcViewer() {
     const measurementsRuntime = []; // { id, markerA, markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel, referenceNormal, depth, horizontal, vertical, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
-    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30; // shared by the main label and the three per-leg labels
+    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30; // the main label and (via the ratio below) the per-leg labels
+    // On a phone the three per-leg labels shrink so they crowd the total less.
+    const MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT = TOUCH_UI ? 22 : 30;
+    const MEASURE_LINE_WIDTH = TOUCH_UI ? 3 : 2;
     let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
     let measurePendingMarker = null; // THREE.Mesh | null
     let measureUid = 0;
@@ -953,7 +961,7 @@ export function useIfcViewer() {
       // renderer's size (see measureLineResolution above).
       const geometry = new LineGeometry();
       geometry.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
-      const material = new LineMaterial({ color, depthTest: false, linewidth: 2, resolution: measureLineResolution });
+      const material = new LineMaterial({ color, depthTest: false, linewidth: MEASURE_LINE_WIDTH, resolution: measureLineResolution });
       const leg = new Line2(geometry, material);
       leg.computeLineDistances();
       leg.renderOrder = 999;
@@ -1026,7 +1034,10 @@ export function useIfcViewer() {
     // Distances inside the Three.js scene are in meters (the loader's
     // coordinate convention); measurements are displayed in millimeters
     // instead, matching this project's construction-drawing convention.
-    const formatMm = (meters) => `${(meters * 1000).toFixed(1)} mm`;
+    // Metres with two decimals from a metre up, whole millimetres below —
+    // short and readable on a phone (the sidebar list keeps exact mm).
+    const formatMm = (meters) =>
+      Math.abs(meters) >= 1 ? `${meters.toFixed(2)} m` : `${Math.round(meters * 1000)} mm`;
     const measureLabelLines = (length) => [
       { text: formatMm(length), color: "#e8eaed" },
     ];
@@ -1041,7 +1052,7 @@ export function useIfcViewer() {
         const markerB = createMeasureMarker();
         const geometry = new LineGeometry();
         geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
-        const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 2, resolution: measureLineResolution });
+        const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: MEASURE_LINE_WIDTH, resolution: measureLineResolution });
         const line = new Line2(geometry, material);
         line.computeLineDistances();
         line.renderOrder = 999;
@@ -1162,9 +1173,11 @@ export function useIfcViewer() {
       entry.legUp.visible = visible;
       entry.legDepth.visible = visible;
       entry.label.visible = visible;
-      entry.legRightLabel.visible = visible;
-      entry.legUpLabel.visible = visible;
-      entry.legDepthLabel.visible = visible;
+      // A leg of (nearly) zero length would just stack a "0 mm" label on
+      // top of its neighbour.
+      entry.legRightLabel.visible = visible && (entry.horizontal ?? 1) > 0.005;
+      entry.legUpLabel.visible = visible && (entry.vertical ?? 1) > 0.005;
+      entry.legDepthLabel.visible = visible && (entry.depth ?? 1) > 0.005;
     };
 
     const recomputeMeasurementEntry = (entry) => {
@@ -1225,7 +1238,7 @@ export function useIfcViewer() {
       markerB.position.copy(b);
       const geometry = new LineGeometry();
       geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
-      const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: 2, resolution: measureLineResolution });
+      const material = new LineMaterial({ color: 0x2a2622, depthTest: false, linewidth: MEASURE_LINE_WIDTH, resolution: measureLineResolution });
       const line = new Line2(geometry, material);
       line.computeLineDistances();
       line.renderOrder = 999;
@@ -1569,25 +1582,25 @@ export function useIfcViewer() {
       };
       // Same size for the main label and the three per-leg labels — all
       // are single-line now, so there's no reason for one to be bigger.
-      const scaleLegLabel = (label) => {
-        const height = worldPerPixelAt(label) * MEASURE_LEG_LABEL_PIXEL_HEIGHT;
+      const scaleLegLabel = (label, pixels = MEASURE_LEG_LABEL_PIXEL_HEIGHT) => {
+        const height = worldPerPixelAt(label) * pixels;
         label.scale.set(height * label.userData.aspect, height, 1);
       };
       if (measurePendingMarker) scaleOne(measurePendingMarker);
       if (measurePreviewEntry) {
         scaleOne(measurePreviewEntry.markerB);
         scaleLegLabel(measurePreviewEntry.label);
-        scaleLegLabel(measurePreviewEntry.legDepthLabel);
-        scaleLegLabel(measurePreviewEntry.legRightLabel);
-        scaleLegLabel(measurePreviewEntry.legUpLabel);
+        scaleLegLabel(measurePreviewEntry.legDepthLabel, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT);
+        scaleLegLabel(measurePreviewEntry.legRightLabel, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT);
+        scaleLegLabel(measurePreviewEntry.legUpLabel, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT);
       }
       for (const entry of measurementsRuntime) {
         scaleOne(entry.markerA);
         scaleOne(entry.markerB);
         scaleLegLabel(entry.label);
-        scaleLegLabel(entry.legDepthLabel);
-        scaleLegLabel(entry.legRightLabel);
-        scaleLegLabel(entry.legUpLabel);
+        scaleLegLabel(entry.legDepthLabel, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT);
+        scaleLegLabel(entry.legRightLabel, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT);
+        scaleLegLabel(entry.legUpLabel, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT);
       }
     };
 
@@ -3121,13 +3134,13 @@ export function useIfcViewer() {
           // A miss (click landed on empty space, or the pipeline wasn't
           // ready) falls back to the closest model actually under the
           // cursor, or as a last resort the whole-group bounding sphere.
-          let pivotPoint = hit ? hit.point : null;
-          if (!pivotPoint) {
-            raycaster.setFromCamera(ndc, camera);
-            pivotPoint =
-              nearestModelHit(raycaster.ray.origin, raycaster.ray.direction)?.point ??
-              raySphereProject(ndc, sphere.center, rotateRadius);
-          }
+          // A finger drag orbits the middle of the model, not the surface
+          // point under the fingertip: a horizontal swipe that starts near
+          // an edge (or beside the model) would otherwise swing it right
+          // off screen. A mouse still pivots on the grabbed point, and
+          // falls back to the model's centre when it grabs empty space.
+          const pivotPoint =
+            event.pointerType !== "touch" && hit ? hit.point : sphere.center.clone();
           anchorGesture(ndc, pivotPoint);
           rotating = true;
         })
@@ -3529,12 +3542,19 @@ export function useIfcViewer() {
 
   const setCameraClipEnabled = useCallback((enabled) => {
     if (enabled) {
-      // The kept region is whatever lies *beyond* cameraClipDistance
-      // along the view direction. The slider's fixed range is [1, 2]
-      // (the user's own chosen bounds, not scene-derived), so default to
-      // its minimum on enable rather than 0, which is now out of range.
-      cameraClipDistanceRef.current = 1;
-      setCameraClipDistanceState(1);
+      // The kept region is whatever lies *beyond* cameraClipDistance along
+      // the view direction. The slider runs from the camera (0, nothing
+      // cut) to the far side of the scene, sized to the model so it does
+      // something at any framing distance, and starts at 0.
+      const box = getSceneBox(modelsRef.current.values());
+      const camera = cameraRef.current;
+      if (box && camera) {
+        const centre = box.getCenter(new THREE.Vector3());
+        const radius = box.getSize(new THREE.Vector3()).length() / 2;
+        setCameraClipMax(Math.max(camera.position.distanceTo(centre) + radius, 1));
+      }
+      cameraClipDistanceRef.current = 0;
+      setCameraClipDistanceState(0);
     }
     setCameraClipEnabledState(enabled);
   }, []);
@@ -3571,6 +3591,11 @@ export function useIfcViewer() {
     const invQuat = modelsGroup.quaternion.clone().invert();
     const localNormal = hit.normal.clone().applyQuaternion(invQuat).negate();
     const localPoint = modelsGroup.worldToLocal(hit.point.clone());
+    // Start the cut a hair inside the surface that was picked. A plane
+    // lying exactly on that face z-fights with it (a speckled surface).
+    const sphere = getSceneBox(modelsRef.current.values());
+    const radius = sphere ? sphere.getSize(new THREE.Vector3()).length() / 2 : 1;
+    localPoint.addScaledVector(localNormal, Math.max(radius * 0.004, 0.01));
 
     const idBox = { id: manager.add(localNormal, localPoint) };
     setClipPlanes(manager.list());
@@ -4289,14 +4314,20 @@ export function useIfcViewer() {
   // "Home": back to the same framing new files get on load, with the
   // model's own orientation reset too (rotation is the only transform
   // the arcball drag ever applies to modelsGroup — it's never
-  // translated — so resetting its quaternion to identity is enough to
-  // undo any amount of dragging).
+  // translated by hand — see the position reset below).
   const resetView = useCallback(() => {
     const modelsGroup = modelsGroupRef.current;
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
-    if (modelsGroup) modelsGroup.quaternion.identity();
+    if (modelsGroup) {
+      // A drag rotates the group about a pivot, which also moves its
+      // position, so both are reset. The world matrices are refreshed so
+      // the framing below measures the reset pose, not last frame's.
+      modelsGroup.quaternion.identity();
+      modelsGroup.position.set(0, 0, 0);
+      modelsGroup.updateMatrixWorld(true);
+    }
     frameCameraOnScene(camera, controls, modelsRef.current.values());
     requestRenderRef.current();
   }, []);
@@ -4366,6 +4397,7 @@ export function useIfcViewer() {
     cameraClipEnabled,
     setCameraClipEnabled,
     cameraClipDistance,
+    cameraClipMax,
     setCameraClipDistance,
     selectedElement,
     selectedElementLoading,

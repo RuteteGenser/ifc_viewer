@@ -55,6 +55,7 @@ function App() {
     cameraClipEnabled,
     setCameraClipEnabled,
     cameraClipDistance,
+    cameraClipMax,
     setCameraClipDistance,
     selectedElement,
     selectedElementLoading,
@@ -263,6 +264,7 @@ function App() {
             cameraClipEnabled={cameraClipEnabled}
             onSetCameraClipEnabled={setCameraClipEnabled}
             cameraClipDistance={cameraClipDistance}
+            cameraClipMax={cameraClipMax}
             onSetCameraClipDistance={setCameraClipDistance}
             tagToolActive={tagToolActive}
             onToggleTagTool={toggleTagTool}

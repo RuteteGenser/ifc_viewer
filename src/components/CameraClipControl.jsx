@@ -13,6 +13,7 @@ export default function CameraClipControl({
   cameraClipEnabled,
   onSetCameraClipEnabled,
   cameraClipDistance,
+  cameraClipMax,
   onSetCameraClipDistance,
   disabled,
 }) {
@@ -35,8 +36,8 @@ export default function CameraClipControl({
           <input
             type="range"
             className="clip-control__slider"
-            min="1"
-            max="2"
+            min="0"
+            max={cameraClipMax}
             step="any"
             value={cameraClipDistance}
             onChange={(e) => onSetCameraClipDistance(Number(e.target.value))}

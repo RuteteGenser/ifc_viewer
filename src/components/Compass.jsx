@@ -19,7 +19,8 @@ export default function Compass({ angleDeg, offsetDeg, onOffsetChange, disabled 
           </text>
         </svg>
       </div>
-      <label className="compass__offset" title="Correct the model's true north without rotating it">
+      {/* A div, not a label: tapping the words next to the field must not pop up a keyboard. */}
+      <div className="compass__offset" title="Correct the model's true north without rotating it">
         <span>N offset</span>
         <input
           type="number"
@@ -31,7 +32,7 @@ export default function Compass({ angleDeg, offsetDeg, onOffsetChange, disabled 
           disabled={disabled}
         />
         <span>°</span>
-      </label>
+      </div>
     </div>
   );
 }

@@ -60,6 +60,7 @@ export default function Toolbar({
   cameraClipEnabled,
   onSetCameraClipEnabled,
   cameraClipDistance,
+  cameraClipMax,
   onSetCameraClipDistance,
   tagToolActive,
   onToggleTagTool,
@@ -119,6 +120,7 @@ export default function Toolbar({
         cameraClipEnabled={cameraClipEnabled}
         onSetCameraClipEnabled={onSetCameraClipEnabled}
         cameraClipDistance={cameraClipDistance}
+        cameraClipMax={cameraClipMax}
         onSetCameraClipDistance={onSetCameraClipDistance}
         disabled={!hasModels}
       />

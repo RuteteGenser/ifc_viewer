@@ -13,6 +13,7 @@ import {
   openRawIfcModel,
 } from "../ifc/rawIfcQuery";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
+import { importIfcInWorker } from "../ifc/ifcImportClient";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -756,7 +757,9 @@ export function useIfcViewer() {
     // Test hook, only compiled into builds made with VITE_TEST_HOOK=1 (never the deployed build).
     if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Phones render at devicePixelRatio 2 (capped below), where multisampling
+    // adds little to edge quality but costs fill-rate and memory every frame.
+    const renderer = new THREE.WebGLRenderer({ antialias: !(TOUCH_UI && window.devicePixelRatio >= 2) });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.localClippingEnabled = true;
@@ -4821,8 +4824,12 @@ export function useIfcViewer() {
     const token = ++loadTokenRef.current;
     const abandoned = () => token !== loadTokenRef.current;
     // Rejects when the user presses Cancel, so a stuck parse never traps them.
+    let cancelImport = () => {};
     const cancelled = new Promise((_, reject) => {
-      cancelLoadRef.current = () => reject(new Error("cancelled"));
+      cancelLoadRef.current = () => {
+        cancelImport(); // kills the import worker, so Cancel really stops the work
+        reject(new Error("cancelled"));
+      };
     });
     cancelled.catch(() => {});
 
@@ -4840,7 +4847,9 @@ export function useIfcViewer() {
     // entry unpacked from an .ifcZIP below, so both paths get identical
     // handling (including retaining the original bytes for "Save as
     // .ifcZIP", see saveAsIfcZip further down).
-    const loadOneIfc = async (data, displayName) => {
+    // `source` is a File (read inside the import worker) or a Uint8Array
+    // (from an .ifcZIP; handed to the worker without copying).
+    const loadOneIfc = async (source, displayName) => {
       const existingId = [...modelNamesRef.current.entries()].find(([, name]) => name === displayName)?.[0];
       if (existingId) {
         const replace = await confirmReplaceFile(displayName);
@@ -4852,42 +4861,48 @@ export function useIfcViewer() {
       }
       const modelId = nextId();
       try {
-        // An independent copy, not just a view over the same buffer —
-        // ifcLoader.load may hand `data`'s underlying buffer off to a
-        // worker (transferable objects get detached, not cloned), which
-        // would otherwise silently zero out sourceBytes after the load.
-        const sourceBytes = data.slice();
         // A worker that dies or hangs never settles on its own, so the parse
         // is raced against a timeout (scaled with file size) and Cancel.
-        const sizeMb = data.byteLength / 1048576;
+        const sizeMb = (source.size ?? source.byteLength) / 1048576;
         const timeoutMs = Math.min(60000 + sizeMb * 4000, 20 * 60000);
         let timer = 0;
         const timedOut = new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
         });
         const shortName = displayName.length > 28 ? `${displayName.slice(0, 25)}…` : displayName;
-        const loadPromise = pipeline.ifcLoader.load(data, true, modelId, {
-          processData: {
-            progressCallback: (_progress, info) => {
-              const stage = { geometries: "geometry", attributes: "properties", relations: "relations", conversion: "finishing" }[info?.process];
-              if (stage) setLoadingLabel(`Reading ${shortName}: ${stage}…`);
-            },
+        // The wasm conversion runs in a worker (see ifc/ifcImportClient.js) so
+        // the page stays responsive; the finished fragments are then handed
+        // to the fragments worker like ifcLoader.load would have done.
+        // Some IFC exporters produce geometry with inconsistent winding
+        // (a face's front side doesn't reliably match its outward
+        // normal), which front-face-only rendering shows as missing or
+        // "inside-out" surfaces. Render both faces so those surfaces
+        // are never invisible, at the cost of some fill-rate.
+        const { wasm, webIfc } = pipeline.ifcLoader.settings;
+        const importJob = importIfcInWorker(source instanceof Blob ? { file: source } : { bytes: source }, {
+          wasm: { path: wasm.path, absolute: wasm.absolute },
+          webIfcSettings: { ...webIfc },
+          doubleSidedMaterials: true,
+          onProgress: (fraction, process) => {
+            const stage = { geometries: "geometry", attributes: "properties", relations: "relations", conversion: "finishing" }[process];
+            if (stage) setLoadingLabel(`Reading ${shortName}: ${stage} ${Math.min(99, Math.floor(fraction * 100))}%`);
           },
-          // Some IFC exporters produce geometry with inconsistent winding
-          // (a face's front side doesn't reliably match its outward
-          // normal), which front-face-only rendering shows as missing or
-          // "inside-out" surfaces. Render both faces so those surfaces
-          // are never invisible, at the cost of some fill-rate.
-          instanceCallback: (importer) => {
-            importer.doubleSidedMaterials = true;
-          },
+        });
+        cancelImport = importJob.cancel;
+        const loadPromise = importJob.promise.then(async ({ fragments, source: originalBytes }) => {
+          sourceBytes = originalBytes;
+          setLoadingLabel(`Building ${shortName}…`);
+          pipeline.fragments.core.settings.autoCoordinate = true;
+          return pipeline.fragments.core.load(fragments, { modelId });
         });
         loadPromise.catch(() => {});
         let model;
+        let sourceBytes;
         try {
           model = await Promise.race([loadPromise, timedOut, cancelled]);
         } finally {
           clearTimeout(timer);
+          importJob.cancel(); // no-op once finished; stops a timed-out import
         }
         if (abandoned()) return;
 
@@ -4973,16 +4988,7 @@ export function useIfcViewer() {
       }
       if (file.size > 150 * 1048576) setToast({ id: Date.now(), text: `Large file (${Math.round(file.size / 1048576)} MB). This can take a few minutes.` });
       setLoadingLabel(`Reading ${name}…`);
-      let buffer;
-      try {
-        buffer = await file.arrayBuffer();
-      } catch (err) {
-        console.error(err);
-        appendError(`Could not read "${name}" from disk.`);
-        continue;
-      }
-      if (abandoned()) return;
-      await loadOneIfc(new Uint8Array(buffer), name);
+      await loadOneIfc(file, name);
       if (abandoned()) return;
     }
 

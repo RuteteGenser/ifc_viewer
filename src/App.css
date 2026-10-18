@@ -3586,6 +3586,8 @@
   .first-run {
     bottom: calc(var(--sheet-inset, 0px) + 124px + var(--transfer-h, 0px));
   }
+}
+
 /* Load-failure details and the "new version" notice (reliability) */
 .status-banner--info {
   background: var(--surface, #fbfaf6);

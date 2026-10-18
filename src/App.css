@@ -1590,8 +1590,8 @@
   }
 
   .model-row__color {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
 
   .clip-control__flip,
@@ -1627,8 +1627,8 @@
   }
 
   .element-panel__copy-button {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
 
   .element-panel__copy-button svg {
@@ -1648,8 +1648,8 @@
   }
 
   .measure-delete-button {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     font-size: 22px;
   }
 
@@ -1678,12 +1678,12 @@
   }
 
   .search-bar__mode-toggle-btn {
-    min-height: 40px;
+    min-height: 44px;
     font-size: 13px;
   }
 
   .search-bar__isolate-banner button {
-    min-height: 36px;
+    min-height: 44px;
     padding: 6px 12px;
   }
 
@@ -1826,7 +1826,7 @@
 @media (min-width: 560px) and (max-width: 768px), (min-width: 560px) and (max-height: 500px) and (pointer: coarse) {
   .search-bar {
     order: 0;
-    flex: 1 1 200px;
+    flex: 1 1 120px;
     width: auto;
     max-width: 360px;
     margin-left: auto;
@@ -1843,7 +1843,13 @@
    default; expanded when something is selected or a tab is tapped. */
 @media (max-width: 768px) and (min-height: 501px) {
   .app-body {
-    --sheet-open-h: min(44dvh, 380px);
+    /* Leave at least ~170px of 3D view between the toolbar and the sheet
+       on short phones, where the toolbar wraps to several rows. */
+    --sheet-open-h: clamp(
+      168px,
+      min(44dvh, 380px),
+      calc(100dvh - var(--header-height) - var(--toolbar-h, 56px) - 170px)
+    );
     --sheet-inset: calc(var(--peek-h) + var(--safe-bottom));
   }
 
@@ -1916,6 +1922,13 @@
   .compass {
     left: calc(12px + var(--safe-left));
     bottom: calc(var(--sheet-inset) + 12px);
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .compass__dial {
+    width: 44px;
+    height: 44px;
   }
 
   .history-buttons {
@@ -1938,12 +1951,12 @@
   }
 
   .app-body[data-sheet="open"] .panel-inset-probe {
-    width: min(320px, 55vw);
+    width: min(340px, 62vw);
   }
 
   .element-panel {
     top: calc(var(--header-height) + var(--toolbar-h, 56px));
-    width: min(320px, 55vw);
+    width: min(340px, 62vw);
     max-width: none;
     z-index: 18;
     padding-right: var(--safe-right);
@@ -1994,6 +2007,13 @@
 
   .compass {
     bottom: 8px;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .compass__dial {
+    width: 44px;
+    height: 44px;
   }
 
   .history-buttons {
@@ -2013,10 +2033,10 @@
   .element-panel__tab {
     flex: 0 0 auto;
     white-space: nowrap;
-    padding-left: 8px;
-    padding-right: 8px;
-    font-size: 11.5px;
-    letter-spacing: 0.02em;
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 11px;
+    letter-spacing: 0.01em;
   }
 
   .element-panel__close {

@@ -4002,7 +4002,10 @@ export function useIfcViewer() {
       } catch (err) {
         console.error("Category search failed", err);
       }
-      const ids = [...new Set([...(nameIds ?? []), ...categoryIds])];
+      // Property sets, types and the like match by name too, but have no
+      // geometry to isolate or select, so only offer drawn elements.
+      const drawn = new Set(await model.getItemsIdsWithGeometry());
+      const ids = [...new Set([...(nameIds ?? []), ...categoryIds])].filter((id) => drawn.has(id));
       if (ids.length === 0) continue;
       const capped = ids.slice(0, 50 - rows.length);
       const items = await model.getItemsData(capped, { attributesDefault: true });

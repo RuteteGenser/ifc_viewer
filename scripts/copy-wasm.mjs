@@ -1,4 +1,4 @@
-// Copies the web-ifc WASM binaries into public/wasm so the IFC parser can
+// Copies the web-ifc WASM binary into public/wasm so the IFC parser can
 // be loaded from the same origin, with no CDN dependency at runtime.
 import { copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -10,8 +10,10 @@ const destDir = join(rootDir, "public", "wasm");
 
 mkdirSync(destDir, { recursive: true });
 
-for (const file of ["web-ifc.wasm", "web-ifc-mt.wasm"]) {
+// Only the single-thread build: the multithreaded glue is not bundled (see
+// slimWebIfc in scripts/vite-trim-plugins.mjs), so its wasm would never load.
+for (const file of ["web-ifc.wasm"]) {
   copyFileSync(join(srcDir, file), join(destDir, file));
 }
 
-console.log("Copied web-ifc WASM binaries to public/wasm");
+console.log("Copied web-ifc WASM binary to public/wasm");

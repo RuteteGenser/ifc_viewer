@@ -48,9 +48,11 @@ function ChevronIcon() {
 
 // A value you can tap/click/press Enter on to copy. Shows a check briefly
 // and raises a toast, so the result is visible even on a phone sheet.
-function CopyValue({ label, value, unit, mono, onToast }) {
+function CopyValue({ label, value, unit, mono, middle, onToast }) {
   const [copied, setCopied] = useState(false);
   const text = unit ? `${value} ${unit}` : String(value);
+  // A long id keeps its start and end on screen; the whole value is the tooltip.
+  const shown = middle && String(value).length > 20 ? `${String(value).slice(0, 8)}…${String(value).slice(-8)}` : value;
   const copy = async () => {
     const ok = await copyText(String(value));
     setCopied(ok);
@@ -63,20 +65,35 @@ function CopyValue({ label, value, unit, mono, onToast }) {
       className={`dp-value${mono ? " dp-value--mono" : ""}`}
       onClick={copy}
       aria-label={`${label}: ${text}. Copy value`}
-      title="Click to copy"
+      title={middle ? `${value} (click to copy)` : "Click to copy"}
     >
       <span className="dp-value__text">
-        {value}
+        {shown}
         {unit ? <span className="dp-value__unit"> {unit}</span> : null}
       </span>
-      <span className="dp-value__icon">{copied ? <CheckIcon /> : <CopyIcon />}</span>
+      <span className={`dp-value__icon${copied ? " dp-value__icon--done" : ""}`}>
+        {copied ? (
+          <>
+            <CheckIcon />
+            <span className="dp-value__done">Copied</span>
+          </>
+        ) : (
+          <CopyIcon />
+        )}
+      </span>
     </button>
   );
 }
 
 function Row({ label, title, children }) {
   return (
-    <div className="dp-row">
+    // The label is part of the copy target too: pressing anywhere on the row copies the value.
+    <div
+      className="dp-row"
+      onClick={(e) => {
+        if (!e.target.closest("button")) e.currentTarget.querySelector("button.dp-value")?.click();
+      }}
+    >
       <dt title={title}>{label}</dt>
       <dd>{children}</dd>
     </div>
@@ -239,7 +256,7 @@ export default function ElementInfoPanel({ element, loading, onHide, onToast }) 
         )}
         {element.guid && (
           <Row label="GUID">
-            <CopyValue label="GUID" value={element.guid} mono onToast={onToast} />
+            <CopyValue label="GUID" value={element.guid} mono middle onToast={onToast} />
           </Row>
         )}
         {element.modelName && (

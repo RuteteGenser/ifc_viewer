@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import Tooltip from "./Tooltip";
 
 function ClipIcon() {
@@ -18,6 +19,15 @@ export default function CameraClipControl({
   disabled,
   onBlocked,
 }) {
+  // Esc closes the tool, like the other armed tools.
+  useEffect(() => {
+    if (!cameraClipEnabled) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape" && !e.defaultPrevented && !e.ifcEscHandled) onSetCameraClipEnabled(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cameraClipEnabled, onSetCameraClipEnabled]);
   return (
     <div className="camera-clip">
       <Tooltip description={disabled ? "Open a model first" : "Clip in front of the camera"}>
@@ -37,6 +47,7 @@ export default function CameraClipControl({
           <input
             type="range"
             className="clip-control__slider"
+            aria-label="Camera clip distance"
             min="0"
             max={cameraClipMax}
             step="any"

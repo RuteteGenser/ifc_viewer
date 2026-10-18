@@ -1,3 +1,5 @@
+import { buildElementDetails, readProjectUnits } from "../ifc/elementDetails";
+import useModelBrowser from "./useModelBrowser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -44,7 +46,7 @@ function nextId() {
 // window instead guarantees the very next frame after whichever
 // natural ~100ms cycle picks up the change also gets drawn, without
 // needing to know exactly when that happens.
-function renderForAWhile(requestRender, durationMs = 1000) {
+export function renderForAWhile(requestRender, durationMs = 1000) {
   const deadline = performance.now() + durationMs;
   const tick = () => {
     requestRender();
@@ -350,6 +352,7 @@ export function useIfcViewer() {
   const requestRenderRef = useRef(() => {});
   const pendingSurfacePickRef = useRef(null); // { id, promise } | null
   const clearHighlightRef = useRef(() => {});
+  const selectElementFromRef = useRef(null); // set by the main effect; lets the structure tree select an element like a click does
   const selectedHitRef = useRef(null); // { modelId, localId } | null — identifies the current selection
   const cameraClipPlaneRef = useRef(new THREE.Plane());
   const cameraClipEnabledRef = useRef(false);
@@ -2887,10 +2890,15 @@ export function useIfcViewer() {
           relations: {
             IsDefinedBy: { attributes: true, relations: true },
             IsTypedBy: { attributes: true, relations: false },
+            HasAssociations: { attributes: true, relations: false },
+            ContainedInStructure: { attributes: true, relations: false },
           },
         });
         const modelName = modelNamesRef.current.get(hit.fragments.modelId);
         const formatted = data ? formatElementData(data, modelName) : null;
+        if (formatted) {
+          formatted.details = buildElementDetails(data, readProjectUnits(modelsRef.current.get(hit.fragments.modelId)?.sourceBytes));
+        }
         setSelectedElement(formatted);
 
         // Non-blocking follow-up: geometry/system/material data getItemsData
@@ -2946,6 +2954,8 @@ export function useIfcViewer() {
         setSelectedElementLoading(false);
       }
     };
+
+    selectElementFromRef.current = selectElementFrom;
 
     const handleMeasureClick = async (raycastPromise) => {
       if (!raycastPromise) {
@@ -5166,7 +5176,24 @@ export function useIfcViewer() {
     setSelectedElement(null);
   }, []);
 
+  const browser = useModelBrowser({
+    models,
+    selectedElement,
+    modelsRef,
+    pipelineRef,
+    requestRenderRef,
+    invalidateGroupSphereRef,
+    selectedHitRef,
+    clearSelection,
+    selectElementFromRef,
+    zoomToHit,
+    pushUndo,
+    renderForAWhile,
+  });
+
+  window.__vm = { modelsRef };
   return {
+    browser,
     containerRef,
     models,
     isLoading,

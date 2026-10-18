@@ -87,6 +87,7 @@ function App() {
     cameraClipMax,
     setCameraClipDistance,
     selectedElement,
+    browser,
     selectedElementLoading,
     clearSelection,
     measurements,
@@ -395,6 +396,9 @@ function App() {
           onRemoveClipPlane={removeClipPlane}
           hiddenCategories={hiddenCategories}
           onShowCategory={(category) => setCategoryHidden(category, false)}
+          browser={browser}
+          selectedId={browser.selectedId}
+          onPickElement={() => setSidebarOpen(false)}
         />
 
         <div
@@ -513,6 +517,7 @@ function App() {
           onResize={changePanelWidth}
           onClose={handleClosePanel}
           onHideElement={hideSelectedElement}
+          onToast={showToast}
           element={selectedElement}
           loading={selectedElementLoading}
           measurements={measurements}

@@ -149,7 +149,17 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened }) {
     deepLinkRef.current = true;
     getModel(id)
       .then((record) => openRecord(record))
-      .catch((err) => say(err?.status === 404 ? "That model is not saved here any more." : err?.message || "Could not open that model.", "error"));
+      .catch((err) => {
+        say(err?.status === 404 ? "That model is no longer saved." : "Could not open that model.", "error");
+        // Drop the link from the address bar so a reload does not repeat this.
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("model");
+          window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+        } catch {
+          // history is not available: the notice just shows again on reload
+        }
+      });
   }, [openRecord, say]);
 
   // ---- save to the library ----

@@ -129,11 +129,33 @@ export async function reloadNow(intent) {
   location.reload();
 }
 
-// The engine (or any lazily loaded chunk) failed while the page booted. If this
-// tab is older than the deployed build, reload once; otherwise leave it be.
-export async function recoverFromBootFailure() {
-  // A newer build, or just a chunk that did not arrive: a fresh page fixes both
-  // (a failed import() is not retried for the same URL until the page reloads).
-  // The loop guard allows one such reload a minute.
-  await reloadResuming(null);
+// ---- a lazily loaded chunk did not arrive ----
+// Is there work on the page a reload would throw away (a model open or being
+// opened, a file waiting to be opened)? The viewer registers the real check.
+let workOpen = () => false;
+export function registerOpenWork(check) {
+  workOpen = check;
+}
+const hasOpenWork = () => {
+  try {
+    return !!workOpen();
+  } catch {
+    return true; // when in doubt, keep the page
+  }
+};
+
+// What to do about a chunk that did not download: reload only when this tab
+// is older than the deployed build AND nothing would be lost; otherwise the
+// caller retries the import itself and says what is missing.
+export const chunkFailureAction = ({ stale, workOpen }) => (stale && !workOpen ? "reload" : "retry");
+
+// The engine or another lazily loaded chunk failed (vite:preloadError, or the
+// engine import at boot). Never reloads away an open model: a momentary
+// failure is retried where the import happened (importRetrying below).
+// Resolves true if a reload was started.
+export async function recoverFromChunkFailure() {
+  if (hasOpenWork()) return false;
+  const stale = await isStaleBuild();
+  if (chunkFailureAction({ stale, workOpen: hasOpenWork() }) !== "reload") return false;
+  return reloadResuming(null);
 }

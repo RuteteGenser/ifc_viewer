@@ -34,3 +34,20 @@ export const attemptText = (verb, attempt, total) => `${verb} again, attempt ${a
 // How long an import may go without a sign of life (progress, a message)
 // before it is restarted in a fresh worker: more for bigger files.
 export const stallLimitMs = (bytes) => Math.min(60_000 + (bytes / 1048576) * 3000, 300_000);
+
+// The URL of the chunk a failed import() names (Chrome and Firefox say it; Safari does not).
+export const failedChunkUrl = (err) => /https?:\/\/[^\s"')]+?\.m?js\b/.exec(String(err?.message ?? ""))?.[0] ?? null;
+
+// Runs a dynamic import; when it fails, waits a moment and tries once more,
+// asking for the chunk by a cache-busting address when the error names it
+// (a browser remembers a failed import() of the same address until reload).
+export async function importRetrying(load, { delay = 500 } = {}) {
+  try {
+    return await load();
+  } catch (err) {
+    await sleep(delay);
+    const url = failedChunkUrl(err);
+    if (url) return import(/* @vite-ignore */ `${url}${url.includes("?") ? "&" : "?"}retry=${Date.now()}`);
+    return load();
+  }
+}

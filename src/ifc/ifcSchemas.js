@@ -1,5 +1,6 @@
 import { SchemaNames } from "web-ifc";
 import { fileSchemaOf } from "./stepHeader";
+import { importRetrying } from "../reliability/retry";
 
 // web-ifc keeps a class and lookup tables for each IFC schema; production
 // builds split them into one chunk per schema (see slimWebIfc in
@@ -15,8 +16,10 @@ const requested = new Map();
 
 export function loadSchema(id) {
   if (!requested.has(id)) {
-    // One more try after a short pause: a dropped connection often recovers at once.
-    const promise = chunks[id]().catch(() => new Promise((resolve) => setTimeout(resolve, 400)).then(() => chunks[id]()));
+    // One more try after a short pause: a dropped connection often recovers at
+    // once. The repeat asks by a cache-busting address, because a browser
+    // remembers a failed import() of the same address (see importRetrying).
+    const promise = importRetrying(chunks[id], { delay: 400 });
     // A failed download must not be remembered, so the next file retries.
     promise.catch(() => requested.delete(id));
     requested.set(id, promise);

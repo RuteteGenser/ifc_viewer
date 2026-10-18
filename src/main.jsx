@@ -5,7 +5,7 @@ import App from './App.jsx'
 import fragmentsWorkerUrl from '@thatopen/fragments/worker?url'
 import { startEngineDownloads } from './ifc/engineDownloads'
 import { prewarmIfcImporter } from './ifc/ifcImportClient'
-import { recoverFromBootFailure } from './reliability/recovery'
+import { recoverFromChunkFailure } from './reliability/recovery'
 
 // Boot the IFC engine (separate chunk, import worker, web-ifc wasm, fragments worker) now,
 // once the UI code is here, so it downloads and starts in parallel with React
@@ -26,10 +26,17 @@ engineImport
   .then((m) => m.startIfcPipeline())
   .catch((err) => {
     console.error('The viewer engine failed to start', err)
-    recoverFromBootFailure()
+    // An old tab after a deploy reloads (nothing is open yet); a momentary
+    // failure is handled by the viewer, whose own import of the engine fails too.
+    recoverFromChunkFailure()
   })
-// Vite reports a lazily loaded chunk that did not download (an old tab after a deploy).
-window.addEventListener('vite:preloadError', () => recoverFromBootFailure())
+// Vite reports a lazily loaded chunk that did not download. Only a tab older
+// than the deployed build, with no model open, reloads; otherwise the code that
+// asked for the chunk retries it and says what is missing (see importRetrying).
+// A model the user has open is never reloaded away.
+window.addEventListener('vite:preloadError', () => {
+  recoverFromChunkFailure()
+})
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

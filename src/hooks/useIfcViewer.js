@@ -17,8 +17,8 @@ import {
 } from "../ifc/rawIfcQuery";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { importIfcInWorker, releaseImporterMemory } from "../ifc/ifcImportClient";
-import { KIND, ImportError, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
-import { isStaleBuild, refreshFailedAssets, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
+import { KIND, ImportError, classifyFailure, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
+import { isStaleBuild, refreshFailedAssets, registerOpenWork, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
 import { BACKOFF_MS, attemptText, sleep, stallLimitMs } from "../reliability/retry";
 import { HEAD_BYTES, hasStepHeader, isZip } from "../ifc/stepHeader";
 import { useViewFeatures } from "./useViewFeatures";
@@ -454,6 +454,15 @@ export function useIfcViewer() {
   const lastLoadFilesRef = useRef(null);
   const [ready, setReady] = useState(false);
   const pendingFilesRef = useRef(null); // files chosen before the viewer finished starting
+  const loadingNowRef = useRef(false); // mirrors isLoading for code outside React (see registerOpenWork)
+  useEffect(() => {
+    loadingNowRef.current = isLoading;
+  }, [isLoading]);
+  // A chunk that fails to download must never reload the page away from an
+  // open model, one being opened or one waiting to be opened (see main.jsx).
+  useEffect(() => {
+    registerOpenWork(() => modelsRef.current.size > 0 || loadingNowRef.current || !!pendingFilesRef.current?.length);
+  }, []);
   const [clipPlanes, setClipPlanes] = useState([]); // [{ id, enabled, gizmoVisible }]
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
   const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
@@ -3159,8 +3168,15 @@ export function useIfcViewer() {
               setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, ifcInfo: ifcInfo ?? null } : prev));
             })
             .catch((err) => {
-              console.error("Failed to extract IFC geometry/system/material data", err);
               setSelectedElement((prev) => (prev?.guid === targetGuid ? { ...prev, ifcInfo: null } : prev));
+              // A chunk of Argus that did not download (a dropped connection, a
+              // deploy): say so, keep everything open. Never a reload here.
+              if (classifyFailure(err, "build") === KIND.APP_ASSET_FAILED) {
+                console.warn("Element details could not be loaded: part of Argus did not download", err);
+                showToastRef.current?.("Pipe and duct details could not be loaded: part of Argus did not download. Your models stay open. Reloading Argus later brings these details back.", 7000);
+              } else {
+                console.error("Failed to extract IFC geometry/system/material data", err);
+              }
             });
         }
 

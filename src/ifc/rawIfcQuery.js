@@ -1,6 +1,8 @@
 // web-ifc is ~4 MB of JavaScript, so it is imported on first use (which is
 // also when the main pipeline has already loaded it) rather than being part
 // of the entry chunk. Every function below runs after openRawIfcModel.
+import { importRetrying } from "../reliability/retry";
+
 let WEBIFC;
 
 // @thatopen/fragments' getItemsData (the app's normal property-fetch
@@ -37,11 +39,13 @@ export function isEligibleCategoryName(category) {
 
 // Opens an independent web-ifc model from raw bytes, using the same wasm
 // path already configured for the app's main IfcLoader (setupComponents.js).
+// A chunk that fails to download is asked for once more (see importRetrying);
+// a failure after that is reported to the caller, never by reloading the page.
 export async function openRawIfcModel(sourceBytes) {
-  WEBIFC = await import("web-ifc");
+  WEBIFC = await importRetrying(() => import("web-ifc"));
   // Production builds keep web-ifc's per-schema tables in separate chunks
   // (see ifcSchemas.js); this thread loads the one this file needs.
-  const { loadSchemaFor } = await import("./ifcSchemas");
+  const { loadSchemaFor } = await importRetrying(() => import("./ifcSchemas"));
   await loadSchemaFor(sourceBytes);
   const api = new WEBIFC.IfcAPI();
   api.SetWasmPath(`${import.meta.env.BASE_URL}wasm/`, true);

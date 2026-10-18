@@ -4,6 +4,23 @@
 // so the wasm heap is released and Cancel can simply kill it.
 import { IfcImporter } from "@thatopen/fragments";
 import { loadSchema, loadSchemaFor } from "./ifcSchemas";
+import { classifyFailure } from "../reliability/importErrors";
+
+// Static imports above have loaded: the page tells a worker that never got
+// here (a file of Argus's own failed to load) from one that died later.
+// The worker also holds a Web Lock for as long as it lives. A killed worker
+// (terminate, the OS reclaiming memory) sends nothing, but its lock is
+// released at once, which is how the page notices (see ifcImportClient.js).
+// A busy worker cannot run timers, so a heartbeat would not work; a lock does.
+const lockName = `argus-import-${Math.random().toString(36).slice(2)}`;
+if (self.navigator?.locks) {
+  self.navigator.locks.request(lockName, () => {
+    self.postMessage({ type: "alive", lock: lockName });
+    return new Promise(() => {}); // held until the worker is gone
+  });
+} else {
+  self.postMessage({ type: "alive" });
+}
 
 self.onmessage = async (event) => {
   // Prewarm: the page has started this worker ahead of the first file; fetch
@@ -14,6 +31,8 @@ self.onmessage = async (event) => {
     return;
   }
   const { file, bytes, wasm, webIfcSettings, doubleSidedMaterials } = event.data;
+  // Where a failure happened decides what it means (see classifyFailure).
+  let stage = "read";
   try {
     // A File is read here, in the worker, so the main thread never has to
     // allocate or copy the whole file. The bytes go back to the page at the
@@ -22,7 +41,9 @@ self.onmessage = async (event) => {
     const source = bytes ?? new Uint8Array(await file.arrayBuffer());
     // web-ifc's per-schema class tables are separate chunks (see ifcSchemas.js);
     // the one this file uses must be in before it is opened.
+    stage = "schema";
     await loadSchemaFor(source);
+    stage = "parse";
     const importer = new IfcImporter();
     importer.wasm = wasm;
     if (webIfcSettings) importer.webIfcSettings = webIfcSettings;
@@ -37,6 +58,6 @@ self.onmessage = async (event) => {
     });
     self.postMessage({ type: "done", fragments, source }, [fragments.buffer, source.buffer]);
   } catch (err) {
-    self.postMessage({ type: "error", message: String(err?.message ?? err) });
+    self.postMessage({ type: "error", kind: classifyFailure(err, stage), stage, message: String(err?.message ?? err) });
   }
 };

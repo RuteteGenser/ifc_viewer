@@ -50,7 +50,7 @@ export default function TransferBar() {
     <div className="lib-transfer" ref={ref}>
       {download && (
         <Progress
-          label={`Downloading ${short(download.name)}`}
+          label={download.note ? `${download.note}: ${short(download.name)}` : `Downloading ${short(download.name)}`}
           percent={download.percent}
           cancelLabel={`Cancel download of ${download.name}`}
           onCancel={library.cancelDownload}
@@ -67,6 +67,11 @@ export default function TransferBar() {
       {notice && (
         <div className={`lib-notice lib-notice--${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>
           <span>{notice.text}</span>
+          {notice.retry && (
+            <button type="button" className="lib-btn" onClick={() => { library.dismissNotice(); notice.retry(); }}>
+              Retry
+            </button>
+          )}
           <button type="button" className="lib-btn" onClick={library.dismissNotice} aria-label="Dismiss message">
             OK
           </button>

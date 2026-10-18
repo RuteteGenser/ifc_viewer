@@ -5,6 +5,7 @@ import App from './App.jsx'
 import fragmentsWorkerUrl from '@thatopen/fragments/worker?url'
 import { startEngineDownloads } from './ifc/engineDownloads'
 import { prewarmIfcImporter } from './ifc/ifcImportClient'
+import { recoverFromBootFailure } from './reliability/recovery'
 
 // Boot the IFC engine (separate chunk, import worker, web-ifc wasm, fragments worker) now,
 // once the UI code is here, so it downloads and starts in parallel with React
@@ -21,7 +22,14 @@ const engineFilesDownloaded = startEngineDownloads({
   wasmUrl: `${import.meta.env.BASE_URL}wasm/web-ifc.wasm`,
   workerUrl: fragmentsWorkerUrl,
 })
-engineImport.then((m) => m.startIfcPipeline()).catch(() => {})
+engineImport
+  .then((m) => m.startIfcPipeline())
+  .catch((err) => {
+    console.error('The viewer engine failed to start', err)
+    recoverFromBootFailure()
+  })
+// Vite reports a lazily loaded chunk that did not download (an old tab after a deploy).
+window.addEventListener('vite:preloadError', () => recoverFromBootFailure())
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -3586,4 +3586,27 @@
   .first-run {
     bottom: calc(var(--sheet-inset, 0px) + 124px + var(--transfer-h, 0px));
   }
+/* Load-failure details and the "new version" notice (reliability) */
+.status-banner--info {
+  background: var(--surface, #fbfaf6);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.15));
+  color: var(--text, inherit);
+  justify-content: space-between;
+}
+
+.status-banner__details {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.status-banner__details summary {
+  cursor: pointer;
+}
+
+.status-banner__details pre {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  font-size: 11px;
 }

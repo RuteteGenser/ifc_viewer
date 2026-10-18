@@ -11,6 +11,7 @@ import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
 import MeasureLegEditPopup from "./components/MeasureLegEditPopup";
 import ConfirmDialog from "./components/ConfirmDialog";
+import useLeaveGuard from "./hooks/useLeaveGuard";
 import Header from "./components/Header";
 import Toolbar from "./components/Toolbar";
 import ViewTools from "./components/ViewTools";
@@ -60,6 +61,7 @@ const MEASURE_LEG_META = {
 };
 
 function App() {
+  const leaveGuard = useLeaveGuard();
   const {
     containerRef,
     models,
@@ -585,6 +587,18 @@ function App() {
               closeMeasureLegEditPopup();
             }}
             onClose={closeMeasureLegEditPopup}
+          />
+        )}
+
+        {leaveGuard.asking && (
+          <ConfirmDialog
+            title="Leave the viewer?"
+            message="You will go back to the previous page and lose your current view and measurements."
+            confirmLabel="Leave"
+            cancelLabel="Stay"
+            initialFocus="cancel"
+            onConfirm={leaveGuard.leave}
+            onCancel={leaveGuard.stay}
           />
         )}
 

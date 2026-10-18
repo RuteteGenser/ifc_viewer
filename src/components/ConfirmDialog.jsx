@@ -6,17 +6,18 @@ const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), select
 // model when a newly added file shares its name. Behaves as a real modal:
 // labelled dialog, focus moves in and stays in, Esc cancels, and focus goes
 // back to whatever had it before.
-export default function ConfirmDialog({ title, message, confirmLabel = "Replace", cancelLabel = "Cancel", onConfirm, onCancel }) {
+export default function ConfirmDialog({ title, message, confirmLabel = "Replace", cancelLabel = "Cancel", onConfirm, onCancel, initialFocus = "confirm" }) {
   const dialogRef = useRef(null);
   const confirmRef = useRef(null);
+  const cancelRef = useRef(null);
 
   useEffect(() => {
     const previous = document.activeElement;
-    confirmRef.current?.focus();
+    (initialFocus === "cancel" ? cancelRef : confirmRef).current?.focus();
     return () => {
       if (previous && previous.isConnected && typeof previous.focus === "function") previous.focus();
     };
-  }, []);
+  }, [initialFocus]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -70,7 +71,7 @@ export default function ConfirmDialog({ title, message, confirmLabel = "Replace"
           {message}
         </p>
         <div className="confirm-dialog__buttons">
-          <button type="button" className="confirm-dialog__cancel" onClick={onCancel}>
+          <button type="button" className="confirm-dialog__cancel" ref={cancelRef} onClick={onCancel}>
             {cancelLabel}
           </button>
           <button type="button" className="confirm-dialog__confirm" ref={confirmRef} onClick={onConfirm}>

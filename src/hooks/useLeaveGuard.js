@@ -1,0 +1,55 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// Swiping back (or pressing the browser's back button) from the viewer would
+// drop the user on the previous page and throw away the model they have open,
+// and a long drag on a phone makes that swipe easy to trigger by accident.
+// A guard history entry sits on top of the viewer's own: going back lands on
+// the viewer's real entry, which asks first instead of leaving.
+//
+// Browsers ignore history entries added without a user gesture, so the guard
+// is added on the first touch/click/key press and again after "Stay".
+export default function useLeaveGuard() {
+  const [asking, setAsking] = useState(false);
+  const leavingRef = useRef(false);
+
+  const arm = useCallback(() => {
+    try {
+      if (!window.history.state?.ifcGuard) window.history.pushState({ ifcGuard: true }, "", window.location.href);
+    } catch {
+      // history is not available (sandboxed frame): the app just behaves as before
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFirstGesture = () => arm();
+    const onPop = () => {
+      if (leavingRef.current) return;
+      setAsking(true);
+    };
+    window.addEventListener("pointerdown", onFirstGesture, { once: true });
+    window.addEventListener("keydown", onFirstGesture, { once: true });
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("pointerdown", onFirstGesture);
+      window.removeEventListener("keydown", onFirstGesture);
+      window.removeEventListener("popstate", onPop);
+    };
+  }, [arm]);
+
+  const stay = useCallback(() => {
+    setAsking(false);
+    arm();
+  }, [arm]);
+
+  const leave = useCallback(() => {
+    leavingRef.current = true;
+    setAsking(false);
+    window.history.back();
+    // Nothing before the viewer to go back to (it was opened directly): stay put.
+    setTimeout(() => {
+      leavingRef.current = false;
+    }, 1500);
+  }, []);
+
+  return { asking, stay, leave };
+}

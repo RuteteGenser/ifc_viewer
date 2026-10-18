@@ -19,6 +19,9 @@ import Compass from "./components/Compass";
 import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
 import ToolHint from "./components/ToolHint";
+import Hud from "./components/Hud";
+import { CameraClipPanel } from "./components/CameraClipControl";
+import { announcePopover } from "./hooks/usePopoverGroup";
 import FirstRunHint from "./components/FirstRunHint";
 import { useLibrary } from "./library/useLibrary";
 import { LibraryContext } from "./library/LibraryContext";
@@ -342,6 +345,18 @@ function App() {
     else if (tagToolActive) toggleTagTool();
     else if (categoryHideModeActive) toggleCategoryHideMode();
   }, [armedTool, setClipMoveMode, measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
+  // Arming a tool closes any open popover.
+  useEffect(() => {
+    if (armedTool) announcePopover("tool");
+  }, [armedTool]);
+  // On a phone the details sheet drops to its peek bar while the views panel
+  // is open, so the panel has the room.
+  const handleViewToolsOpen = useCallback((open) => {
+    if (open !== "views") return;
+    if (!window.matchMedia?.("(max-width: 768px), (max-height: 500px) and (pointer: coarse)").matches) return;
+    setPanelOpen(false);
+    setPanelExpanded(false);
+  }, []);
   const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
 
@@ -457,9 +472,6 @@ function App() {
             onToggleMeasureMode={toggleMeasureMode}
             cameraClipEnabled={cameraClipEnabled}
             onSetCameraClipEnabled={setCameraClipEnabled}
-            cameraClipDistance={cameraClipDistance}
-            cameraClipMax={cameraClipMax}
-            onSetCameraClipDistance={setCameraClipDistance}
             tagToolActive={tagToolActive}
             onToggleTagTool={toggleTagTool}
             categoryHideModeActive={categoryHideModeActive}
@@ -477,8 +489,17 @@ function App() {
             onClearIsolation={clearIsolation}
             onBlocked={notifyBlocked}
           />
-          <ViewTools views={viewFeatures} spaceControl={spaceControl} />
-          <ToolHint tool={armedTool} onDone={exitArmedTool} />
+          <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} />
+          <Hud>
+            <ToolHint tool={armedTool} onDone={exitArmedTool} />
+            <CameraClipPanel
+              enabled={cameraClipEnabled}
+              distance={cameraClipDistance}
+              max={cameraClipMax}
+              onChange={setCameraClipDistance}
+              onDone={() => setCameraClipEnabled(false)}
+            />
+          </Hud>
           <div className="history-buttons">
             <button
               type="button"

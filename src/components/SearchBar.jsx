@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import usePopoverGroup from "../hooks/usePopoverGroup";
 import { prettyCategory } from "../ifc/elementDetails";
 import { useBrowser } from "../hooks/BrowserContext";
 import "./dataPanels.css";
@@ -93,6 +94,11 @@ export default function SearchBar({
   const browser = useBrowser();
   const shortPlaceholder = useShortPlaceholder();
   const [open, setOpen] = useState(false);
+  const closeResults = useCallback(() => {
+    setOpen(false);
+    if (document.activeElement?.closest?.(".search-bar")) document.activeElement.blur();
+  }, []);
+  usePopoverGroup("search", open, closeResults);
   const [groupMode, setGroupMode] = useState("category");
   const [catFilter, setCatFilter] = useState(() => new Set());
   const [active, setActive] = useState(0);

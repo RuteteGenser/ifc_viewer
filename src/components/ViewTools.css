@@ -2,14 +2,15 @@
 
 .view-tools {
   position: absolute;
-  top: calc(var(--toolbar-h, 52px) + 10px);
+  /* Under the toolbar and under the armed-tool note, whose height is --hud-h. */
+  top: calc(var(--toolbar-h, 52px) + 10px + var(--hud-h, 0px));
   right: calc(12px + var(--safe-right, 0px));
-  z-index: 17; /* above the history buttons, below the details sheet */
+  z-index: 17; /* above the history buttons, below the details sheet and the menu scrim */
 }
 
 /* The "Isolating N elements" banner sits right under the toolbar. */
 .view-tools--lower {
-  top: calc(var(--toolbar-h, 52px) + 70px);
+  top: calc(var(--toolbar-h, 52px) + 70px + var(--hud-h, 0px));
 }
 
 .view-tools__buttons {
@@ -63,7 +64,6 @@
 .view-tools__button:focus-visible,
 .view-tools__chip:focus-visible,
 .view-tools__mini:focus-visible,
-.view-tools__level-name:focus-visible,
 .view-tools__action:focus-visible,
 .view-tools__close:focus-visible,
 .view-tools__switch input:focus-visible {
@@ -75,8 +75,8 @@
   position: absolute;
   top: 0;
   right: 56px;
-  width: min(300px, calc(100vw - 84px - var(--safe-right, 0px)));
-  max-height: calc(100dvh - var(--toolbar-h, 52px) - 90px);
+  width: min(340px, calc(100vw - 84px - var(--safe-right, 0px)));
+  max-height: calc(100dvh - var(--header-height, 52px) - var(--toolbar-h, 52px) - var(--hud-h, 0px) - 34px);
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -109,10 +109,135 @@
   margin-top: 0;
 }
 
-.view-tools__grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.view-tools__head,
+.view-tools__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.view-tools__head .view-tools__heading,
+.view-tools__row .view-tools__heading {
+  margin: 0;
+}
+
+.view-tools__chips {
+  display: flex;
+  gap: 3px;
+}
+
+.view-tools__chips .view-tools__chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0;
+}
+
+/* Many levels: one row that scrolls sideways instead of a tall list. */
+.view-tools__chips--scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+
+.view-tools__chips--scroll .view-tools__chip {
+  flex: 0 0 auto;
+  min-width: 52px;
+  max-width: 150px;
+  padding: 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-tools__chips--three {
   gap: 6px;
+}
+
+/* "Only | And below" and the flat-view switch: small two-state controls. */
+.view-tools__seg {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.view-tools__seg button {
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.view-tools__seg button + button {
+  border-left: 1px solid var(--border-strong);
+}
+
+.view-tools__seg button.is-active,
+.view-tools__toggle.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.view-tools__toggle {
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.view-tools__seg button:focus-visible,
+.view-tools__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.view-tools__hint {
+  margin: 2px 8px 6px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.view-tools__close {
+  min-width: 64px;
+}
+
+/* Touch screens: a small caption under the icon says what the button opens. */
+.view-tools__caption {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .view-tools__button--cap {
+    width: 52px;
+    height: 48px;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: 14px;
+  }
+
+  .view-tools__button--cap svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .view-tools__caption {
+    display: block;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 600;
+  }
 }
 
 .view-tools__chip,
@@ -181,55 +306,8 @@
   color: var(--ink-faint);
 }
 
-.view-tools__levels {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.view-tools__level {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.view-tools__level-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  font-size: 13.5px;
-}
-
-.view-tools__level-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.view-tools__level-elev {
-  font-size: 12px;
-  color: var(--ink-faint);
-}
-
-.view-tools__level-name {
-  flex: 1 1 auto;
-  min-height: 44px;
-  text-align: left;
-  padding: 0 10px;
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  font-size: 13.5px;
-  cursor: pointer;
-}
-
 .view-tools__chip.is-active,
-.view-tools__mini.is-active,
-.view-tools__level-name.is-active {
+.view-tools__mini.is-active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
@@ -239,10 +317,6 @@
   flex: 0 0 auto;
   min-width: 52px;
   font-size: 12.5px;
-}
-
-.view-tools__close {
-  margin-top: 2px;
 }
 
 .view-tools__action {
@@ -270,19 +344,29 @@
   padding: 1px 6px;
 }
 
-/* Phones: the tool hint and the isolate banner are full-width pills right
-   under the toolbar, so the buttons start below them. */
+/* Phones: the buttons make one row under the armed-tool note, clear of the
+   middle of the screen where a pinch starts, and the panel opens below them
+   at nearly full width, no taller than the space that is left. */
 @media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
-  .view-tools {
-    top: calc(var(--toolbar-h, 52px) + 70px);
+  .view-tools__buttons {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .view-tools__zoom {
+    flex-direction: row;
   }
 
   .view-tools__panel {
-    max-height: calc(100dvh - var(--toolbar-h, 52px) - 130px);
+    top: 56px;
+    right: 0;
+    width: min(340px, calc(100vw - 24px - var(--safe-right, 0px)));
+    max-height: calc(100dvh - var(--header-height, 52px) - var(--toolbar-h, 52px) - var(--hud-h, 0px) - 10px - 56px - 12px - var(--safe-bottom, 0px));
   }
 
-  .view-tools--lower .view-tools__panel {
-    max-height: calc(100dvh - var(--toolbar-h, 52px) - 190px);
+  .view-tools__panel--menu {
+    width: min(260px, calc(100vw - 24px));
   }
 }
 

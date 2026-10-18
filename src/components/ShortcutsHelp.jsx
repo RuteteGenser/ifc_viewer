@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
 
 // Every hotkey the app responds to (see the keydown handler in
@@ -39,6 +40,8 @@ function HelpIcon() {
 export default function ShortcutsHelp() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  usePopoverGroup("help", open, close);
 
   useEffect(() => {
     if (!open) return undefined;

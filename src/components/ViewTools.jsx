@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
 import { STANDARD_VIEWS } from "../ifc/viewHelpers";
 import { formatElevation } from "../ifc/storeys";
@@ -70,6 +71,7 @@ const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer:
 
 function ViewsPanel({ views, spaceControl, onClose }) {
   const { flat, setFlatProjection, goToView, levels, levelSel, showLevels, showAllLevels } = views;
+  const [mode, setMode] = useState(levelSel?.mode ?? "only");
   // On a touch screen the panel covers much of the model, so it gets out of
   // the way once a choice is made. With a mouse it stays for quick flipping.
   const after = (fn) => (...args) => {
@@ -77,46 +79,84 @@ function ViewsPanel({ views, spaceControl, onClose }) {
     if (COARSE) onClose();
   };
   const ordered = [...levels].reverse(); // highest level first, like a section drawing
+  const chooseMode = (next) => {
+    setMode(next);
+    if (levelSel) showLevels(levelSel.id, next);
+  };
   return (
     <div className="view-tools__panel" role="dialog" aria-label="Views and levels">
-      <div className="view-tools__heading">Views</div>
-      <div className="view-tools__grid">
+      <div className="view-tools__head">
+        <span className="view-tools__heading">Views and levels</span>
+        <button type="button" className="view-tools__close" onClick={onClose}>
+          Done
+        </button>
+      </div>
+
+      {levels.length > 0 && (
+        <>
+          <div className="view-tools__row">
+            <span className="view-tools__heading">Levels</span>
+            <div className="view-tools__seg" role="group" aria-label="Which levels to show">
+              <button type="button" className={mode === "only" ? "is-active" : ""} aria-pressed={mode === "only"} onClick={() => chooseMode("only")}>
+                Only
+              </button>
+              <button type="button" className={mode === "below" ? "is-active" : ""} aria-pressed={mode === "below"} onClick={() => chooseMode("below")}>
+                And below
+              </button>
+            </div>
+          </div>
+          <div className="view-tools__chips view-tools__chips--scroll" role="group" aria-label="Levels">
+            <button type="button" className={`view-tools__chip${levelSel ? "" : " is-active"}`} aria-pressed={!levelSel} onClick={after(showAllLevels)}>
+              All
+            </button>
+            {ordered.map((level) => {
+              const active = levelSel?.id === level.id;
+              return (
+                <button
+                  key={level.id}
+                  type="button"
+                  className={`view-tools__chip${active ? " is-active" : ""}`}
+                  aria-pressed={active}
+                  title={`${level.name}, ${formatElevation(level.elevation)}`}
+                  aria-label={`${mode === "below" ? "Show" : "Only"} ${level.name}${mode === "below" ? " and below" : ""}`}
+                  onClick={after(() => showLevels(level.id, mode))}
+                >
+                  {level.name}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div className="view-tools__row">
+        <span className="view-tools__heading">Views</span>
+        <button type="button" role="switch" aria-checked={flat} className={`view-tools__toggle${flat ? " is-active" : ""}`} title="Parallel lines, no perspective" onClick={after(() => setFlatProjection(!flat))}>
+          Flat view
+        </button>
+      </div>
+      <div className="view-tools__chips">
         {STANDARD_VIEWS.map((v) => (
           <button key={v.id} type="button" className="view-tools__chip" onClick={() => {
               goToView(v.id);
               onClose();
             }} aria-label={`${v.label} view`}>
-            {v.label}
+            {v.id === "iso" ? "Iso" : v.label}
           </button>
         ))}
       </div>
-      <label className="view-tools__switch">
-        <input type="checkbox" checked={flat} onChange={after((e) => setFlatProjection(e.target.checked))} />
-        <span>
-          Flat view
-          <small>Parallel lines, no perspective</small>
-        </span>
-      </label>
-      {spaceControl?.available && (
-        <label className="view-tools__switch">
-          <input type="checkbox" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />
-          <span>
-            Show spaces
-            <small>Room volumes, hidden by default</small>
-          </span>
-        </label>
-      )}
 
       <div className="view-tools__heading">Section</div>
-      <div className="view-tools__grid">
+      <div className="view-tools__chips view-tools__chips--three">
         {SECTION_KINDS.map((k) => (
           <button
             key={k.id}
             type="button"
-            className="view-tools__chip"
+            className={`view-tools__chip${views.section?.kind === k.id ? " is-active" : ""}`}
+            aria-pressed={views.section?.kind === k.id}
             onClick={() => {
               views.addSection(k.id);
-              if (COARSE) onClose();
+              onClose();
             }}
             aria-label={k.aria}
           >
@@ -144,56 +184,13 @@ function ViewsPanel({ views, spaceControl, onClose }) {
         </div>
       )}
 
-      <div className="view-tools__heading">Levels</div>
-      {levels.length === 0 ? (
-        <p className="view-tools__note">This model has no building storeys.</p>
-      ) : (
-        <ul className="view-tools__levels">
-          <li className="view-tools__level">
-            <button
-              type="button"
-              className={`view-tools__level-name${levelSel ? "" : " is-active"}`}
-              onClick={after(showAllLevels)}
-              aria-pressed={!levelSel}
-            >
-              All levels
-            </button>
-          </li>
-          {ordered.map((level) => {
-            const onlyActive = levelSel?.id === level.id && levelSel.mode === "only";
-            const belowActive = levelSel?.id === level.id && levelSel.mode === "below";
-            return (
-              <li key={level.id} className="view-tools__level">
-                <span className="view-tools__level-label">
-                  <span className="view-tools__level-title">{level.name}</span>
-                  <span className="view-tools__level-elev">{formatElevation(level.elevation)}</span>
-                </span>
-                <button
-                  type="button"
-                  className={`view-tools__mini${onlyActive ? " is-active" : ""}`}
-                  onClick={after(() => showLevels(level.id, "only"))}
-                  aria-pressed={onlyActive}
-                  aria-label={`Show only ${level.name}`}
-                >
-                  Only
-                </button>
-                <button
-                  type="button"
-                  className={`view-tools__mini${belowActive ? " is-active" : ""}`}
-                  onClick={after(() => showLevels(level.id, "below"))}
-                  aria-pressed={belowActive}
-                  aria-label={`Show ${level.name} and everything below`}
-                >
-                  And below
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      {spaceControl?.available && (
+        <label className="view-tools__switch">
+          <input type="checkbox" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />
+          <span>Show spaces</span>
+        </label>
       )}
-      <button type="button" className="view-tools__close" onClick={onClose}>
-        Done
-      </button>
+      {levels.length === 0 && <p className="view-tools__note">This model has no building storeys.</p>}
     </div>
   );
 }
@@ -225,6 +222,7 @@ function SharePanel({ views, onClose }) {
       >
         <span>Copy view link</span>
       </button>
+      <p className="view-tools__hint">The link shares the camera view only.</p>
     </div>
   );
 }
@@ -232,12 +230,19 @@ function SharePanel({ views, onClose }) {
 // Floating controls at the top right of the 3D view: the views/levels
 // panel and the save/share menu. Kept out of the toolbar, which is already
 // full on a phone.
-export default function ViewTools({ views, spaceControl }) {
+export default function ViewTools({ views, spaceControl, onOpenChange }) {
   const [open, setOpen] = useState(null); // "views" | "share" | null
   const rootRef = useRef(null);
-  useDismiss(open !== null, () => setOpen(null), rootRef);
+  const close = useCallback(() => setOpen(null), []);
+  useDismiss(open !== null, close, rootRef);
+  usePopoverGroup("view-tools", open !== null, close);
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
   const disabled = !views.hasModels;
   const toggle = (name) => setOpen((cur) => (cur === name ? null : name));
+  const atMin = views.zoomLimit === "min";
+  const atMax = views.zoomLimit === "max";
 
   return (
     <div className={`view-tools${views.isolating ? " view-tools--lower" : ""}`} ref={rootRef}>
@@ -245,7 +250,7 @@ export default function ViewTools({ views, spaceControl }) {
         <Tooltip description={disabled ? "Open a model first" : "Views and levels"} align="right">
           <button
             type="button"
-            className={`view-tools__button${open === "views" ? " is-open" : ""}`}
+            className={`view-tools__button view-tools__button--cap${open === "views" ? " is-open" : ""}`}
             onClick={() => !disabled && toggle("views")}
             aria-disabled={disabled}
             aria-expanded={open === "views"}
@@ -253,12 +258,13 @@ export default function ViewTools({ views, spaceControl }) {
             aria-label="Views and levels"
           >
             <CubeIcon />
+            <span className="view-tools__caption" aria-hidden="true">Views</span>
           </button>
         </Tooltip>
         <Tooltip description={disabled ? "Open a model first" : "Save image or copy view link"} hotkey="P" align="right">
           <button
             type="button"
-            className={`view-tools__button${open === "share" ? " is-open" : ""}`}
+            className={`view-tools__button view-tools__button--cap${open === "share" ? " is-open" : ""}`}
             onClick={() => !disabled && toggle("share")}
             aria-disabled={disabled}
             aria-expanded={open === "share"}
@@ -266,6 +272,7 @@ export default function ViewTools({ views, spaceControl }) {
             aria-label="Save image or copy view link"
           >
             <CameraIcon />
+            <span className="view-tools__caption" aria-hidden="true">Share</span>
           </button>
         </Tooltip>
         <div className="view-tools__zoom" role="group" aria-label="Zoom">
@@ -274,7 +281,7 @@ export default function ViewTools({ views, spaceControl }) {
               type="button"
               className="view-tools__button"
               onClick={() => !disabled && views.zoomOut()}
-              aria-disabled={disabled}
+              aria-disabled={disabled || atMax}
               aria-label="Zoom out"
             >
               <MinusIcon />
@@ -285,7 +292,7 @@ export default function ViewTools({ views, spaceControl }) {
               type="button"
               className="view-tools__button"
               onClick={() => !disabled && views.zoomIn()}
-              aria-disabled={disabled}
+              aria-disabled={disabled || atMin}
               aria-label="Zoom in"
             >
               <PlusIcon />
@@ -293,8 +300,8 @@ export default function ViewTools({ views, spaceControl }) {
           </Tooltip>
         </div>
       </div>
-      {open === "views" && <ViewsPanel views={views} spaceControl={spaceControl} onClose={() => setOpen(null)} />}
-      {open === "share" && <SharePanel views={views} onClose={() => setOpen(null)} />}
+      {open === "views" && <ViewsPanel views={views} spaceControl={spaceControl} onClose={close} />}
+      {open === "share" && <SharePanel views={views} onClose={close} />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import Tooltip from "./Tooltip";
+import { announcePopover } from "../hooks/usePopoverGroup";
 
 function ClipIcon() {
   return (
@@ -13,9 +14,6 @@ function ClipIcon() {
 export default function CameraClipControl({
   cameraClipEnabled,
   onSetCameraClipEnabled,
-  cameraClipDistance,
-  cameraClipMax,
-  onSetCameraClipDistance,
   disabled,
   onBlocked,
 }) {
@@ -34,31 +32,47 @@ export default function CameraClipControl({
         <button
           type="button"
           className={`top-bar__icon-button${cameraClipEnabled ? " top-bar__icon-button--active" : ""}${disabled ? " is-blocked" : ""}`}
-          onClick={() => (disabled ? onBlocked?.() : onSetCameraClipEnabled(!cameraClipEnabled))}
+          onClick={() => {
+            if (disabled) onBlocked?.();
+            else {
+              if (!cameraClipEnabled) announcePopover("camera-clip");
+              onSetCameraClipEnabled(!cameraClipEnabled);
+            }
+          }}
           aria-disabled={disabled}
           aria-label="Toggle camera clip"
         >
           <ClipIcon />
         </button>
       </Tooltip>
+    </div>
+  );
+}
 
-      {cameraClipEnabled && (
-        <div className="camera-clip-popover">
-          <input
-            type="range"
-            className="clip-control__slider"
-            aria-label="Camera clip distance"
-            min="0"
-            max={cameraClipMax}
-            step="any"
-            value={cameraClipDistance}
-            onChange={(e) => onSetCameraClipDistance(Number(e.target.value))}
-          />
-          <p className="clip-control__hint">
-            Distance from camera to the cut plane.
-          </p>
-        </div>
-      )}
+// The distance slider, shown in the tool column (Hud) while the clip is on.
+export function CameraClipPanel({ enabled, distance, max, onChange, onDone }) {
+  if (!enabled) return null;
+  return (
+    <div className="camera-clip-popover" role="group" aria-label="Camera clip">
+      <div className="camera-clip-popover__head">
+        <span>Camera clip</span>
+        <button type="button" className="tool-hint__done camera-clip-popover__done" onClick={onDone}>
+          Done
+        </button>
+      </div>
+      <input
+        type="range"
+        className="clip-control__slider"
+        aria-label="Camera clip distance"
+        min="0"
+        max={max}
+        step="any"
+        value={distance}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <p className="clip-control__hint">
+        Distance from camera to the cut plane.
+      </p>
     </div>
   );
 }

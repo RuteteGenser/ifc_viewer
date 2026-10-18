@@ -203,9 +203,6 @@
 }
 
 .camera-clip-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
   width: 220px;
   display: flex;
   flex-direction: column;
@@ -1767,7 +1764,7 @@
   }
 
   .camera-clip-popover {
-    width: min(260px, calc(100vw - 24px));
+    width: min(300px, calc(100vw - 24px));
   }
 
   .clip-control__slider {
@@ -2146,14 +2143,6 @@
     width: 40px;
   }
 
-  .camera-clip-popover {
-    position: fixed;
-    left: 8px;
-    right: auto;
-    width: min(300px, calc(100vw - 16px));
-    top: calc(var(--header-height) + var(--toolbar-h, 52px) + 6px);
-  }
-
   .shortcuts-help__popover {
     max-height: calc(100dvh - var(--header-height) - var(--toolbar-h, 52px) - 16px);
     overflow-y: auto;
@@ -2350,29 +2339,54 @@
   }
 }
 
-.tool-hint {
+/* The armed-tool note and the camera-clip slider, one column under the toolbar. */
+.hud {
   position: absolute;
   top: calc(var(--toolbar-h, var(--header-height)) + 10px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 19;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  pointer-events: none;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+.camera-clip-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.camera-clip-popover .camera-clip-popover__done {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.camera-clip-popover .camera-clip-popover__done:hover {
+  background: var(--bg-subtle);
+}
+
+.tool-hint {
+  display: flex;
   align-items: center;
   gap: 8px;
   width: max-content;
-  max-width: calc(100% - 16px);
+  max-width: 100%;
   padding: 6px 6px 6px 14px;
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
   font-size: 13px;
   box-shadow: var(--shadow-md);
-}
-
-@media (min-width: 769px) {
-  .tool-hint {
-    left: calc(50% - 160px);
-  }
 }
 
 .tool-hint__text {
@@ -3079,13 +3093,13 @@
    so they never sit over its tabs. */
 @media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
   .first-run,
-  .tool-hint,
+  .hud,
   .status-stack {
     left: calc((100% - var(--panel-w, 320px)) / 2);
     max-width: calc(100% - var(--panel-w, 320px) - 24px);
   }
   .app-body--no-panel .first-run,
-  .app-body--no-panel .tool-hint,
+  .app-body--no-panel .hud,
   .app-body--no-panel .status-stack {
     left: 50%;
     max-width: calc(100% - 24px);
@@ -3124,11 +3138,14 @@
 /* Landscape phone: the armed-tool hint sits in the top-left corner so it
    never covers the middle of the model. */
 @media (max-height: 500px) and (pointer: coarse) {
-  .tool-hint {
+  .hud {
     left: calc(8px + var(--safe-left));
     transform: none;
     top: calc(var(--toolbar-h, 56px) + 6px);
+    align-items: flex-start;
     max-width: min(60%, 360px);
+  }
+  .tool-hint {
     white-space: nowrap;
     font-size: 12px;
     padding: 2px 2px 2px 10px;

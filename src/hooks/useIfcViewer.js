@@ -417,6 +417,7 @@ export function useIfcViewer() {
   const cancelLoadRef = useRef(() => {});
   const lastLoadFilesRef = useRef(null);
   const [ready, setReady] = useState(false);
+  const pendingFilesRef = useRef(null); // files chosen before the viewer finished starting
   const [clipPlanes, setClipPlanes] = useState([]); // [{ id, enabled, gizmoVisible }]
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
   const [cameraClipEnabled, setCameraClipEnabledState] = useState(false);
@@ -3845,15 +3846,19 @@ export function useIfcViewer() {
     // setup, which would otherwise be part of the initial JS the browser
     // has to parse/execute before anything is on screen.
     import("../ifc/setupComponents")
-      .then(({ createIfcPipeline }) => createIfcPipeline())
+      .then(({ takeIfcPipeline }) => takeIfcPipeline())
       .then((pipeline) => {
         if (disposed) return;
         pipelineRef.current = pipeline;
+        performance.mark("viewer-ready");
         setReady(true);
       })
       .catch((err) => {
         console.error("Failed to initialize IFC pipeline", err);
         if (!disposed) {
+          pendingFilesRef.current = null;
+          setIsLoading(false);
+          setLoadingLabel("");
           setError(
             "Failed to initialize the IFC parsing engine. Try reloading the page.",
           );
@@ -4801,7 +4806,11 @@ export function useIfcViewer() {
     const pipeline = pipelineRef.current;
     const modelsGroup = modelsGroupRef.current;
     if (!pipeline || !modelsGroup) {
-      setError("The viewer is still starting up. Please try again in a moment.");
+      // Still booting: keep the choice and load it as soon as the viewer is
+      // ready (see the effect after cancelLoad).
+      pendingFilesRef.current = [...(pendingFilesRef.current ?? []), ...Array.from(fileList)];
+      setIsLoading(true);
+      setLoadingLabel("Starting the viewer…");
       return;
     }
 
@@ -5001,11 +5010,20 @@ export function useIfcViewer() {
     }
 
     if (abandoned()) return;
+    performance.mark("model-shown");
     setIsLoading(false);
     setLoadingLabel("");
   }, [confirmReplaceFile, removeModel, getVisibleFrac]);
 
+  useEffect(() => {
+    if (!ready || !pendingFilesRef.current) return;
+    const files = pendingFilesRef.current;
+    pendingFilesRef.current = null;
+    loadFiles(files);
+  }, [ready, loadFiles]);
+
   const cancelLoad = useCallback(() => {
+    pendingFilesRef.current = null;
     cancelLoadRef.current();
     loadTokenRef.current += 1;
     setIsLoading(false);

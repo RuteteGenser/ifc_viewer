@@ -59,7 +59,6 @@ function App() {
     models,
     isLoading,
     loadingLabel,
-    ready,
     error,
     loadFiles,
     saveAsIfcZip,
@@ -274,7 +273,9 @@ function App() {
   const handleLoadSample = useCallback(async () => {
     setSidebarOpen(false);
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}demo/demo-building.ifc`);
+      // index.html starts this request at page load when the URL has ?demo=1.
+      const response = await (window.__demoIfc ?? fetch(`${import.meta.env.BASE_URL}demo/demo-building.ifc`));
+      window.__demoIfc = null;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
       const file = new File([blob], "demo-building.ifc");
@@ -287,11 +288,11 @@ function App() {
 
   const autoSampleRef = useRef(false);
   useEffect(() => {
-    if (autoSampleRef.current || !ready) return;
+    if (autoSampleRef.current) return;
     if (new URLSearchParams(window.location.search).get("demo") !== "1") return;
     autoSampleRef.current = true;
     handleLoadSample();
-  }, [ready, handleLoadSample]);
+  }, [handleLoadSample]);
 
   const fileInputRef = useRef(null);
   const openFilePicker = useCallback(() => fileInputRef.current?.click(), []);

@@ -12,7 +12,26 @@
     <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32.png" />
     <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="%BASE_URL%fonts/fraunces-latin.woff2" />
+    <script>
+      // ?demo=1: start the sample download now, in parallel with the app
+      // code and the viewer engine (App.jsx picks the promise up).
+      if (/[?&]demo=1(&|$)/.test(location.search)) {
+        window.__demoIfc = fetch("%BASE_URL%demo/demo-building.ifc");
+        window.__demoIfc.catch(function () {});
+      }
+    </script>
     <style>
+      /* Self-hosted Fraunces (variable weight, Latin subset): no third-party
+         connection or render-blocking stylesheet. */
+      @font-face {
+        font-family: Fraunces;
+        font-style: normal;
+        font-weight: 500 600;
+        font-display: swap;
+        src: url("%BASE_URL%fonts/fraunces-latin.woff2") format("woff2");
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
       /* First paint: shown until React replaces the contents of #root. */
       .splash {
         height: 100%;
@@ -38,12 +57,6 @@
     </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Martins IFC viewer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&display=swap"
-      rel="stylesheet"
-    />
   </head>
   <body>
     <div id="root">

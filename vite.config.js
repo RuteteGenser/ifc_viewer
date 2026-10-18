@@ -1,14 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   // GitHub Pages serves this repo at https://<user>.github.io/ifc_viewer/,
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
-  plugins: [react()],
-  // Names the service worker's cache, so each build replaces the last.
-  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
+  plugins: [react(), serviceWorkerManifest(), precompress()],
   build: {
     rollupOptions: {
       output: {
@@ -20,17 +19,22 @@ export default defineConfig(({ command }) => ({
           asset.names?.some((name) => name.endsWith('.mjs'))
             ? 'assets/[name]-[hash].js'
             : 'assets/[name]-[hash][extname]',
-        // Three.js and the @thatopen/* IFC stack are large and rarely
-        // change between deploys; splitting them into their own chunk
-        // means a future app-only change doesn't invalidate the browser's
-        // cached copy of them.
-        manualChunks(id) {
-          if (
-            id.includes('node_modules/three') ||
-            id.includes('node_modules/@thatopen')
-          ) {
-            return 'vendor'
-          }
+        // Three.js and the IFC engine (@thatopen/*, web-ifc) are large and
+        // rarely change, so they get their own long-cached chunks. The
+        // engine chunk is only reached through a dynamic import started
+        // from main.jsx, so it downloads and parses in parallel with the
+        // UI instead of in front of it.
+        codeSplitting: {
+          groups: [
+            { name: 'three', test: /node_modules[\\/]three[\\/]/, priority: 20 },
+            {
+              name: 'ifc-engine',
+              // Not the fragments worker's ?url module: main.jsx imports only
+              // that URL, which must not drag the engine chunk into the entry.
+              test: (id) => /node_modules[\\/](@thatopen|web-ifc|camera-controls)/.test(id) && !/[\\/]Worker[\\/]worker/.test(id),
+              priority: 10,
+            },
+          ],
         },
       },
     },

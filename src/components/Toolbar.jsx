@@ -84,6 +84,8 @@ export default function Toolbar({
   onToggleIsolate,
   onClearIsolation,
   onBlocked,
+  helpOpen,
+  onHelpOpenChange,
 }) {
   const rootRef = useRef(null);
 
@@ -181,7 +183,7 @@ export default function Toolbar({
         onToggleIsolate={onToggleIsolate}
         onClearIsolation={onClearIsolation}
       />
-      <ShortcutsHelp />
+      <ShortcutsHelp open={helpOpen} onOpenChange={onHelpOpenChange} />
     </div>
   );
 }

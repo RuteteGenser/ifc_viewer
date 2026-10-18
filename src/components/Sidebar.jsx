@@ -100,6 +100,7 @@ export default function Sidebar({
   selectedId,
   onPickElement,
   onRequestClose,
+  onOpenHelp,
 }) {
   // Swiping the open drawer to the left closes it again.
   const swipeRef = useRef(null);
@@ -210,6 +211,10 @@ export default function Sidebar({
         onFlipClipPlane={onFlipClipPlane}
         onRemoveClipPlane={onRemoveClipPlane}
       />
+
+      <button type="button" className="sidebar__help-button" onClick={onOpenHelp}>
+        Help: how to move around
+      </button>
     </aside>
   );
 }

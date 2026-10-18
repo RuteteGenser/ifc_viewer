@@ -20,6 +20,7 @@ import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
 import ToolHint from "./components/ToolHint";
 import Hud from "./components/Hud";
+import { GestureSheet } from "./components/ShortcutsHelp";
 import { CameraClipPanel } from "./components/CameraClipControl";
 import { announcePopover } from "./hooks/usePopoverGroup";
 import FirstRunHint from "./components/FirstRunHint";
@@ -156,6 +157,7 @@ function App() {
   const hasNoModels = models.length === 0;
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   // On narrow screens the model list is a drawer over the view: while it is
   // open the view behind it takes no taps and no focus.
   const [drawerLayout, setDrawerLayout] = useState(() => !!window.matchMedia?.(DRAWER_QUERY).matches);
@@ -475,6 +477,10 @@ function App() {
           selectedId={browser.selectedId}
           onPickElement={() => setSidebarOpen(false)}
           onRequestClose={() => setSidebarOpen(false)}
+          onOpenHelp={() => {
+            setSidebarOpen(false);
+            setHelpOpen(true);
+          }}
         />
 
         <div
@@ -512,6 +518,8 @@ function App() {
             onToggleIsolate={toggleIsolate}
             onClearIsolation={clearIsolation}
             onBlocked={notifyBlocked}
+            helpOpen={helpOpen}
+            onHelpOpenChange={setHelpOpen}
           />
           <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} />
           <Hud>
@@ -639,6 +647,8 @@ function App() {
             onClose={closeMeasureLegEditPopup}
           />
         )}
+
+        {helpOpen && COARSE_POINTER && <GestureSheet onClose={() => setHelpOpen(false)} />}
 
         {leaveGuard.asking && (
           <ConfirmDialog

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
 
@@ -27,6 +27,18 @@ const SHORTCUTS = [
   { keys: "Ctrl+Y / Ctrl+Shift+Z", description: "Redo" },
 ];
 
+// Phones and tablets have no keyboard: the same help is a list of gestures.
+const GESTURES = [
+  { gesture: "Tap", description: "Select an element" },
+  { gesture: "Hold", description: "Menu: zoom, isolate, hide, cut a section" },
+  { gesture: "Drag", description: "Turn the model, around the point you touch" },
+  { gesture: "Pinch", description: "Zoom" },
+  { gesture: "Two fingers", description: "Drag to move the view" },
+  { gesture: "Double-tap", description: "Zoom to the element" },
+];
+
+const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
 function HelpIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -37,19 +49,49 @@ function HelpIcon() {
   );
 }
 
-export default function ShortcutsHelp() {
-  const [open, setOpen] = useState(false);
+export function GestureSheet({ onClose }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <>
+      <button type="button" className="help-sheet__scrim" aria-label="Close help" onClick={onClose} />
+      <div className="help-sheet" role="dialog" aria-label="How to move around">
+        <div className="help-sheet__title">How to move around</div>
+        <dl className="help-sheet__list">
+          {GESTURES.map((g) => (
+            <div className="help-sheet__row" key={g.gesture}>
+              <dt>{g.gesture}</dt>
+              <dd>{g.description}</dd>
+            </div>
+          ))}
+        </dl>
+        <button type="button" className="help-sheet__close" onClick={onClose} autoFocus>
+          Close
+        </button>
+      </div>
+    </>
+  );
+}
+
+// `open` is controlled by the app, so the menu drawer can open the same help
+// on phones where the toolbar has no room for the button.
+export default function ShortcutsHelp({ open, onOpenChange }) {
   const containerRef = useRef(null);
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   usePopoverGroup("help", open, close);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || COARSE) return undefined;
     const handlePointerDown = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+      if (containerRef.current && !containerRef.current.contains(e.target)) close();
     };
     const handleKeyDown = (e) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") close();
     };
     window.addEventListener("pointerdown", handlePointerDown, true);
     window.addEventListener("keydown", handleKeyDown);
@@ -57,22 +99,24 @@ export default function ShortcutsHelp() {
       window.removeEventListener("pointerdown", handlePointerDown, true);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [open, close]);
 
   return (
     <div className="shortcuts-help" ref={containerRef}>
-      <Tooltip description="Keyboard shortcuts" align="right">
+      <Tooltip description={COARSE ? "How to move around" : "Keyboard shortcuts"} align="right">
         <button
           type="button"
           className="top-bar__icon-button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Keyboard shortcuts"
+          onClick={() => onOpenChange(!open)}
+          aria-label={COARSE ? "Help: how to move around" : "Keyboard shortcuts"}
+          aria-expanded={open}
         >
           <HelpIcon />
+          <span className="top-bar__caption" aria-hidden="true">Help</span>
         </button>
       </Tooltip>
 
-      {open && (
+      {open && !COARSE && (
         <div className="shortcuts-help__popover">
           <div className="shortcuts-help__title">Keyboard shortcuts</div>
           <dl className="shortcuts-help__list">

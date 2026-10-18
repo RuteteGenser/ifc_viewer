@@ -757,7 +757,9 @@ export function useIfcViewer() {
     // Test hook, only compiled into builds made with VITE_TEST_HOOK=1 (never the deployed build).
     if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Phones render at devicePixelRatio 2 (capped below), where multisampling
+    // adds little to edge quality but costs fill-rate and memory every frame.
+    const renderer = new THREE.WebGLRenderer({ antialias: !(TOUCH_UI && window.devicePixelRatio >= 2) });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.localClippingEnabled = true;

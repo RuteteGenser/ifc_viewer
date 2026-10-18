@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export default function useLeaveGuard() {
   const [asking, setAsking] = useState(false);
   const leavingRef = useRef(false);
+  const hashRef = useRef(typeof window === "undefined" ? "" : window.location.hash);
 
   const arm = useCallback(() => {
     try {
@@ -22,8 +23,17 @@ export default function useLeaveGuard() {
 
   useEffect(() => {
     const onFirstGesture = () => arm();
-    const onPop = () => {
+    const onPop = (event) => {
       if (leavingRef.current) return;
+      const hash = window.location.hash;
+      const hashOnly = hash !== hashRef.current;
+      hashRef.current = hash;
+      // Back onto the guard entry itself, or a link whose only change is the
+      // part after #: nothing to ask about.
+      if (event.state?.ifcGuard || hashOnly) return;
+      // The guard went with this Back. Put it straight back so that a second
+      // Back, while the question is still open, asks again instead of leaving.
+      arm();
       setAsking(true);
     };
     window.addEventListener("pointerdown", onFirstGesture, { once: true });
@@ -44,7 +54,8 @@ export default function useLeaveGuard() {
   const leave = useCallback(() => {
     leavingRef.current = true;
     setAsking(false);
-    window.history.back();
+    // Over the guard entry and the viewer's own.
+    window.history.go(window.history.state?.ifcGuard ? -2 : -1);
     // Nothing before the viewer to go back to (it was opened directly): stay put.
     setTimeout(() => {
       leavingRef.current = false;

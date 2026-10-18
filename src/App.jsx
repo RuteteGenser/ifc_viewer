@@ -75,6 +75,7 @@ function App() {
     setVisible,
     setModelColor,
     removeModel,
+    renameLoadedModel,
     resetView,
     resetVisibility,
     clearError,
@@ -308,7 +309,7 @@ function App() {
     }
   }, [loadFiles, setError]);
 
-  const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false) });
+  const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false), onRenamed: renameLoadedModel });
 
   const autoSampleRef = useRef(false);
   useEffect(() => {

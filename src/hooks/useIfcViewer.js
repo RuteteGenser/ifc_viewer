@@ -5063,6 +5063,13 @@ export function useIfcViewer() {
     }
   }, []);
 
+  // The library renamed a file that is open: the loaded row (and the name a
+  // saved .ifcZIP gets) follows it.
+  const renameLoadedModel = useCallback((oldName, newName) => {
+    for (const entry of modelsRef.current.values()) if (entry.fileName === oldName) entry.fileName = newName;
+    setModels((prev) => prev.map((m) => (m.name === oldName ? { ...m, name: newName } : m)));
+  }, []);
+
   const removeModel = useCallback(async (modelId) => {
     const pipeline = pipelineRef.current;
     const modelsGroup = modelsGroupRef.current;
@@ -5594,6 +5601,7 @@ export function useIfcViewer() {
     setVisible,
     setModelColor,
     removeModel,
+    renameLoadedModel,
     resetView,
     clearError,
     setError,

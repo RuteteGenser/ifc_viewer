@@ -26,7 +26,7 @@ const readPref = () => {
 // Everything about the server model library in one place. The only link
 // to the viewer is loadFiles(files); the library is optional, so a status
 // of "hidden" (no API, signed out) leaves the app exactly as it was.
-export function useLibrary({ loadFiles, models, onLoadSample, onOpened }) {
+export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRenamed }) {
   const [status, setStatus] = useState("loading"); // loading | ready | error | hidden
   const [items, setItems] = useState([]);
   const [listError, setListError] = useState("");
@@ -47,6 +47,8 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened }) {
   loadFilesRef.current = loadFiles;
   const onOpenedRef = useRef(onOpened);
   onOpenedRef.current = onOpened;
+  const onRenamedRef = useRef(onRenamed);
+  onRenamedRef.current = onRenamed;
 
   const say = useCallback((text, tone = "info") => {
     window.clearTimeout(noticeTimerRef.current);
@@ -246,6 +248,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened }) {
     try {
       const updated = await renameModel(item.id, name);
       setItems((list) => list.map((m) => (m.id === item.id ? { ...m, ...updated } : m)));
+      onRenamedRef.current?.(item.name, updated?.name ?? name);
       return "";
     } catch (err) {
       return err?.message || "Could not rename.";

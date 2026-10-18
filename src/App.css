@@ -1871,12 +1871,17 @@
     transform: translateY(0);
   }
 
+  .element-panel__grabber,
+  .element-panel__tabbar {
+    touch-action: none;
+  }
+
   .element-panel__grabber {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: 24px;
+    height: 32px;
     flex-shrink: 0;
     background: none;
     border: none;
@@ -1898,6 +1903,8 @@
 
   .element-panel__body {
     padding: 16px calc(16px + var(--safe-right)) 24px calc(16px + var(--safe-left));
+    touch-action: pan-y;
+    overscroll-behavior: contain;
   }
 
   .compass {
@@ -2039,4 +2046,35 @@
   .compass__offset {
     min-height: 40px;
   }
+}
+
+.empty-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  color: var(--ink-muted, #7a7167);
+}
+
+.empty-hint p {
+  margin: 0;
+  font-size: 15px;
+}
+
+.empty-hint__button {
+  pointer-events: auto;
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--paper-ivory);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }

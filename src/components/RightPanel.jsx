@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import ElementInfoPanel from "./ElementInfoPanel";
 import MeasureControl from "./MeasureControl";
 import DimensionTagsPanel from "./DimensionTagsPanel";
@@ -32,18 +33,50 @@ export default function RightPanel({
   onUnpinDimensionTag,
   onClearAllDimensionPins,
 }) {
+  // Swipe the handle / tab bar up to open the sheet and down to fold it
+  // away (a plain tap still toggles via the buttons' click handlers).
+  const swipeRef = useRef(null);
+  const swipedRef = useRef(false);
+  const swipe = {
+    onPointerDown: (e) => {
+      if (e.pointerType === "mouse") return;
+      swipeRef.current = { y: e.clientY, x: e.clientX };
+      swipedRef.current = false;
+    },
+    onPointerMove: (e) => {
+      const s = swipeRef.current;
+      if (!s) return;
+      const dy = e.clientY - s.y;
+      if (Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(e.clientX - s.x)) {
+        swipeRef.current = null;
+        swipedRef.current = true;
+        if (dy < 0 && !open) onToggleOpen();
+        if (dy > 0 && open) onToggleOpen();
+      }
+    },
+    onPointerUp: () => { swipeRef.current = null; },
+    onPointerCancel: () => { swipeRef.current = null; },
+    onClickCapture: (e) => {
+      if (swipedRef.current) {
+        swipedRef.current = false;
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    },
+  };
   return (
     <aside className={`element-panel${open ? " element-panel--open" : ""}`}>
       <button
         type="button"
         className="element-panel__grabber"
+        {...swipe}
         onClick={onToggleOpen}
         aria-label={open ? "Collapse details panel" : "Expand details panel"}
         aria-expanded={open}
       >
         <span />
       </button>
-      <div className="element-panel__tabbar">
+      <div className="element-panel__tabbar" {...swipe}>
         <button
           type="button"
           className={`element-panel__tab${activeTab === "info" ? " element-panel__tab--active" : ""}`}

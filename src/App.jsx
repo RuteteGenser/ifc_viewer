@@ -226,6 +226,14 @@ function App() {
         >
           <Viewport containerRef={containerRef} />
           <DropOverlay visible={isDragging} />
+          {models.length === 0 && !isLoading && (
+            <div className="empty-hint">
+              <p>No model loaded yet</p>
+              <button type="button" className="empty-hint__button" onClick={() => setSidebarOpen(true)}>
+                Add a model
+              </button>
+            </div>
+          )}
           <LoadingOverlay visible={isLoading} label={loadingLabel} />
           <Toolbar
             hasModels={models.length > 0}

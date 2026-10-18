@@ -93,6 +93,27 @@ function staleWhileRevalidate(event, cacheKey, store = cacheable) {
   return matchOwnFirst(cacheKey, { ignoreSearch: true }).then((hit) => hit || refresh.then((r) => r || Response.error()))
 }
 
+// The page itself: the network first, so the first visit after a deploy gets
+// the new index.html (a stale one would ask for files of the previous build).
+// The cached copy is used only when the network fails or takes longer than a
+// few seconds (offline, or a link so poor the cache is the better answer).
+const PAGE_TIMEOUT_MS = 4000
+function networkFirstPage(event) {
+  const fresh = fetch(event.request).then(async (response) => {
+    if (cacheable(response) && isPage(response)) await (await caches.open(CACHE)).put(INDEX, response.clone())
+    return response
+  })
+  event.waitUntil(fresh.catch(() => {}))
+  const cached = () => matchOwnFirst(INDEX, { ignoreSearch: true })
+  const slow = new Promise((resolve) => setTimeout(resolve, PAGE_TIMEOUT_MS)).then(cached)
+  return Promise.race([fresh.catch(() => null), slow]).then(async (first) => {
+    if (first) return first
+    // The network failed quickly (offline) or the timer found nothing cached: wait for whichever answers.
+    const hit = await cached()
+    return hit || fresh.catch(() => Response.error())
+  })
+}
+
 // This version's cache first, then the previous one's (cache.match across
 // caches would return the oldest copy, which for the index is the wrong page).
 async function matchOwnFirst(key, options) {
@@ -153,7 +174,7 @@ self.addEventListener('fetch', (event) => {
   if (request.cache === 'no-store' || request.cache === 'reload') return
 
   if (request.mode === 'navigate') {
-    event.respondWith(staleWhileRevalidate(event, INDEX))
+    event.respondWith(networkFirstPage(event))
     return
   }
   const path = url.href.slice(SCOPE.length)

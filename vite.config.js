@@ -7,6 +7,8 @@ export default defineConfig(({ command }) => ({
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
   plugins: [react()],
+  // Names the service worker's cache, so each build replaces the last.
+  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   build: {
     rollupOptions: {
       output: {

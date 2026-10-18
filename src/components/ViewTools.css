@@ -19,6 +19,13 @@
   align-items: flex-end;
 }
 
+/* Zoom out and in side by side, so the pair takes one row of the narrow
+   phone column and stays above the details sheet. */
+.view-tools__zoom {
+  display: flex;
+  gap: 8px;
+}
+
 .view-tools__button {
   width: 44px;
   height: 44px;

@@ -24,6 +24,22 @@ function CameraIcon() {
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg {...svgProps}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function MinusIcon() {
+  return (
+    <svg {...svgProps}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 // Closes a popover on an outside press or Escape, the same way the
 // shortcuts popover does.
 function useDismiss(open, setOpen, rootRef) {
@@ -243,6 +259,30 @@ export default function ViewTools({ views }) {
             <CameraIcon />
           </button>
         </Tooltip>
+        <div className="view-tools__zoom" role="group" aria-label="Zoom">
+          <Tooltip description={disabled ? "Open a model first" : "Zoom out"} hotkey="-" align="right">
+            <button
+              type="button"
+              className="view-tools__button"
+              onClick={() => !disabled && views.zoomOut()}
+              aria-disabled={disabled}
+              aria-label="Zoom out"
+            >
+              <MinusIcon />
+            </button>
+          </Tooltip>
+          <Tooltip description={disabled ? "Open a model first" : "Zoom in"} hotkey="+" align="right">
+            <button
+              type="button"
+              className="view-tools__button"
+              onClick={() => !disabled && views.zoomIn()}
+              aria-disabled={disabled}
+              aria-label="Zoom in"
+            >
+              <PlusIcon />
+            </button>
+          </Tooltip>
+        </div>
       </div>
       {open === "views" && <ViewsPanel views={views} onClose={() => setOpen(null)} />}
       {open === "share" && <SharePanel views={views} onClose={() => setOpen(null)} />}

@@ -178,6 +178,22 @@ function applyModelColorOverride(object, color) {
 // model group starts rotating.
 const MIN_SURFACE_DISTANCE = 0.2; // metres
 
+// Zoom tuning, all in one place. Lengths other than minSurface are measured
+// in "fit distance" L: how far the camera sits to frame the whole scene at
+// the current field of view (so big models, tiny models and flat view all
+// feel alike).
+const ZOOM = {
+  minSurface: MIN_SURFACE_DISTANCE, // closest approach to the surface under the cursor, metres (capped at 5% of L for tiny models)
+  maxFitFactor: 3, // furthest the camera may sit from the scene centre, as a multiple of L
+  stepFrac: 0.03, // one mouse-wheel notch (100 px) moves the camera this fraction of L, whatever the distance
+  maxNotchesPerEvent: 3, // cap for a single wheel event
+  keyNotches: 3, // notches per + / - key press or button tap
+  easeMs: 90, // time constant of the glide toward the zoom goal
+  softNotches: 2, // the last 2 notches before a limit ease out ...
+  softFloor: 0.35, // ... down to this fraction of a full step (never zero, so the limit is reached in finite time)
+  cueRepeatMs: 2500, // a limit cue shows once per contact; pushing again after this long without input counts as a new contact
+};
+
 function getSceneBox(entries) {
   const box = new THREE.Box3();
   let hasContent = false;
@@ -378,6 +394,9 @@ export function useIfcViewer() {
   const viewInsetBottomRef = useRef(0);
   const autoFramedRef = useRef(false); // true until the user moves the camera themselves; insets then re-fit the model
   const cameraAnimRef = useRef(0);
+  const zoomStepRef = useRef(() => {}); // (notches) => void, set by the main effect; used by the zoom keys and buttons
+  const zoomCancelRef = useRef(() => {}); // drops any pending zoom glide; set by the main effect
+  const zoomMetricsRef = useRef(() => null); // () => { L, min, max, step, center } | null; set by the main effect
   const showToastRef = useRef(() => {});
   const clipMoveModeRef = useRef(false);
   const refitModelRef = useRef(() => {});
@@ -618,8 +637,6 @@ export function useIfcViewer() {
     // be, so a single anomalous jump (e.g. a raycast that skips through a
     // window's missing glazing to a wall meters behind it) can't produce
     // an outsized zoom step.
-    let lastZoomTickPos = null; // { clientX, clientY } | null
-    let lastZoomDistance = null; // number | null
     // Background refresh for visibleModelSpheresLocal (see its
     // declaration above) — chunked the same way this codebase's other
     // bulk fragments queries are, and guarded by a generation counter so
@@ -662,8 +679,6 @@ export function useIfcViewer() {
       modelSpheresLocal = null;
       visibleModelSpheresLocal = null;
       zoomHitCache = null;
-      lastZoomTickPos = null;
-      lastZoomDistance = null;
       recomputeVisibleModelSpheres().catch((err) => {
         console.error("Failed to compute visible-only bounding spheres", err);
       });
@@ -1985,6 +2000,7 @@ export function useIfcViewer() {
         ) ?? null
       );
     };
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.raycast = raycastVisible;
     raycastVisibleRef.current = raycastVisible;
 
     // Right-click opens a context menu (see App.jsx) instead of the
@@ -2212,6 +2228,218 @@ export function useIfcViewer() {
         .add(center);
     };
 
+    // ---- Zoom engine --------------------------------------------------
+    // Wheel, keys and buttons move a *goal* position for the camera along
+    // the ray through the cursor, by a fixed world-space length per unit of
+    // input (ZOOM.stepFrac of the scene's fit distance), never by a fraction
+    // of the remaining distance, so speed is constant all the way in and
+    // out. Each frame the camera glides toward the goal (exponential ease,
+    // frame-rate independent). Because the camera only slides along the
+    // cursor's own ray, the point under the cursor stays under the cursor.
+    // Touch pinch still goes through OrbitControls (1:1 with finger spread);
+    // enforcePinchLimits below applies the same limits to it.
+    const zoom = { active: false, dir: new THREE.Vector3(), point: null, goal: new THREE.Vector3(), last: 0 };
+    const zoomTmp = new THREE.Vector3();
+    const zoomRay = new THREE.Raycaster();
+    const touchPointers = new Set();
+    let zoomLimitKind = null;
+    let zoomLimitAt = 0;
+    // Shows "Closest zoom" / "Furthest zoom" once per contact with a limit;
+    // `null` (the camera moved away from the limit) re-arms it.
+    const noteZoomLimit = (kind) => {
+      if (!kind) {
+        zoomLimitKind = null;
+        return;
+      }
+      const now = performance.now();
+      if (kind !== zoomLimitKind || now - zoomLimitAt > ZOOM.cueRepeatMs) {
+        showToastRef.current(kind === "min" ? "Closest zoom" : "Furthest zoom", 1400);
+      }
+      zoomLimitKind = kind;
+      zoomLimitAt = now;
+    };
+    // The one place the limits are derived (see ZOOM): L is the distance at
+    // which the whole scene just fits the view at the current field of view.
+    const zoomMetrics = () => {
+      const sphere = getGroupSphere();
+      if (!sphere || !(sphere.radius > 0)) return null;
+      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const t = Math.min(tanV, tanV * camera.aspect);
+      const L = (sphere.radius * Math.sqrt(1 + t * t)) / t;
+      return {
+        L,
+        center: sphere.center,
+        min: Math.min(ZOOM.minSurface, 0.05 * L),
+        max: ZOOM.maxFitFactor * L,
+        step: ZOOM.stepFrac * L,
+      };
+    };
+    zoomMetricsRef.current = zoomMetrics;
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.zoomState = () => ({ active: zoom.active, point: zoom.point && zoom.point.toArray(), goal: zoom.goal.toArray(), limit: zoomLimitKind });
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.zoomMetrics = zoomMetrics;
+    const softFactor = (remaining, m) => {
+      const zone = ZOOM.softNotches * m.step;
+      const k = Math.max(0, Math.min(1, remaining / zone));
+      return ZOOM.softFloor + (1 - ZOOM.softFloor) * (k * k * (3 - 2 * k));
+    };
+    // Moves the zoom goal `notches` along `ray` (positive = in), clamped to
+    // the limits. `cursorPoint` is the surface point under the cursor.
+    const zoomAlongRay = (ray, cursorPoint, notches) => {
+      const m = zoomMetrics();
+      if (!m) return;
+      const dir = ray.direction;
+      const continuing =
+        zoom.active &&
+        zoom.dir.dot(dir) > 1 - 1e-10 &&
+        zoomTmp.copy(camera.position).sub(zoom.goal).cross(dir).length() < 1e-3 * m.L;
+      if (!continuing) {
+        zoom.goal.copy(camera.position);
+        zoom.dir.copy(dir);
+        if (!cursorPoint) zoom.point = null;
+      }
+      if (cursorPoint) zoom.point = cursorPoint.clone();
+      if (!zoom.point) zoom.point = camera.position.clone().addScaledVector(dir, m.L);
+      const stepLen = Math.abs(notches) * m.step;
+      let kind = null;
+      let move = 0;
+      if (notches > 0) {
+        const remaining = zoomTmp.copy(zoom.point).sub(zoom.goal).dot(zoom.dir) - m.min;
+        if (remaining <= 1e-9) {
+          kind = "min";
+        } else {
+          const eff = stepLen * softFactor(remaining, m);
+          move = Math.min(eff, remaining);
+          if (eff >= remaining) kind = "min";
+        }
+        zoom.goal.addScaledVector(zoom.dir, move);
+      } else {
+        const p = zoomTmp.copy(zoom.goal).sub(m.center);
+        const b = p.dot(zoom.dir);
+        const c = p.lengthSq() - m.max * m.max;
+        if (c >= -1e-9) {
+          kind = "max";
+        } else {
+          const tExit = b + Math.sqrt(b * b - c);
+          const eff = stepLen * softFactor(tExit, m);
+          move = Math.min(eff, tExit);
+          if (eff >= tExit) kind = "max";
+        }
+        zoom.goal.addScaledVector(zoom.dir, -move);
+      }
+      if (kind) noteZoomLimit(kind);
+      else if (move > 0) noteZoomLimit(null);
+      if (move > 0 || zoom.active) {
+        zoom.active = true;
+        zoom.last = performance.now();
+        requestRender();
+      }
+    };
+    // Per-frame glide toward the goal (called from animate, before controls.update).
+    const stepZoom = (now) => {
+      if (!zoom.active) return;
+      const m = zoomMetrics();
+      const dt = Math.min(0.25, Math.max(0, (now - zoom.last) / 1000));
+      zoom.last = now;
+      const delta = zoomTmp.copy(zoom.goal).sub(camera.position);
+      if (delta.length() <= 1e-5 * (m ? m.L : 1)) {
+        camera.position.copy(zoom.goal);
+        zoom.active = false;
+      } else {
+        camera.position.addScaledVector(delta, 1 - Math.exp((-dt * 1000) / ZOOM.easeMs));
+      }
+      if (m) controls.minDistance = m.min;
+      const dist = Math.max(zoom.point ? camera.position.distanceTo(zoom.point) : 0, controls.minDistance);
+      // Near plane follows the distance to what you are looking at, so a
+      // close surface is never clipped and a far view keeps depth precision.
+      camera.near = Math.max(dist / 100, 1e-6);
+      camera.updateProjectionMatrix();
+      // Target stays exactly on the camera's forward axis, so controls.update()'s
+      // lookAt is a no-op and only the distance changes.
+      camera.getWorldDirection(zoomTmp);
+      controls.target.copy(camera.position).addScaledVector(zoomTmp, dist);
+      requestRender();
+    };
+    const cancelZoom = () => {
+      zoom.active = false;
+    };
+    zoomCancelRef.current = cancelZoom;
+    // Pinch (OrbitControls, 1:1 with the fingers): the same limits, applied
+    // after its update. The far limit pulls the camera back along its view
+    // axis (target untouched); the near limit is OrbitControls' minDistance.
+    let pinching = false;
+    const enforcePinchLimits = () => {
+      if (touchPointers.size < 2) {
+        if (pinching) {
+          pinching = false;
+          noteZoomLimit(null); // pinch ended: re-arm the cue
+        }
+        return;
+      }
+      pinching = true;
+      if (cameraAnimRef.current) return;
+      const m = zoomMetrics();
+      if (!m) return;
+      controls.minDistance = m.min;
+      let kind = null;
+      const p = zoomTmp.copy(camera.position).sub(m.center);
+      if (p.length() >= m.max * (1 - 1e-6)) {
+        const fwd = camera.getWorldDirection(new THREE.Vector3());
+        const b = p.dot(fwd);
+        const disc = b * b - (p.lengthSq() - m.max * m.max);
+        const toTarget = camera.position.distanceTo(controls.target);
+        if (disc >= 0 && p.length() > m.max) {
+          const t = Math.min(Math.max(0, -b - Math.sqrt(disc)), Math.max(0, toTarget - m.min));
+          camera.position.addScaledVector(fwd, t);
+        }
+        kind = "max";
+      } else if (camera.position.distanceTo(controls.target) <= m.min * 1.001) {
+        kind = "min";
+      }
+      const d = camera.position.distanceTo(controls.target);
+      const near = Math.max(d / 100, 1e-6);
+      if (Math.abs(near - camera.near) > camera.near * 0.01) {
+        camera.near = near;
+        camera.updateProjectionMatrix();
+      }
+      noteZoomLimit(kind);
+    };
+    const onTouchPointerDown = (event) => {
+      if (event.pointerType === "touch") touchPointers.add(event.pointerId);
+    };
+    const onTouchPointerUp = (event) => {
+      touchPointers.delete(event.pointerId);
+    };
+    renderer.domElement.addEventListener("pointerdown", onTouchPointerDown);
+    window.addEventListener("pointerup", onTouchPointerUp);
+    window.addEventListener("pointercancel", onTouchPointerUp);
+    // Buttons and keys zoom toward the middle of the view.
+    zoomStepRef.current = (notches) => {
+      if (modelsGroup.children.length === 0) return;
+      const r = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(0, 0);
+      const apply = (point) => {
+        if (disposed) return;
+        // Like any direct camera input: stop automatic re-framing and any ease.
+        autoFramedRef.current = false;
+        fitByFocusRef.current = false;
+        if (cameraAnimRef.current) {
+          cancelAnimationFrame(cameraAnimRef.current);
+          cameraAnimRef.current = 0;
+        }
+        zoomRay.setFromCamera(ndc, camera);
+        let pt = point;
+        if (!pt) {
+          const hit = nearestModelHit(zoomRay.ray.origin, zoomRay.ray.direction);
+          const sphere = getGroupSphere();
+          pt = hit ? hit.point : sphere ? raySphereProject(ndc, sphere.center, sphere.radius) : controls.target;
+        }
+        zoomAlongRay(zoomRay.ray, pt, notches);
+      };
+      raycastVisible(r.left + r.width / 2, r.top + r.height / 2)
+        .then((h) => apply(h ? h.point : null))
+        .catch(() => apply(null));
+    };
+
     // Kicks off (at most one at a time) the real, worker-backed raycast
     // that keeps zoomHitCache warm — called both after every zoom tick
     // and on plain hover, so the cache is usually already populated for
@@ -2258,11 +2486,10 @@ export function useIfcViewer() {
     // that never dispatches 'wheel' events, so enableZoom/zoomToCursor
     // are left on for it.
     const onZoomWheel = (event) => {
-      if (event.ctrlKey) return; // handled by onCtrlWheel instead
       if (event.target !== renderer.domElement && !renderer.domElement.contains(event.target)) {
         return;
       }
-      if (event.shiftKey) {
+      if (event.shiftKey && !event.ctrlKey) {
         if (tryShiftScrollClipPlane(event)) {
           event.preventDefault();
           event.stopPropagation();
@@ -2287,21 +2514,25 @@ export function useIfcViewer() {
       }
       event.preventDefault();
       event.stopPropagation();
+      // One notch = 100 px of wheel input, whatever the device reports:
+      // pixels (mouse, trackpad scroll), lines (Firefox) or pages. A
+      // trackpad pinch arrives as ctrl+wheel with much smaller deltas, so
+      // it is scaled up to feel the same.
+      const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 400 : 1;
+      const px = event.deltaY * unit * (event.ctrlKey ? 4 : 1);
+      const notches = Math.max(-ZOOM.maxNotchesPerEvent, Math.min(ZOOM.maxNotchesPerEvent, -px / 100));
+      if (notches === 0) return;
       const ndc = getNdc(event);
       raycaster.setFromCamera(ndc, camera);
-      const dir = raycaster.ray.direction; // camera -> into the scene, through the cursor
-
       const cacheValid =
         zoomHitCache &&
-        Math.hypot(
-          zoomHitCache.clientX - event.clientX,
-          zoomHitCache.clientY - event.clientY,
-        ) <= CACHE_PIXEL_TOLERANCE;
-
-      let cursorPoint;
+        Math.hypot(zoomHitCache.clientX - event.clientX, zoomHitCache.clientY - event.clientY) <=
+          CACHE_PIXEL_TOLERANCE;
+      let cursorPoint = null;
       if (cacheValid) {
         cursorPoint = zoomHitCache.point;
-      } else {
+      } else if (!(zoom.active && zoom.point)) {
+        const dir = raycaster.ray.direction;
         const hit = nearestModelHit(raycaster.ray.origin, dir);
         const sphere = getGroupSphere();
         cursorPoint = hit
@@ -2310,74 +2541,7 @@ export function useIfcViewer() {
             ? raySphereProject(ndc, sphere.center, sphere.radius)
             : controls.target;
       }
-
-      const rawPrevDistance = camera.position.distanceTo(cursorPoint);
-      const samePositionAsLastTick =
-        lastZoomTickPos &&
-        Math.hypot(
-          lastZoomTickPos.clientX - event.clientX,
-          lastZoomTickPos.clientY - event.clientY,
-        ) <= CACHE_PIXEL_TOLERANCE;
-
-      let prevDistance = rawPrevDistance;
-      if (samePositionAsLastTick && lastZoomDistance != null) {
-        // Bound how far the distance basis can jump in a single tick
-        // relative to where the last tick left off. A legitimate zoom
-        // tick only moves the camera by a small fraction of prevDistance
-        // (scale is always close to 1 for a normal wheel delta), so this
-        // only ever engages for a genuinely anomalous jump — e.g. a
-        // raycast that skipped through a window's missing glazing to a
-        // wall meters behind it — without limiting normal zoom speed at
-        // all, in either direction.
-        const MAX_TICK_RATIO = 1.5;
-        prevDistance = Math.min(
-          Math.max(rawPrevDistance, lastZoomDistance / MAX_TICK_RATIO),
-          lastZoomDistance * MAX_TICK_RATIO,
-        );
-      }
-      // Same formula OrbitControls' own default zoomSpeed uses, so
-      // scroll "feel" (speed scaling with how hard/fast you scroll) is
-      // unchanged — only the distance basis changes.
-      const scale = Math.pow(0.95, Math.abs(event.deltaY) * 0.01);
-      const zoomingIn = event.deltaY < 0;
-      const rawDistance = zoomingIn ? prevDistance * scale : prevDistance / scale;
-      // Tiny absolute floor — camera.near is kept proportional to the
-      // *current* distance below, so this no longer needs to scale with
-      // the whole model's size.
-      // Never let the camera sink into the surface under the cursor (a wall
-      // filling the screen with flat colour): stop 20 cm short of it, unless
-      // it is already closer than that, in which case zooming in just stops.
-      const minDistance = Math.min(MIN_SURFACE_DISTANCE, prevDistance);
-      const newDistance = Math.max(rawDistance, minDistance);
-      const radiusDelta = prevDistance - newDistance;
-
-      camera.position.addScaledVector(dir, radiusDelta);
-
-      // Keep near proportional to how close the camera currently is, not
-      // to the whole model's size computed once at the last
-      // frameCameraOnScene call (model load / Home button) — otherwise,
-      // on a large model, near (and any minDistance derived from it)
-      // stays large forever, silently capping how close you can zoom in
-      // on any one small part of it. Recomputed every tick so it also
-      // grows back on zoom-out, keeping depth precision reasonable at
-      // whatever distance you're actually viewing from.
-      camera.near = Math.max(newDistance / 100, 1e-6);
-      camera.updateProjectionMatrix();
-
-      // Keep target exactly on the camera's *current* forward axis (not
-      // at cursorPoint, which is generally off-center) so the next
-      // controls.update()'s unconditional object.lookAt(target) is a
-      // no-op and doesn't reorient the camera — only its distance
-      // changes. Mirrors what OrbitControls' own zoomToCursor does after
-      // a cursor-biased dolly.
-      const forward = camera.getWorldDirection(new THREE.Vector3());
-      controls.target.copy(camera.position).addScaledVector(forward, newDistance);
-
-      lastZoomTickPos = { clientX: event.clientX, clientY: event.clientY };
-      lastZoomDistance = newDistance;
-
-      requestRender();
-
+      zoomAlongRay(raycaster.ray, cursorPoint, notches);
       refreshZoomHitCache(event.clientX, event.clientY);
     };
     window.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
@@ -3603,6 +3767,7 @@ export function useIfcViewer() {
       }
     };
     renderer.domElement.addEventListener("pointerdown", onUserCamera);
+    renderer.domElement.addEventListener("pointerdown", cancelZoom);
     renderer.domElement.addEventListener("wheel", onUserCamera, { passive: true });
 
     // Touch has no right-click: a still finger held on the canvas opens
@@ -3833,7 +3998,9 @@ export function useIfcViewer() {
         setCompassAngleDeg(compassAngle);
       }
 
+      stepZoom(performance.now());
       controls.update();
+      enforcePinchLimits();
       pipelineRef.current?.fragments.core.update();
       if (!needsRender) return;
       needsRender = false;
@@ -3949,6 +4116,8 @@ export function useIfcViewer() {
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onMeasureKeyDown);
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
+      window.removeEventListener("pointerup", onTouchPointerUp);
+      window.removeEventListener("pointercancel", onTouchPointerUp);
       renderer.domElement.removeEventListener("pointermove", onZoomHoverMove);
       renderer.domElement.removeEventListener("pointermove", onMeasureHoverMove);
       renderer.domElement.removeEventListener("pointermove", onDimensionHoverMove);
@@ -4366,6 +4535,7 @@ export function useIfcViewer() {
   }, []);
 
   const cancelCameraAnim = useCallback(() => {
+    zoomCancelRef.current();
     if (cameraAnimRef.current) cancelAnimationFrame(cameraAnimRef.current);
     cameraAnimRef.current = 0;
   }, []);
@@ -4502,7 +4672,19 @@ export function useIfcViewer() {
       if (dir.lengthSq() < 1e-9) return;
       autoFramedRef.current = false;
       fitByFocusRef.current = false;
-      easeToPose(computeFit(camera, box, getVisibleFrac(), dir.normalize(), 0.6));
+      const pose = computeFit(camera, box, getVisibleFrac(), dir.normalize(), 0.6);
+      // Same closest approach as the wheel: never end up inside or touching
+      // the element when it is small.
+      const m = zoomMetricsRef.current();
+      if (m) {
+        const r = box.getBoundingSphere(new THREE.Sphere()).radius;
+        const least = r + m.min;
+        if (pose.distance < least) {
+          pose.distance = least;
+          pose.position = pose.target.clone().addScaledVector(dir, least);
+        }
+      }
+      easeToPose(pose);
     },
     [easeToPose, getVisibleFrac],
   );
@@ -5270,6 +5452,27 @@ export function useIfcViewer() {
     [applyViewInset, refitModel, wholeModelInView],
   );
 
+  // One linear zoom step (positive = in) toward the middle of the view, for
+  // the + / - buttons and keys.
+  const zoomStep = useCallback((direction) => {
+    zoomStepRef.current(direction * ZOOM.keyNotches);
+  }, []);
+  // + / = zoom in, - zoom out, 0 fits the whole model (Home).
+  useEffect(() => {
+    const onKey = (event) => {
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.key === "+" || event.key === "=") zoomStep(1);
+      else if (event.key === "-" || event.key === "_") zoomStep(-1);
+      else if (event.key === "0") resetView();
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomStep, resetView]);
+
   const clearError = useCallback(() => {
     setError(null);
     setLoadFailed(false);
@@ -5304,6 +5507,7 @@ export function useIfcViewer() {
     pushUndo,
     flipClipPlane,
     removeClipPlane,
+    zoomStep,
   });
 
   const browser = useModelBrowser({

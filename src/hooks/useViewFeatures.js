@@ -388,5 +388,7 @@ export function useViewFeatures(ctx) {
     saveScreenshot,
     copyViewLink,
     busy,
+    zoomIn: () => ctxRef.current.zoomStep(1),
+    zoomOut: () => ctxRef.current.zoomStep(-1),
   };
 }

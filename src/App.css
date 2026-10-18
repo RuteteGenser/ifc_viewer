@@ -3451,3 +3451,84 @@
 .model-row > .lib-save-btn {
   grid-column: 1 / -1;
 }
+
+/* ---------- Tablets and small desktop windows ---------- */
+
+/* The toolbar is only as wide as the 3D view between the two side panels, so
+   the search field becomes a magnifier button that opens a field over the
+   toolbar, the same as on a short phone. */
+@media (min-width: 769px) and (max-width: 1180px) and (not ((max-height: 500px) and (pointer: coarse))) {
+  .toolbar {
+    gap: 6px;
+  }
+  .toolbar .shortcuts-help {
+    margin-left: auto;
+  }
+  .search-bar {
+    order: 0;
+    flex: 0 0 44px;
+    width: 44px;
+    margin-left: 0;
+    position: relative;
+  }
+  .search-bar__icon {
+    display: block;
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    width: 20px;
+    height: 20px;
+    color: var(--text);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .toolbar .search-bar__input {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    color: transparent;
+    caret-color: transparent;
+    cursor: pointer;
+    border-color: var(--border-strong);
+  }
+  .toolbar .search-bar__input::placeholder {
+    color: transparent;
+  }
+  .toolbar .search-bar__input:not(:placeholder-shown) {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .toolbar .search-bar:focus-within {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 4px;
+    width: auto;
+    z-index: 60;
+  }
+  .toolbar .search-bar:focus-within .search-bar__input {
+    width: 100%;
+    color: var(--text);
+    caret-color: auto;
+    cursor: text;
+    padding: 0 12px 0 38px;
+    background: var(--bg);
+  }
+  .toolbar .search-bar:focus-within .search-bar__input::placeholder {
+    color: var(--text-faint);
+  }
+  .element-panel__tabbar {
+    padding: 0 4px;
+    gap: 0;
+  }
+  .element-panel__tabbar .element-panel__tab {
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 11.5px;
+  }
+  .element-panel__tabbar .element-panel__collapse,
+  .element-panel__tabbar .element-panel__close {
+    min-width: 36px;
+    width: 36px;
+  }
+}

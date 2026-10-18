@@ -25,6 +25,24 @@ const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(po
 const SAMPLE_NAME = "Sample building";
 import "./App.css";
 
+const PANEL_MIN = 260;
+const PANEL_MAX = 560;
+function readPref(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch {
+    return fallback;
+  }
+}
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // private mode: the choice just isn't remembered
+  }
+}
+
 // Matches the colors already used for each leg in the 3D dogleg
 // (useIfcViewer.js's legRight/legUp/legDepth) and in MeasureControl.jsx's
 // read-only display, so the edit popup reads as "the same leg" as
@@ -114,6 +132,7 @@ function App() {
     zoomToElementHere,
     isolateElementHere,
     copyGuidHere,
+    hoverLabelRef,
     loadFailed,
     retryLoad,
     cancelLoad,
@@ -122,6 +141,28 @@ function App() {
   const hasNoModels = models.length === 0;
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Wide layouts only: fold the model list / details panel away, and resize the panel.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readPref("ifcViewer.sidebarCollapsed", "0") === "1");
+  const [panelCollapsed, setPanelCollapsed] = useState(() => readPref("ifcViewer.panelCollapsed", "0") === "1");
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const n = Number(readPref("ifcViewer.panelWidth", "320"));
+    return Number.isFinite(n) ? Math.min(PANEL_MAX, Math.max(PANEL_MIN, n)) : 320;
+  });
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((v) => {
+      writePref("ifcViewer.sidebarCollapsed", v ? "0" : "1");
+      return !v;
+    });
+  }, []);
+  const setPanelCollapsedSaved = useCallback((value) => {
+    writePref("ifcViewer.panelCollapsed", value ? "1" : "0");
+    setPanelCollapsed(value);
+  }, []);
+  const changePanelWidth = useCallback((w) => {
+    const next = Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(w)));
+    writePref("ifcViewer.panelWidth", next);
+    setPanelWidth(next);
+  }, []);
   const [activeRightTab, setActiveRightTab] = useState("info");
   // Only meaningful on narrow screens, where the right panel is a bottom
   // sheet that starts collapsed to a peek bar; on desktop it's always shown.
@@ -162,7 +203,7 @@ function App() {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [panelOpen, hasNoModels, setViewInsets]);
+  }, [panelOpen, hasNoModels, setViewInsets, panelCollapsed, panelWidth]);
 
   // Bring a newly selected element into the middle of the visible area once
   // the sheet has taken its size (after the inset effect above has run).
@@ -275,9 +316,15 @@ function App() {
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebarCollapsed}
       />
 
-      <div className="app-body" data-sheet={hasNoModels ? "none" : panelOpen ? "open" : "peek"}>
+      <div
+        className={`app-body${sidebarCollapsed ? " app-body--no-sidebar" : ""}${panelCollapsed ? " app-body--no-panel" : ""}`}
+        style={{ "--panel-w": `${panelWidth}px` }}
+        data-sheet={hasNoModels ? "none" : panelOpen ? "open" : "peek"}
+      >
         <div className="sheet-inset-probe" ref={insetProbeRef} aria-hidden="true" />
         <div className="panel-inset-probe" ref={insetProbeRightRef} aria-hidden="true" />
         {sidebarOpen && (
@@ -382,6 +429,12 @@ function App() {
           />
           <StatusBanner error={error} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} />
           <Toast toast={toast} />
+          <div className="hover-label" ref={hoverLabelRef} hidden aria-hidden="true" />
+          {panelCollapsed && !hasNoModels && (
+            <button type="button" className="panel-reveal" aria-label="Show details panel" onClick={() => setPanelCollapsedSaved(false)}>
+              <span aria-hidden="true">&lsaquo;</span>
+            </button>
+          )}
           <FirstRunHint visible={models.length > 0 && !isLoading} />
         </div>
 
@@ -404,6 +457,10 @@ function App() {
           open={panelOpen}
           onTabChange={handleTabChange}
           onToggleOpen={() => setPanelOpen((open) => !open)}
+          collapsed={panelCollapsed}
+          onCollapse={() => setPanelCollapsedSaved(true)}
+          width={panelWidth}
+          onResize={changePanelWidth}
           onClose={handleClosePanel}
           onHideElement={hideSelectedElement}
           element={selectedElement}

@@ -32,6 +32,10 @@ export default function RightPanel({
   pinnedDimensionTags,
   onUnpinDimensionTag,
   onClearAllDimensionPins,
+  collapsed,
+  onCollapse,
+  width,
+  onResize,
 }) {
   // Swipe the handle / tab bar up to open the sheet and down to fold it
   // away (a plain tap still toggles via the buttons' click handlers).
@@ -64,8 +68,45 @@ export default function RightPanel({
       }
     },
   };
+  // Drag the left edge (or use the arrow keys) to resize on wide layouts.
+  const startResize = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    const move = (ev) => onResize(startW + (startX - ev.clientX));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  const resizeKey = (e) => {
+    const step = e.shiftKey ? 48 : 16;
+    if (e.key === "ArrowLeft") onResize(width + step);
+    else if (e.key === "ArrowRight") onResize(width - step);
+    else if (e.key === "Home") onResize(9999);
+    else if (e.key === "End") onResize(0);
+    else return;
+    e.preventDefault();
+  };
   return (
-    <aside className={`element-panel${open ? " element-panel--open" : ""}`}>
+    <aside className={`element-panel${open ? " element-panel--open" : ""}`} aria-hidden={collapsed ? "true" : undefined} inert={collapsed ? "" : undefined}>
+      <div
+        className="element-panel__resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize details panel"
+        aria-valuemin={260}
+        aria-valuemax={560}
+        aria-valuenow={width}
+        tabIndex={0}
+        onPointerDown={startResize}
+        onKeyDown={resizeKey}
+      />
       <button
         type="button"
         className="element-panel__grabber"
@@ -100,6 +141,15 @@ export default function RightPanel({
         >
           Dimensions
           {activeTab === "dimensions" && <TabUnderline />}
+        </button>
+        <button
+          type="button"
+          className="element-panel__collapse"
+          aria-label="Hide details panel"
+          title="Hide details panel"
+          onClick={onCollapse}
+        >
+          <span aria-hidden="true">&rsaquo;</span>
         </button>
         <button
           type="button"

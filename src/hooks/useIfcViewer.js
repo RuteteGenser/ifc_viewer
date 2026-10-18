@@ -355,6 +355,7 @@ export function useIfcViewer() {
   const cameraClipEnabledRef = useRef(false);
   const cameraClipDistanceRef = useRef(0);
   const measureManagerRef = useRef(null); // { addPoint, cancelPending, remove, list } | null
+  const hoverLabelRef = useRef(null); // DOM node the App renders; text/position are written directly (no React churn per mouse move)
   const measureModeActiveRef = useRef(false);
   const showMeasureDeletePopupRef = useRef(() => {});
   const measureDeletePopupRef = useRef(null); // mirrors measureDeletePopup state, for the imperative animate() loop
@@ -2398,6 +2399,99 @@ export function useIfcViewer() {
     };
     renderer.domElement.addEventListener("pointermove", onDimensionHoverMove);
 
+    // Mouse only: the element under the cursor is named next to it, and the
+    // cursor reflects the active tool. Same one-raycast-per-frame cap as the
+    // hover tag above; the label is a plain DOM node written directly.
+    let nameHoverPending = null; // { clientX, clientY } | null
+    let nameHoverBusy = false;
+    let nameHoverGeneration = 0;
+    let nameHoverKey = null;
+    let nameHoverFetchKey = null; // element whose name is being fetched
+    let nameHoverText = null; // { name, category } for nameHoverKey
+    let nameHoverPos = { x: 0, y: 0 };
+    let lastCursor = "";
+    const applyCursor = (overElement) => {
+      const tool = measureModeActiveRef.current || tagToolActiveRef.current;
+      const cursor = tool ? "crosshair" : categoryHideModeActiveRef.current ? "not-allowed" : overElement ? "pointer" : "";
+      if (cursor !== lastCursor) {
+        lastCursor = cursor;
+        renderer.domElement.style.cursor = cursor;
+      }
+    };
+    const placeHoverLabel = () => {
+      const node = hoverLabelRef.current;
+      if (!node) return;
+      const show = nameHoverKey && nameHoverText;
+      node.hidden = !show;
+      if (!show) return;
+      const w = node.offsetWidth || 160;
+      const x = Math.min(nameHoverPos.x + 14, window.innerWidth - w - 8);
+      const y = nameHoverPos.y + 18 > window.innerHeight - 40 ? nameHoverPos.y - 36 : nameHoverPos.y + 18;
+      node.style.transform = `translate(${Math.max(8, x)}px, ${y}px)`;
+    };
+    const showHoverText = (text) => {
+      const node = hoverLabelRef.current;
+      if (!node) return;
+      node.replaceChildren();
+      const strong = document.createElement("strong");
+      strong.textContent = text.name;
+      node.append(strong);
+      if (text.category) {
+        const small = document.createElement("span");
+        small.textContent = text.category;
+        node.append(small);
+      }
+    };
+    const clearNameHover = () => {
+      nameHoverPending = null;
+      nameHoverGeneration++;
+      nameHoverKey = null;
+      nameHoverFetchKey = null;
+      nameHoverText = null;
+      placeHoverLabel();
+      applyCursor(false);
+    };
+    const onNameHoverMove = (event) => {
+      if (event.pointerType !== "mouse") return;
+      if (event.buttons !== 0 || pivotPending || rotating || draggingMeasurePoint) {
+        clearNameHover();
+        return;
+      }
+      applyCursor(!!nameHoverKey);
+      nameHoverPos = { x: event.clientX, y: event.clientY };
+      // The label follows the cursor while it stays on the same element.
+      if (nameHoverKey && nameHoverText) placeHoverLabel();
+      if (measureModeActiveRef.current || tagToolActiveRef.current) return;
+      nameHoverPending = { clientX: event.clientX, clientY: event.clientY };
+    };
+    const handleNameHoverResult = async (hit) => {
+      const key = hit ? `${hit.fragments.modelId}::${hit.localId}` : null;
+      if (key === nameHoverKey) return;
+      if (!key) {
+        nameHoverKey = null;
+        nameHoverFetchKey = null;
+        nameHoverText = null;
+        placeHoverLabel();
+        applyCursor(false);
+        return;
+      }
+      if (nameHoverFetchKey === key) return;
+      nameHoverFetchKey = key;
+      const [data] = await hit.fragments.getItemsData([hit.localId], { attributesDefault: true });
+      if (nameHoverFetchKey !== key) return;
+      const category = data?._category?.value ?? "";
+      const name = data?.Name?.value || category || "Element";
+      nameHoverKey = key;
+      nameHoverText = { name, category: name === category ? "" : category };
+      showHoverText(nameHoverText);
+      placeHoverLabel();
+      applyCursor(true);
+    };
+    renderer.domElement.addEventListener("pointermove", onNameHoverMove);
+    renderer.domElement.addEventListener("pointerleave", clearNameHover);
+    renderer.domElement.addEventListener("pointerdown", clearNameHover);
+    renderer.domElement.addEventListener("wheel", clearNameHover, { passive: true });
+
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * ROTATE_GAIN * (ndc.x - startNdcX);
       // + on the elevation term: ndc.y grows upward, and dragging up
@@ -3196,7 +3290,7 @@ export function useIfcViewer() {
     // commits to clicking it.
     const onMeasureMarkerHoverCursor = (event) => {
       if (draggingMeasurePoint || measurementsRuntime.length === 0 || !tagsVisibleRef.current) {
-        if (!draggingMeasurePoint) renderer.domElement.style.cursor = "";
+        if (!draggingMeasurePoint) renderer.domElement.style.cursor = lastCursor;
         return;
       }
       const hittable = [];
@@ -3205,7 +3299,7 @@ export function useIfcViewer() {
       }
       raycaster.setFromCamera(getNdc(event), camera);
       const hits = raycaster.intersectObjects(hittable, false);
-      renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "";
+      renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : lastCursor;
     };
     renderer.domElement.addEventListener("pointermove", onMeasureMarkerHoverCursor);
 
@@ -3576,6 +3670,22 @@ export function useIfcViewer() {
             console.error("Dimension hover raycast failed", err);
           });
       }
+      if (nameHoverPending && !nameHoverBusy) {
+        const { clientX, clientY } = nameHoverPending;
+        nameHoverPending = null;
+        nameHoverBusy = true;
+        const myGeneration = ++nameHoverGeneration;
+        raycastVisible(clientX, clientY)
+          .then((hit) => {
+            nameHoverBusy = false;
+            if (myGeneration !== nameHoverGeneration) return;
+            return handleNameHoverResult(hit);
+          })
+          .catch((err) => {
+            nameHoverBusy = false;
+            console.error("Name hover raycast failed", err);
+          });
+      }
       // Same one-raycast-per-rendered-frame cap as the two blocks above,
       // for the measure tool's own live "point B" preview — previously
       // raycast directly inside the pointermove handler behind a plain
@@ -3775,6 +3885,10 @@ export function useIfcViewer() {
       renderer.domElement.removeEventListener("pointermove", onZoomHoverMove);
       renderer.domElement.removeEventListener("pointermove", onMeasureHoverMove);
       renderer.domElement.removeEventListener("pointermove", onDimensionHoverMove);
+      renderer.domElement.removeEventListener("pointermove", onNameHoverMove);
+      renderer.domElement.removeEventListener("pointerleave", clearNameHover);
+      renderer.domElement.removeEventListener("pointerdown", clearNameHover);
+      renderer.domElement.removeEventListener("wheel", clearNameHover);
       destroyAllDimensionTags();
       clearMeasurePreview();
       window.removeEventListener("wheel", onCtrlWheel, { capture: true });
@@ -4947,6 +5061,10 @@ export function useIfcViewer() {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
+    cancelCameraAnim();
+    autoFramedRef.current = true;
+    const startQuat = modelsGroup ? modelsGroup.quaternion.clone() : null;
+    const startPos = modelsGroup ? modelsGroup.position.clone() : null;
     if (modelsGroup) {
       // A drag rotates the group about a pivot, which also moves its
       // position, so both are reset. The world matrices are refreshed so
@@ -4955,10 +5073,40 @@ export function useIfcViewer() {
       modelsGroup.position.set(0, 0, 0);
       modelsGroup.updateMatrixWorld(true);
     }
-    cancelCameraAnim();
-    autoFramedRef.current = true;
-    frameCameraOnScene(camera, controls, modelsRef.current.values(), getVisibleFrac());
-    requestRenderRef.current();
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const box = getSceneBox(modelsRef.current.values());
+    if (!modelsGroup || !box || reduceMotion) {
+      frameCameraOnScene(camera, controls, modelsRef.current.values(), getVisibleFrac());
+      requestRenderRef.current();
+      return;
+    }
+    // Ease there: the model turns back and the camera glides to the framing.
+    const pose = computeFit(camera, box, getVisibleFrac(), DEFAULT_VIEW_DIR);
+    modelsGroup.quaternion.copy(startQuat);
+    modelsGroup.position.copy(startPos);
+    modelsGroup.updateMatrixWorld(true);
+    const fromCamPos = camera.position.clone();
+    const fromTarget = controls.target.clone();
+    const identity = new THREE.Quaternion();
+    const zero = new THREE.Vector3();
+    const t0 = performance.now();
+    const ms = 420;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms);
+      const e = k * k * (3 - 2 * k);
+      modelsGroup.quaternion.copy(startQuat).slerp(identity, e);
+      modelsGroup.position.copy(startPos).lerp(zero, e);
+      modelsGroup.updateMatrixWorld(true);
+      applyPose(camera, controls, {
+        position: fromCamPos.clone().lerp(pose.position, e),
+        target: fromTarget.clone().lerp(pose.target, e),
+        distance: undefined,
+      });
+      requestRenderRef.current();
+      cameraAnimRef.current = k < 1 ? requestAnimationFrame(step) : 0;
+      if (k >= 1) applyPose(camera, controls, pose);
+    };
+    cameraAnimRef.current = requestAnimationFrame(step);
   }, [cancelCameraAnim, getVisibleFrac]);
 
   // Part of the viewport can be covered by UI that sits over it (on a phone,
@@ -5081,6 +5229,7 @@ export function useIfcViewer() {
     zoomToElementHere,
     isolateElementHere,
     copyGuidHere,
+    hoverLabelRef,
     loadFailed,
     retryLoad,
     cancelLoad,

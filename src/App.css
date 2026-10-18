@@ -1934,7 +1934,7 @@
   }
 
   .details-fab {
-    bottom: calc(var(--sheet-inset) + 12px + 104px);
+    bottom: calc(var(--sheet-inset) + 12px + 104px + var(--transfer-h, 0px));
   }
 
   .element-panel__grabber,
@@ -1986,7 +1986,7 @@
 
   .compass {
     left: calc(12px + var(--safe-left));
-    bottom: calc(var(--sheet-inset) + 12px);
+    bottom: calc(var(--sheet-inset) + 12px + var(--transfer-h, 0px));
     flex-direction: row;
     gap: 8px;
   }
@@ -1997,7 +1997,7 @@
   }
 
   .history-buttons {
-    bottom: calc(var(--sheet-inset) + 12px);
+    bottom: calc(var(--sheet-inset) + 12px + var(--transfer-h, 0px));
   }
 }
 
@@ -2103,7 +2103,7 @@
   }
 
   .compass {
-    bottom: 8px;
+    bottom: calc(8px + var(--transfer-h, 0px));
     flex-direction: row;
     gap: 8px;
   }
@@ -2115,7 +2115,7 @@
 
   .history-buttons {
     flex-direction: row;
-    bottom: 8px;
+    bottom: calc(8px + var(--transfer-h, 0px));
     right: calc(12px + var(--safe-right));
   }
 }

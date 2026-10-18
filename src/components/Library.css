@@ -394,6 +394,29 @@
   animation: lib-busy 1s ease-in-out infinite alternate;
 }
 
+/* Phones: the bar docks across the bottom edge, and the buttons that live
+   there (undo, redo, compass) lift by its height, --transfer-h. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  .lib-transfer {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: auto;
+    gap: 6px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg);
+    border-top: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-md);
+  }
+
+  .lib-transfer__item,
+  .lib-notice {
+    box-shadow: none;
+    border-color: var(--border);
+  }
+}
+
 @keyframes lib-busy {
   to {
     transform: translateX(150%);

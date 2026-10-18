@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useLibraryContext } from "./LibraryContext";
 
 function Progress({ label, percent, onCancel, cancelLabel }) {
@@ -22,12 +23,31 @@ function Progress({ label, percent, onCancel, cancelLabel }) {
 // so the model stays usable while a save runs.
 export default function TransferBar() {
   const library = useLibraryContext();
-  if (!library) return null;
+  const ref = useRef(null);
+  const visible = !!library && !!(library.download || library.upload || library.notice);
+  // The bar's height is published as --transfer-h so the buttons at the bottom
+  // of the view can sit above it on a phone.
+  useEffect(() => {
+    const el = ref.current;
+    const root = document.documentElement;
+    if (!visible || !el || typeof ResizeObserver === "undefined") {
+      root.style.setProperty("--transfer-h", "0px");
+      return undefined;
+    }
+    const publish = () => root.style.setProperty("--transfer-h", `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.setProperty("--transfer-h", "0px");
+    };
+  }, [visible]);
+  if (!visible) return null;
   const { download, upload, notice } = library;
-  if (!download && !upload && !notice) return null;
   const short = (n) => (n.length > 30 ? `${n.slice(0, 27)}…` : n);
   return (
-    <div className="lib-transfer">
+    <div className="lib-transfer" ref={ref}>
       {download && (
         <Progress
           label={`Downloading ${short(download.name)}`}

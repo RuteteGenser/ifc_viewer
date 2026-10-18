@@ -34,6 +34,31 @@ export function dropUnminifiedFragmentsWorker() {
   }
 }
 
+// The page never runs @thatopen/fragments' IFC importer (the import worker
+// does), but the package is one module that imports web-ifc at the top, so a
+// build of the page carries the whole parser (about 100 kB of gzip) for code
+// that cannot run there. Only that one import is pointed at an empty module:
+// every use of it in the package is inside a function of the importer or of
+// its helpers (the few top-level uses read a property of the namespace, which
+// is just undefined). The page's own use of web-ifc (src/ifc/rawIfcQuery.js)
+// resolves to the real thing, loaded on first use.
+export function emptyWebIfcForFragments() {
+  const STUB = '\0empty-web-ifc'
+  return {
+    name: 'empty-web-ifc-for-fragments',
+    enforce: 'pre',
+    apply: 'build',
+    resolveId(id, importer) {
+      if (id === STUB) return STUB
+      if (id === 'web-ifc' && importer && /node_modules[\\/]@thatopen[\\/]fragments[\\/]dist[\\/]index\.mjs$/.test(importer)) return STUB
+      return null
+    },
+    load(id) {
+      return id === STUB ? 'export {}\n' : null
+    },
+  }
+}
+
 // The import worker (src/ifc/ifcImportWorker.js) bundles @thatopen/fragments
 // for its IfcImporter only and never makes a FragmentsModels, but it contains
 // the same dead `new URL("./Worker/worker.mjs", ...)` fallback, which the

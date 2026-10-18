@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
-import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
+import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, emptyWebIfcForFragments, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
 import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => ({
       },
     ],
   },
-  plugins: [dropUnminifiedFragmentsWorker(), slimWebIfc(), react(), serviceWorkerManifest(), precompress()],
+  plugins: [dropUnminifiedFragmentsWorker(), emptyWebIfcForFragments(), slimWebIfc(), react(), serviceWorkerManifest(), precompress()],
   // The IFC import worker is a separate bundle: it needs the same web-ifc
   // trimming (one slim parser, lazy per-schema chunks) as the page.
   worker: {
@@ -56,11 +56,14 @@ export default defineConfig(({ command }) => ({
         codeSplitting: {
           groups: [
             { name: 'three', test: /node_modules[\\/]three[\\/]/, priority: 20 },
+            // The parser itself is only used on the page for raw property
+            // lookups (rawIfcQuery.js), so it is its own lazily loaded chunk.
+            { name: 'web-ifc', test: /node_modules[\\/]web-ifc[\\/]/, priority: 15 },
             {
               name: 'ifc-engine',
               // Not the fragments worker's ?url module: main.jsx imports only
               // that URL, which must not drag the engine chunk into the entry.
-              test: (id) => /node_modules[\\/](@thatopen|web-ifc|camera-controls)/.test(id) && !/[\\/]Worker[\\/]worker/.test(id),
+              test: (id) => /node_modules[\\/](@thatopen|camera-controls)/.test(id) && !/[\\/]Worker[\\/]worker/.test(id),
               priority: 10,
             },
           ],

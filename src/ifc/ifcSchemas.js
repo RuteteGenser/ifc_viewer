@@ -1,4 +1,5 @@
 import { SchemaNames } from "web-ifc";
+import { fileSchemaOf } from "./stepHeader";
 
 // web-ifc keeps a class and lookup tables for each IFC schema; production
 // builds split them into one chunk per schema (see slimWebIfc in
@@ -25,9 +26,11 @@ export function loadSchema(id) {
 
 // The schema id web-ifc will pick for these IFC bytes (it reads the first name
 // of FILE_SCHEMA, upper-cased, against SchemaNames), or null if there is none.
+// Only the real header counts: comments are ignored (an exporter's
+// "/* converted from FILE_SCHEMA(('IFC2X3')) */" once made a valid IFC4 file
+// load the wrong tables and fail), see stepHeader.js.
 export function schemaIdOf(bytes) {
-  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 65536));
-  const name = /FILE_SCHEMA\s*\(\s*\(\s*'([^']*)'/i.exec(head)?.[1]?.toUpperCase();
+  const name = fileSchemaOf(bytes)?.name?.trim().toUpperCase();
   if (!name) return null;
   for (let id = 0; id < SchemaNames.length; id++) {
     if (SchemaNames[id]?.includes(name)) return id;
@@ -35,9 +38,15 @@ export function schemaIdOf(bytes) {
   return null;
 }
 
+// Every schema name web-ifc knows, upper case.
+export const KNOWN_SCHEMAS = SchemaNames.flatMap((names) => names ?? []);
+
+export const loadAllSchemas = () => Promise.all(Object.keys(chunks).map(Number).map(loadSchema));
+
 // Loads whatever schema code opening `bytes` needs. A header this can't read
 // loads every schema, so web-ifc decides (and reports) as it always did.
 export async function loadSchemaFor(bytes) {
   const id = schemaIdOf(bytes);
-  await Promise.all((id && chunks[id] ? [id] : Object.keys(chunks).map(Number)).map(loadSchema));
+  if (id && chunks[id]) await loadSchema(id);
+  else await loadAllSchemas();
 }

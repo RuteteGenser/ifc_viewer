@@ -55,10 +55,11 @@ export function prewarmIfcImporter(schema) {
 
 /**
  * @param {object} input    { file } or { bytes } (bytes are transferred to the worker)
- * @param {object} options  { wasm, webIfcSettings, doubleSidedMaterials, onProgress(fraction, stage), fresh, stallMs }
+ * @param {object} options  { wasm, webIfcSettings, doubleSidedMaterials, onProgress(fraction, stage), fresh, stallMs, allSchemas }
  *                          fresh: never reuse the prewarmed worker (a retry after a failure)
  *                          stallMs: no sign of life from the worker for this long means it is stuck;
  *                          the import then fails with TIMEOUT so the caller can restart it
+ *                          allSchemas: load every schema's tables, not only the one the header names
  * @returns {{ promise: Promise<{ fragments: Uint8Array, source: Uint8Array }>, cancel: () => void }}
  */
 export function importIfcInWorker(input, options) {
@@ -121,9 +122,9 @@ export function importIfcInWorker(input, options) {
     };
     if (worker.alive) watchLock();
     touch();
-    const { wasm, webIfcSettings, doubleSidedMaterials } = options;
+    const { wasm, webIfcSettings, doubleSidedMaterials, allSchemas } = options;
     worker.postMessage(
-      { ...input, wasm, webIfcSettings, doubleSidedMaterials },
+      { ...input, wasm, webIfcSettings, doubleSidedMaterials, allSchemas: !!allSchemas },
       input.bytes ? [input.bytes.buffer] : [],
     );
   });

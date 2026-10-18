@@ -39,8 +39,40 @@ test("only a failure after the importer started on the content is an invalid fil
   assert.equal(classifyFailure(err("weird"), "schema"), KIND.APP_ASSET_FAILED);
   assert.equal(classifyFailure(err("NotReadableError"), "read"), KIND.FILE_UNREADABLE);
   assert.equal(classifyFailure(err("weird"), "build"), KIND.UNKNOWN);
-  // a typed-array RangeError on a corrupt file is not an out-of-memory claim
-  assert.equal(classifyFailure(err("offset is out of bounds", "RangeError"), "parse"), KIND.INVALID_FILE);
+  // a typed-array RangeError is neither an out-of-memory claim nor the file's fault
+  assert.equal(classifyFailure(err("offset is out of bounds", "RangeError"), "parse"), KIND.UNKNOWN);
+});
+
+test("wasm traps and JavaScript errors during the parse are Argus's fault, not an invalid file", () => {
+  const cases = [
+    err("memory access out of bounds", "RuntimeError"),
+    err("unreachable", "RuntimeError"),
+    err("RuntimeError: unreachable executed"),
+    err("Maximum call stack size exceeded", "RangeError"),
+    err("Cannot read properties of undefined (reading 'IfcWall')", "TypeError"),
+    err("Cannot convert undefined or null to object", "TypeError"),
+    err("undefined is not an object (evaluating 'a.b')", "TypeError"), // Safari's wording
+    err("x is not a function", "TypeError"),
+    err("table index is out of bounds", "RuntimeError"),
+    err("Invalid typed array length: 4", "RangeError"),
+  ];
+  for (const e of cases) {
+    assert.equal(classifyFailure(e, "parse"), KIND.UNKNOWN, e.message);
+    const text = describeFailure({ kind: classifyFailure(e, "parse"), message: e.message }, { name: "a.ifc", retried: true });
+    assert.match(text, /Argus hit an unexpected error opening "a\.ifc"/);
+    assert.doesNotMatch(text, /valid IFC/);
+  }
+});
+
+test("explicit parser rejections stay INVALID_FILE", () => {
+  for (const m of ["Fragments: Model schema not recognized.", "Fragments: IFC Schema not found", "Unexpected token in STEP line 42", "no ISO-10303-21 header", "file is empty"]) {
+    assert.equal(classifyFailure(err(m), "parse"), KIND.INVALID_FILE, m);
+  }
+});
+
+test("a stall message says how long it stalled in all", () => {
+  assert.match(describeFailure({ kind: KIND.TIMEOUT }, { name: "a.ifc", stalledMs: 240000 }), /about 4 minutes in all/);
+  assert.doesNotMatch(describeFailure({ kind: KIND.TIMEOUT }, { name: "a.ifc" }), /minute/);
 });
 
 test("toImportError keeps kinds and recognises the page's own sentinels", () => {
@@ -51,8 +83,8 @@ test("toImportError keeps kinds and recognises the page's own sentinels", () => 
   assert.equal(toImportError(new Error("Failed to fetch dynamically imported module: x")).kind, KIND.APP_ASSET_FAILED);
 });
 
-test("asset failures, crashes and stalls are retried automatically; a rejected file never is", () => {
-  for (const k of Object.values(KIND)) assert.equal(isRetryable(k), [KIND.APP_ASSET_FAILED, KIND.WORKER_CRASHED, KIND.TIMEOUT].includes(k), k);
+test("asset failures, crashes, stalls and Argus's own errors are retried automatically; a rejected file never is", () => {
+  for (const k of Object.values(KIND)) assert.equal(isRetryable(k), [KIND.APP_ASSET_FAILED, KIND.WORKER_CRASHED, KIND.TIMEOUT, KIND.UNKNOWN].includes(k), k);
 });
 
 test("'valid IFC' is only ever said for INVALID_FILE", () => {

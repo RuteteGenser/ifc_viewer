@@ -1,13 +1,13 @@
 // Checks the bytes of a library download before they reach the importer.
+import { HEAD_BYTES, hasStepHeader, isZip } from "../ifc/stepHeader.js";
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 export const SHA_LIMIT = 100 * 1048576;
 
-/** First bytes look like an IFC (STEP) file or a ZIP. */
+/** First bytes (up to 64 KB: a long leading comment is allowed) look like an IFC (STEP) file or a ZIP. */
 export function hasIfcOrZipMagic(head) {
-  const text = new TextDecoder("latin1").decode(head.subarray(0, 64)).replace(/^﻿|^\xEF\xBB\xBF/, "");
-  return /^\s*ISO-10303-21/.test(text) || (head[0] === 0x50 && head[1] === 0x4b);
+  return isZip(head) || hasStepHeader(head);
 }
 
 /** The sha256 the server states, from its record or the ETag. */
@@ -25,8 +25,8 @@ export async function checkDownload({ chunks, contentLength, recordSize, sha }) 
   const received = chunks.reduce((n, c) => n + c.byteLength, 0);
   if (contentLength && received !== contentLength) return { ok: false, reason: `got ${received} of ${contentLength} bytes` };
   if (recordSize && received !== recordSize) return { ok: false, reason: `got ${received} bytes, expected ${recordSize}` };
-  // The first 64 bytes may span several small chunks.
-  const head = new Uint8Array(64);
+  // The first 64 KB may span several small chunks.
+  const head = new Uint8Array(Math.min(HEAD_BYTES, received));
   let filled = 0;
   for (const c of chunks) {
     if (filled >= head.length) break;

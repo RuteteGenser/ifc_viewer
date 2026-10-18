@@ -20,6 +20,7 @@ import { importIfcInWorker, releaseImporterMemory } from "../ifc/ifcImportClient
 import { KIND, ImportError, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
 import { isStaleBuild, refreshFailedAssets, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
 import { BACKOFF_MS, attemptText, sleep, stallLimitMs } from "../reliability/retry";
+import { HEAD_BYTES, hasStepHeader, isZip } from "../ifc/stepHeader";
 import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
@@ -5243,7 +5244,7 @@ export function useIfcViewer() {
         const { wasm, webIfc } = pipeline.ifcLoader.settings; // see setupComponents.js
         // One attempt: a worker converts the file, the result goes to the
         // fragments worker. `fresh` skips the prewarmed worker.
-        const runImport = async (fresh) => {
+        const runImport = async (fresh, allSchemas) => {
           // The worker takes ownership of the bytes of an .ifcZIP entry, so each attempt gets its own copy.
           const input = source instanceof Blob ? { file: source } : { bytes: source.slice() };
           const importJob = importIfcInWorker(input, {
@@ -5251,6 +5252,7 @@ export function useIfcViewer() {
             webIfcSettings: { ...webIfc },
             doubleSidedMaterials: true,
             fresh,
+            allSchemas,
             stallMs,
             onProgress: (fraction, process) => {
               const stage = { geometries: "geometry", attributes: "properties", relations: "relations", conversion: "finishing" }[process];
@@ -5277,15 +5279,19 @@ export function useIfcViewer() {
         // squeeze are usually momentary: the import starts over by itself in a
         // fresh worker (0 s, 1 s, 3 s) and the user only sees progress text.
         let freedMemory = false;
+        // After an unexpected error (UNKNOWN: a wasm trap, a TypeError) the next
+        // attempt loads every schema's tables, in case the header sniff was wrong.
+        let allSchemas = false;
         for (let attempt = 1; ; attempt++) {
           try {
-            model = await runImport(attempt > 1);
+            model = await runImport(attempt > 1, allSchemas);
             break;
           } catch (err) {
             const failure = toImportError(err);
             const memory = failure.kind === KIND.OUT_OF_MEMORY;
             if (failure.kind === KIND.CANCELLED || abandoned()) throw failure;
             if (!(memory ? !freedMemory : isRetryable(failure.kind) && attempt < BACKOFF_MS.length)) throw failure;
+            if (failure.kind === KIND.UNKNOWN) allSchemas = true;
             console.warn(`Import of ${displayName} failed (${failure.kind}), starting over`, err);
             // This tab may simply be older than the deployed build: then a reload, not a retry, is the cure.
             if (failure.kind === KIND.APP_ASSET_FAILED && attempt === 1 && (await isStaleBuild())) {
@@ -5399,10 +5405,11 @@ export function useIfcViewer() {
         appendError(`"${name}" is ${Math.round(file.size / 1048576)} MB, which is too large to open in a browser. Try splitting the model or exporting a lighter one.`);
         continue;
       }
-      // Every IFC (STEP) file starts with an ISO-10303-21 header, so anything
-      // else can be rejected immediately instead of after a long parse.
-      const head = await file.slice(0, 4096).text().catch(() => "");
-      if (!/ISO-10303-21/i.test(head)) {
+      // Every IFC (STEP) file starts with an ISO-10303-21 header (after a BOM,
+      // whitespace or comments, so the first 64 KB are read), so anything else
+      // can be rejected immediately instead of after a long parse.
+      const head = await file.slice(0, HEAD_BYTES).arrayBuffer().then((b) => new Uint8Array(b)).catch(() => new Uint8Array());
+      if (!hasStepHeader(head)) {
         appendError(`"${name}" is not a valid IFC file (no ISO-10303-21 header).`, false, { chooseAnother: true });
         continue;
       }

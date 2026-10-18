@@ -3,7 +3,8 @@
 // big file loads. One import per worker; the client terminates it afterwards
 // so the wasm heap is released and Cancel can simply kill it.
 import { IfcImporter } from "@thatopen/fragments";
-import { loadSchema, loadSchemaFor } from "./ifcSchemas";
+import { KNOWN_SCHEMAS, loadAllSchemas, loadSchema, loadSchemaFor } from "./ifcSchemas";
+import { overwriteAscii, schemaCaseFix } from "./stepHeader";
 import { classifyFailure } from "../reliability/importErrors";
 
 // Static imports above have loaded: the page tells a worker that never got
@@ -30,7 +31,9 @@ self.onmessage = async (event) => {
     self.postMessage({ type: "warmed" });
     return;
   }
-  const { file, bytes, wasm, webIfcSettings, doubleSidedMaterials } = event.data;
+  // allSchemas: a retry after an unexpected error loads every schema's tables,
+  // in case the header sniff picked the wrong one.
+  const { file, bytes, wasm, webIfcSettings, doubleSidedMaterials, allSchemas } = event.data;
   // Where a failure happened decides what it means (see classifyFailure).
   let stage = "read";
   try {
@@ -42,8 +45,13 @@ self.onmessage = async (event) => {
     // web-ifc's per-schema class tables are separate chunks (see ifcSchemas.js);
     // the one this file uses must be in before it is opened.
     stage = "schema";
-    await loadSchemaFor(source);
+    await (allSchemas ? loadAllSchemas() : loadSchemaFor(source));
     stage = "parse";
+    // A known schema written in lower case ('ifc4') is read by web-ifc but
+    // rejected by the fragments converter: upper-case the name for the
+    // conversion only, and put the original bytes back before they are returned.
+    const caseFix = schemaCaseFix(source, KNOWN_SCHEMAS);
+    const original = caseFix ? overwriteAscii(source, caseFix.start, caseFix.upper) : null;
     const importer = new IfcImporter();
     importer.wasm = wasm;
     if (webIfcSettings) importer.webIfcSettings = webIfcSettings;
@@ -52,10 +60,19 @@ self.onmessage = async (event) => {
     // in the file's unit). The default replaces it with a world-space value in
     // metres that includes the site placement (131 m on skolebygg).
     importer.replaceStoreyElevation = false;
-    const fragments = await importer.process({
-      bytes: source,
-      progressCallback: (progress, info) => self.postMessage({ type: "progress", progress, process: info?.process }),
-    });
+    let fragments;
+    try {
+      fragments = await importer.process({
+        bytes: source,
+        progressCallback: (progress, info) => self.postMessage({ type: "progress", progress, process: info?.process }),
+      });
+    } finally {
+      try {
+        if (original !== null) overwriteAscii(source, caseFix.start, original);
+      } catch {
+        // the bytes went elsewhere: nothing to restore
+      }
+    }
     self.postMessage({ type: "done", fragments, source }, [fragments.buffer, source.buffer]);
   } catch (err) {
     self.postMessage({ type: "error", kind: classifyFailure(err, stage), stage, message: String(err?.message ?? err) });

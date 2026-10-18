@@ -1,0 +1,424 @@
+/* "My models": server library list, save controls and transfer progress. */
+
+.lib-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.lib {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
+.lib--empty {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  cursor: default;
+}
+
+.lib__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.lib__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lib__chev {
+  width: 12px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.lib__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lib--sidebar .lib__title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(260px, 34vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lib--sidebar .lib-list {
+  max-height: min(420px, 55vh);
+}
+
+.lib-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+.lib-row--loaded {
+  border-color: var(--accent);
+}
+
+.lib-row__line {
+  display: flex;
+  align-items: stretch;
+}
+
+.lib-row__main {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lib-row__main:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.lib-row__main:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.lib-row__name {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lib-badge {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text);
+}
+
+.lib-badge--open {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.lib-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.lib-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.lib-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.lib-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.lib-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.lib-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.lib-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.lib-btn--danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.lib-icon-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.lib-icon-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.lib-quiet {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.lib-link {
+  min-height: 44px;
+  padding: 0 6px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.lib-rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+}
+
+.lib-rename__label {
+  flex: 1 1 100%;
+}
+
+.lib-rename__input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  /* 16px stops iOS from zooming the page when the field is focused. */
+  font: inherit;
+  font-size: 16px;
+}
+
+.lib-rename__input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.lib-rename__error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+/* Save controls */
+
+.lib-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.lib-toggle input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.lib-save-btn {
+  flex: 1 1 100%;
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.lib-saved {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.model-row:has(.lib-save-btn, .lib-saved) {
+  flex-wrap: wrap;
+}
+
+.sidebar .lib-toggle {
+  min-height: 44px;
+}
+
+/* Progress and notices: fixed so they stay put over the drawer and the empty state. */
+
+.lib-transfer {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 62;
+  width: min(420px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lib-transfer__item,
+.lib-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  font-size: 14px;
+  color: var(--text);
+}
+
+.lib-notice {
+  justify-content: space-between;
+}
+
+.lib-notice--error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.lib-transfer__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lib-transfer__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-transfer__pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.lib-transfer__track {
+  flex: 0 0 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper-grey);
+  overflow: hidden;
+}
+
+.lib-transfer__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+.lib-transfer__fill--busy {
+  width: 40%;
+  animation: lib-busy 1s ease-in-out infinite alternate;
+}
+
+@keyframes lib-busy {
+  to {
+    transform: translateX(150%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lib-transfer__fill--busy {
+    animation: none;
+    width: 100%;
+  }
+}
+
+/* Start card on small screens: the list scrolls inside the card. */
+.empty-state__card:has(.lib--empty) {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.empty-state__card .lib-toggle {
+  margin-top: -4px;
+}
+
+@media (max-height: 640px) {
+  .lib-list {
+    max-height: 30vh;
+  }
+}

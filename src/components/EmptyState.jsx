@@ -1,3 +1,6 @@
+import LibrarySection from "../library/LibrarySection";
+import { SaveToggle } from "../library/SaveControls";
+
 // The one screen shown before any model is open: a single primary action
 // (also a drop zone with a mouse) and a quiet link to a sample building.
 export default function EmptyState({ onOpenFiles, onLoadSample }) {
@@ -13,10 +16,12 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
         <button type="button" className="empty-state__primary" onClick={(e) => { e.stopPropagation(); onOpenFiles(); }}>
           Open IFC file
         </button>
+        <SaveToggle />
         <p className="empty-state__drop">Drop an IFC file here or click to browse</p>
         <button type="button" className="empty-state__link" onClick={(e) => { e.stopPropagation(); onLoadSample(); }}>
           or try a sample building
         </button>
+        <LibrarySection variant="empty" />
       </div>
     </div>
   );

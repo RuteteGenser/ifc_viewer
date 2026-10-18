@@ -2,6 +2,8 @@ import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 import ModelInfo from "./ModelInfo";
 import ModelTree from "./ModelTree";
+import LibrarySection from "../library/LibrarySection";
+import { SaveToggle, SaveRowButton } from "../library/SaveControls";
 
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   return (
@@ -46,6 +48,7 @@ function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
           ✕
         </button>
       </div>
+      <SaveRowButton model={model} />
     </li>
   );
 }
@@ -141,6 +144,8 @@ export default function Sidebar({
         </button>
       </div>
 
+      <SaveToggle />
+
       <div className="sidebar__section-title">Loaded models</div>
 
       {models.length === 0 ? (
@@ -158,6 +163,8 @@ export default function Sidebar({
           ))}
         </ul>
       )}
+
+      <LibrarySection variant="sidebar" />
 
       {browser && models.length > 0 && <ModelInfo models={models} trees={browser.trees} />}
 

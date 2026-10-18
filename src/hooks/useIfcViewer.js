@@ -3830,7 +3830,15 @@ export function useIfcViewer() {
     renderer.domElement.addEventListener("pointerdown", onLongPressDown);
     renderer.domElement.addEventListener("pointermove", onLongPressMove);
     window.addEventListener("pointerup", cancelLongPress);
-    window.addEventListener("pointercancel", cancelLongPress);
+    // Turning the phone mid-press must not leave a menu behind, opened for a
+    // spot that has moved.
+    const dropPressAndMenu = () => {
+      cancelLongPress();
+      setContextMenu(null);
+    };
+    window.addEventListener("pointercancel", dropPressAndMenu);
+    window.addEventListener("resize", dropPressAndMenu);
+    window.addEventListener("orientationchange", dropPressAndMenu);
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(20, 30, 15);
@@ -4129,7 +4137,9 @@ export function useIfcViewer() {
       renderer.domElement.removeEventListener("pointerdown", onLongPressDown);
       renderer.domElement.removeEventListener("pointermove", onLongPressMove);
       window.removeEventListener("pointerup", cancelLongPress);
-      window.removeEventListener("pointercancel", cancelLongPress);
+      window.removeEventListener("pointercancel", dropPressAndMenu);
+      window.removeEventListener("resize", dropPressAndMenu);
+      window.removeEventListener("orientationchange", dropPressAndMenu);
       cancelLongPress();
       renderer.domElement.removeEventListener("pointermove", onMeasureMarkerHoverCursor);
       renderer.domElement.style.cursor = "";

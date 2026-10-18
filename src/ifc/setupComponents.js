@@ -1,5 +1,6 @@
 import * as OBC from "@thatopen/components";
 // Local worker asset so the app never depends on a CDN at runtime.
+import { prewarmIfcImporter } from "./ifcImportClient";
 import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
 
 /**
@@ -35,7 +36,9 @@ let early = null;
 
 export function startIfcPipeline() {
   early = createIfcPipeline();
-  early.catch(() => {});
+  // Once the engine is up, not before, so the importer's own download does
+  // not compete with it on a slow link.
+  early.then(prewarmIfcImporter, () => {});
 }
 
 export function takeIfcPipeline() {

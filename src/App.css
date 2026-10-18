@@ -1492,7 +1492,7 @@
 /* ---------- Touch + narrow-screen refinements ---------- */
 
 :root {
-  --peek-h: 66px;
+  --peek-h: 72px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -1787,6 +1787,18 @@
     overscroll-behavior: contain;
   }
 
+  /* The drawer (and its backdrop) must sit above the toolbar, which is
+     taller than the header-height strip the drawer is offset by — otherwise
+     the toolbar paints over, and steals taps from, the drawer's top buttons
+     (Add file(s), Save). */
+  .sidebar {
+    z-index: 45;
+  }
+
+  .sidebar-backdrop {
+    z-index: 44;
+  }
+
   .status-stack {
     top: calc(var(--toolbar-h, var(--header-height)) + 12px);
     max-width: calc(100% - 16px);
@@ -1864,7 +1876,7 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: 20px;
+    height: 24px;
     flex-shrink: 0;
     background: none;
     border: none;
@@ -1898,32 +1910,73 @@
   }
 }
 
-/* Landscape phone: short screen, so the info panel stays a right-hand
-   column (like desktop) and the canvas sits beside it rather than under it. */
+/* Landscape phone: short screen. The toolbar keeps the full width on one
+   row; the info panel is a drawer that slides in from the right (collapsed
+   to a handle until something is selected), and the model re-centres in
+   the space beside it. */
 @media (max-height: 500px) and (pointer: coarse) {
   :root {
     --header-height: 44px;
-  }
-
-  .app-body {
-    padding-right: min(300px, 42vw);
+    --peek-h: 0px;
   }
 
   .panel-inset-probe {
-    width: 0;
+    width: 28px;
+  }
+
+  .app-body[data-sheet="open"] .panel-inset-probe {
+    width: min(320px, 55vw);
   }
 
   .element-panel {
     top: calc(var(--header-height) + var(--toolbar-h, 56px));
-    width: min(300px, 42vw);
+    width: min(320px, 55vw);
     max-width: none;
     z-index: 18;
     padding-right: var(--safe-right);
+    box-shadow: -6px 0 24px rgba(42, 38, 34, 0.16);
+    transform: translateX(calc(100% - 28px));
+    transition: transform 0.24s cubic-bezier(0.22, 0.9, 0.3, 1);
+  }
+
+  .element-panel--open {
+    transform: translateX(0);
+  }
+
+  .element-panel__grabber {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 28px;
+    padding: 0;
+    background: var(--paper-ivory);
+    border: none;
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .element-panel__grabber span {
+    width: 4px;
+    height: 44px;
+    border-radius: 2px;
+    background: var(--border-strong);
+    opacity: 0.35;
+  }
+
+  .element-panel__tabbar,
+  .element-panel__body {
+    margin-left: 28px;
   }
 
   .element-panel__tab {
-    padding: 10px 8px;
+    padding: 12px 5px;
     min-height: 44px;
+    font-size: 10.5px;
+    letter-spacing: 0;
   }
 
   .compass {
@@ -1933,5 +1986,57 @@
   .history-buttons {
     flex-direction: row;
     bottom: 8px;
+    right: calc(40px + var(--safe-right));
+  }
+}
+
+/* Narrow panels (small phones, drawers): keep all three tabs and the close
+   button on screen. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  .element-panel__tabbar {
+    gap: 0;
+  }
+
+  .element-panel__tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+  }
+
+  .element-panel__close {
+    margin-left: auto;
+    flex: 0 0 40px;
+    min-width: 40px;
+    width: 40px;
+  }
+
+  .camera-clip-popover {
+    position: fixed;
+    left: 8px;
+    right: auto;
+    width: min(300px, calc(100vw - 16px));
+    top: calc(var(--header-height) + var(--toolbar-h, 52px) + 6px);
+  }
+
+  .shortcuts-help__popover {
+    max-height: calc(100dvh - var(--header-height) - var(--toolbar-h, 52px) - 16px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .element-panel__tab {
+    padding-left: 5px;
+    padding-right: 5px;
+    font-size: 10.5px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .compass__offset {
+    min-height: 40px;
   }
 }

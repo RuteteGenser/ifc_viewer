@@ -325,6 +325,20 @@ export function useViewFeatures(ctx) {
 
   // A link's view is applied once, when the models it was made for are open.
   const pendingViewRef = useRef(typeof window === "undefined" ? null : decodeViewHash(window.location.hash));
+  // A link pasted into the address bar of the open page changes only the hash.
+  const [linkTick, setLinkTick] = useState(0);
+  useEffect(() => {
+    const onHashChange = () => {
+      const view = decodeViewHash(window.location.hash);
+      if (!view) return;
+      pendingViewRef.current = view;
+      if (ctxRef.current.models.length === 0) showToast("Open the model first, then use this link");
+      setLinkTick((t) => t + 1);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [showToast]);
+
   useEffect(() => {
     const pending = pendingViewRef.current;
     if (!pending || isLoading || models.length === 0) return undefined;
@@ -354,7 +368,7 @@ export function useViewFeatures(ctx) {
       requestRenderRef.current();
     }, 250);
     return () => clearTimeout(timer);
-  }, [isLoading, models, showToast]);
+  }, [isLoading, models, showToast, linkTick]);
 
   // ---- Shortcut: P saves the picture ----
 

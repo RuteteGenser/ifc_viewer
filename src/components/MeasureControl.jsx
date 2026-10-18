@@ -8,13 +8,16 @@ const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer:
 // measurement is still in progress (point A placed, point B not yet
 // clicked) — that live readout lives only in the 3D view itself; this
 // list is for completed measurements only.
-export default function MeasureControl({ measurements, onRemoveMeasurement }) {
+export default function MeasureControl({ measurements, onRemoveMeasurement, onStartMeasure }) {
   return (
     <div className="measure-control">
       {measurements.length === 0 ? (
-        <p className="clip-control__hint">
-          Turn on Measure, then {COARSE ? "tap" : "click"} two points on the model.
-        </p>
+        <>
+          <p className="clip-control__hint">No measurements yet. {COARSE ? "Tap" : "Click"} two points on the model to measure.</p>
+          <button type="button" className="sidebar__reset-visibility-button sidebar__reset-visibility-button--primary" onClick={onStartMeasure}>
+            Start measuring
+          </button>
+        </>
       ) : (
         measurements.map((m) => (
           <div className="clip-control__plane" key={m.id}>

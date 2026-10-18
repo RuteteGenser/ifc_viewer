@@ -7,7 +7,7 @@ const HINTS = {
   },
   tag: {
     touch: "Tap an element to pin its tag.",
-    mouse: "Hover an element, then click to pin its dimension tag.",
+    mouse: "Hover an element, then click to pin its tag.",
   },
   category: {
     touch: "Tap an element to hide its category.",

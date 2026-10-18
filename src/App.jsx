@@ -368,6 +368,18 @@ function App() {
     setPanelOpen(false);
     setPanelExpanded(false);
   }, []);
+  // "Start measuring" / "Start tagging" in the details sheet: arm the tool and
+  // drop the sheet away so the model is in view.
+  const startMeasuring = useCallback(() => {
+    if (!measureModeActive) toggleMeasureMode();
+    setPanelOpen(false);
+    setPanelExpanded(false);
+  }, [measureModeActive, toggleMeasureMode]);
+  const startTagging = useCallback(() => {
+    if (!tagToolActive) toggleTagTool();
+    setPanelOpen(false);
+    setPanelExpanded(false);
+  }, [tagToolActive, toggleTagTool]);
   const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
 
@@ -597,6 +609,8 @@ function App() {
           pinnedDimensionTags={pinnedDimensionTags}
           onUnpinDimensionTag={unpinDimensionTag}
           onClearAllDimensionPins={clearAllDimensionPins}
+          onStartMeasure={startMeasuring}
+          onStartTagging={startTagging}
         />
 
         {measureDeletePopup && (

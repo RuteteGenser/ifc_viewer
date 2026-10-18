@@ -135,7 +135,7 @@ export default function Toolbar({
         disabled={!hasModels}
         onBlocked={onBlocked}
       />
-      <Tooltip description={locked("Tag tool: pin an element's dimensions")} hotkey="T">
+      <Tooltip description={locked("Tag: pin a tag with an element's name and size")} hotkey="T">
         <button
           type="button"
           className={`top-bar__icon-button${tagToolActive ? " top-bar__icon-button--active" : ""}${hasModels ? "" : " is-blocked"}`}

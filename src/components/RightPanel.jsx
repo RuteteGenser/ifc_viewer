@@ -34,6 +34,8 @@ export default function RightPanel({
   pinnedDimensionTags,
   onUnpinDimensionTag,
   onClearAllDimensionPins,
+  onStartMeasure,
+  onStartTagging,
   collapsed,
   onCollapse,
   width,
@@ -174,9 +176,11 @@ export default function RightPanel({
         <button
           type="button"
           className={`element-panel__tab${activeTab === "info" ? " element-panel__tab--active" : ""}`}
+          aria-label="Properties"
           onClick={() => onTabChange("info")}
         >
-          Info
+          <span className="tab-label tab-label--full">Properties</span>
+          <span className="tab-label tab-label--short" aria-hidden="true">Info</span>
           {activeTab === "info" && <TabUnderline />}
         </button>
         <button
@@ -192,11 +196,11 @@ export default function RightPanel({
         <button
           type="button"
           className={`element-panel__tab${activeTab === "dimensions" ? " element-panel__tab--active" : ""}`}
-          aria-label="Dimensions"
+          aria-label="Tags"
           onClick={() => onTabChange("dimensions")}
         >
-          <span className="tab-label tab-label--full">Dimensions</span>
-          <span className="tab-label tab-label--short" aria-hidden="true">Dims</span>
+          <span className="tab-label tab-label--full">Tags</span>
+          <span className="tab-label tab-label--short" aria-hidden="true">Tags</span>
           {activeTab === "dimensions" && <TabUnderline />}
         </button>
         <button
@@ -225,12 +229,14 @@ export default function RightPanel({
           <MeasureControl
             measurements={measurements}
             onRemoveMeasurement={onRemoveMeasurement}
+            onStartMeasure={onStartMeasure}
           />
         ) : (
           <DimensionTagsPanel
             pinnedTags={pinnedDimensionTags}
             onUnpin={onUnpinDimensionTag}
             onClearAllPins={onClearAllDimensionPins}
+            onStartTagging={onStartTagging}
           />
         )}
       </div>

@@ -2899,7 +2899,7 @@
 .tab-label--short {
   display: none;
 }
-@container (max-width: 419px) {
+@container (max-width: 299px) {
   .tab-label--full {
     display: none;
   }
@@ -3186,4 +3186,35 @@
     letter-spacing: -0.03em;
     white-space: nowrap;
   }
+}
+
+/* Disabled buttons: a dashed outline and dark grey text (4.7:1 on the paper
+   colours) instead of a faded look, so the label is still readable. */
+.sidebar__save-button:disabled,
+.sidebar__reset-visibility-button:disabled,
+.lib-btn:disabled {
+  opacity: 1;
+  background: var(--bg-subtle);
+  color: var(--ink-faint);
+  border: 1px dashed var(--border-strong);
+}
+
+.sidebar__reset-visibility-button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  min-height: 44px;
+}
+
+.sidebar__reset-visibility-button--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.top-bar__home-button.is-blocked,
+.top-bar__icon-button.is-blocked {
+  opacity: 0.55;
+}
+
+.history-buttons__button:disabled {
+  opacity: 0.5;
 }

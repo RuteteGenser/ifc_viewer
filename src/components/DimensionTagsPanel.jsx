@@ -2,22 +2,22 @@ const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer:
 
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 
-export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins }) {
+export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins, onStartTagging }) {
   return (
     <div className="measure-control">
-      <button
-        type="button"
-        className="sidebar__reset-visibility-button"
-        onClick={onClearAllPins}
-        disabled={pinnedTags.length === 0}
-      >
-        Clear all pins
-      </button>
       {pinnedTags.length === 0 ? (
-        <p className="clip-control__hint">
-          Turn on the Tag tool, then {COARSE ? "tap" : "hover and click"} an element to pin its dimension tag.
-        </p>
+        <>
+          <p className="clip-control__hint">No tags yet. {COARSE ? "Tap" : "Hover and click"} an element to pin a tag with its name and size.</p>
+          <button type="button" className="sidebar__reset-visibility-button sidebar__reset-visibility-button--primary" onClick={onStartTagging}>
+            Start tagging
+          </button>
+        </>
       ) : (
+        <button type="button" className="sidebar__reset-visibility-button" onClick={onClearAllPins}>
+          Clear all tags
+        </button>
+      )}
+      {pinnedTags.length > 0 &&
         pinnedTags.map((tag) => (
           <div className="clip-control__plane" key={tag.key}>
             <div className="measure-control__length">{tag.name || "(unnamed)"}</div>
@@ -29,16 +29,15 @@ export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins
               <button
                 type="button"
                 className="clip-control__remove"
-                aria-label="Unpin dimension tag"
-                title="Unpin dimension tag"
+                aria-label="Remove tag"
+                title="Remove tag"
                 onClick={() => onUnpin(tag.guid)}
               >
                 ✕
               </button>
             </div>
           </div>
-        ))
-      )}
+        ))}
     </div>
   );
 }

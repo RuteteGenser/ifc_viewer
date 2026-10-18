@@ -18,7 +18,7 @@ const SHORTCUTS = [
   { keys: "I", description: "Isolate the selected element" },
   { keys: "C", description: "Cut a section under the cursor" },
   { keys: "M", description: "Measure two points" },
-  { keys: "T", description: "Tag tool (pin dimension tags)" },
+  { keys: "T", description: "Tag tool (pin a tag on an element)" },
   { keys: "G", description: "Hide a whole category" },
   { keys: "V", description: "Show or hide tags, measurements and colours" },
   { keys: "P", description: "Save the current view as an image" },

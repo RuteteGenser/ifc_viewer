@@ -1,4 +1,7 @@
-import * as WEBIFC from "web-ifc";
+// web-ifc is ~4 MB of JavaScript, so it is imported on first use (which is
+// also when the main pipeline has already loaded it) rather than being part
+// of the entry chunk. Every function below runs after openRawIfcModel.
+let WEBIFC;
 
 // @thatopen/fragments' getItemsData (the app's normal property-fetch
 // path, see selectElementFrom in useIfcViewer.js) structurally excludes
@@ -13,24 +16,29 @@ import * as WEBIFC from "web-ifc";
 // The six element types this module knows how to extract extra data
 // for, keyed by category name as fragments' _category field reports it
 // (see formatElementData in useIfcViewer.js).
-const NAME_TO_TYPE = {
-  IFCFLOWSEGMENT: WEBIFC.IFCFLOWSEGMENT,
-  IFCFLOWFITTING: WEBIFC.IFCFLOWFITTING,
-  IFCFLOWTERMINAL: WEBIFC.IFCFLOWTERMINAL,
-  IFCFLOWCONTROLLER: WEBIFC.IFCFLOWCONTROLLER,
-  IFCFLOWTREATMENTDEVICE: WEBIFC.IFCFLOWTREATMENTDEVICE,
-  IFCBUILDINGELEMENTPROXY: WEBIFC.IFCBUILDINGELEMENTPROXY,
+const NAME_TO_TYPE_KEYS = [
+  "IFCFLOWSEGMENT",
+  "IFCFLOWFITTING",
+  "IFCFLOWTERMINAL",
+  "IFCFLOWCONTROLLER",
+  "IFCFLOWTREATMENTDEVICE",
+  "IFCBUILDINGELEMENTPROXY",
+];
+const typeForCategory = (category) => {
+  const key = category?.toUpperCase();
+  return NAME_TO_TYPE_KEYS.includes(key) && WEBIFC ? WEBIFC[key] : undefined;
 };
 
 // Checked before bothering to open/query the raw model at all, so
 // ordinary building elements (walls, slabs, ...) pay no cost.
 export function isEligibleCategoryName(category) {
-  return !!category && NAME_TO_TYPE[category.toUpperCase()] !== undefined;
+  return !!category && NAME_TO_TYPE_KEYS.includes(category.toUpperCase());
 }
 
 // Opens an independent web-ifc model from raw bytes, using the same wasm
 // path already configured for the app's main IfcLoader (setupComponents.js).
 export async function openRawIfcModel(sourceBytes) {
+  WEBIFC = await import("web-ifc");
   const api = new WEBIFC.IfcAPI();
   api.SetWasmPath(`${import.meta.env.BASE_URL}wasm/`, true);
   await api.Init();
@@ -279,7 +287,7 @@ function firstLayerMaterialName(api, modelID, layerSet) {
 // and `category` come from the already-fetched fragments-side element
 // data (selectElementFrom) — not re-derived here.
 export function extractElementIfcData(api, modelID, category, guid) {
-  const ifcType = NAME_TO_TYPE[category?.toUpperCase()];
+  const ifcType = typeForCategory(category);
   if (ifcType === undefined) return null;
   const expressID = findExpressIdByGuid(api, modelID, ifcType, guid);
   if (expressID === null) return null;

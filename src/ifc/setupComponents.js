@@ -26,3 +26,20 @@ export async function createIfcPipeline() {
 
   return { components, fragments, ifcLoader };
 }
+
+// main.jsx calls startIfcPipeline() before React renders so the heavy
+// @thatopen / web-ifc chunk downloads and boots in parallel with the UI;
+// the viewer hook then claims that pipeline (or builds one if none was
+// started). A claimed pipeline is never shared, so the hook can dispose it.
+let early = null;
+
+export function startIfcPipeline() {
+  early = createIfcPipeline();
+  early.catch(() => {});
+}
+
+export function takeIfcPipeline() {
+  const pipeline = early ?? createIfcPipeline();
+  early = null;
+  return pipeline;
+}

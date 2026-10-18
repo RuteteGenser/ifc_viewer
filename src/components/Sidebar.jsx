@@ -108,7 +108,7 @@ export default function Sidebar({
           disabled={models.length === 0}
           title="Save all loaded models as a single .ifcZIP"
         >
-          Save as .ifcZIP
+          Save .ifcZIP
         </button>
       </div>
 

@@ -73,6 +73,8 @@ test("explicit parser rejections stay INVALID_FILE", () => {
 test("a stall message says how long it stalled in all", () => {
   assert.match(describeFailure({ kind: KIND.TIMEOUT }, { name: "a.ifc", stalledMs: 240000 }), /about 4 minutes in all/);
   assert.doesNotMatch(describeFailure({ kind: KIND.TIMEOUT }, { name: "a.ifc" }), /minute/);
+  // a fragments build that never finished is the 3D engine's stall, not the file's size
+  assert.match(describeFailure({ kind: KIND.TIMEOUT, stage: "build" }, { name: "a.ifc" }), /3D engine stopped responding while building "a\.ifc"/);
 });
 
 test("toImportError keeps kinds and recognises the page's own sentinels", () => {

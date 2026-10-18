@@ -21,16 +21,15 @@ import { KIND, ImportError, classifyFailure, describeFailure, failureDetails, is
 import { isStaleBuild, refreshFailedAssets, registerOpenWork, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
 import { BACKOFF_MS, attemptText, sleep, stallLimitMs } from "../reliability/retry";
 import { HEAD_BYTES, hasStepHeader, isZip } from "../ifc/stepHeader";
+import { LoadQueue, buildLimitMs, fileKind, ifcEntries, mayRetryStall, queuedText } from "../reliability/loadPlan";
 import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
 
 const IFC_EXTENSION = /\.ifc$/i;
-// buildingSMART's ifcZIP format: a plain ZIP archive containing one or
-// more .ifc (or .ifcXML — not supported by this viewer) files, no special
-// re-encoding. Case is inconsistent in the wild (.ifcZIP/.ifczip), hence
-// the case-insensitive match.
-const IFCZIP_EXTENSION = /\.ifczip$/i;
+// buildingSMART's ifcZIP format is a plain ZIP archive containing one or
+// more .ifc (or .ifcXML, not supported by this viewer) files, no special
+// re-encoding; a .zip holding an .ifc is opened the same way (see fileKind).
 const MAX_IFC_BYTES = 1.5 * 1024 * 1024 * 1024; // beyond this a browser tab cannot hold the file and its geometry
 
 let uid = 0;
@@ -5168,36 +5167,36 @@ export function useIfcViewer() {
 
   // Shows the "replace existing file?" modal and resolves to the user's
   // choice; ConfirmDialog (rendered from the `confirmReplace` state)
-  // calls back into `resolve` via confirmReplaceAnswer below.
+  // calls back into `resolve` via confirmReplaceAnswer below. The resolver
+  // lives in a ref so Cancel can close the question it belongs to.
+  const confirmRef = useRef(null); // { name, resolve } | null
   const confirmReplaceFile = useCallback((name) => {
     return new Promise((resolve) => {
-      setConfirmReplace({ name, resolve });
+      confirmRef.current = { name, resolve };
+      setConfirmReplace({ name });
     });
   }, []);
 
   const confirmReplaceAnswer = useCallback((replace) => {
-    setConfirmReplace((prev) => {
-      prev?.resolve(replace);
-      return null;
-    });
+    const pending = confirmRef.current;
+    confirmRef.current = null;
+    setConfirmReplace(null);
+    pending?.resolve(replace);
   }, []);
 
-  const loadFiles = useCallback(async (fileList) => {
+  // Files waiting to be opened. A file picked (or a library download that
+  // finishes) while another is opening joins the end of the queue; nothing is
+  // dropped silently and nothing is cancelled behind the user's back.
+  const loadQueueRef = useRef(new LoadQueue());
+  const loadRunningRef = useRef(false);
+
+  // Opens everything in the queue, one file after the other, then frames the
+  // camera. One run at a time (loadRunningRef); Cancel ends it and empties the queue.
+  const runLoadQueue = useCallback(async () => {
     const pipeline = pipelineRef.current;
     const modelsGroup = modelsGroupRef.current;
-    if (!pipeline || !modelsGroup) {
-      // Still booting: keep the choice and load it as soon as the viewer is
-      // ready (see the effect after cancelLoad).
-      pendingFilesRef.current = [...(pendingFilesRef.current ?? []), ...Array.from(fileList)];
-      setIsLoading(true);
-      setLoadingLabel("Starting the viewer…");
-      return;
-    }
-
-    const files = Array.from(fileList);
-    if (files.length === 0) return;
-
-    lastLoadFilesRef.current = files;
+    const queue = loadQueueRef.current;
+    loadRunningRef.current = true;
     const token = ++loadTokenRef.current;
     const abandoned = () => token !== loadTokenRef.current;
     // Rejects when the user presses Cancel, so a stuck parse never traps them.
@@ -5215,6 +5214,8 @@ export function useIfcViewer() {
     setLoadFailed(false);
     setIsLoading(true);
 
+    // Only the files that failed are opened again by Retry (never one that loaded).
+    const failedFiles = [];
     // `info` ({ details, intent }) is the technical text for the banner's
     // Details and, with `intent`, a Reload button that reopens the model after.
     const appendError = (message, retryable = false, info = null) => {
@@ -5225,28 +5226,47 @@ export function useIfcViewer() {
     // What to reopen if Argus has to reload itself (a File cannot survive a reload).
     let currentIntent = null;
 
-    // Parses one .ifc buffer into a model and wires it into the scene —
-    // shared by a directly-selected/dropped .ifc file and by each .ifc
-    // entry unpacked from an .ifcZIP below, so both paths get identical
-    // handling (including retaining the original bytes for "Save as
-    // .ifcZIP", see saveAsIfcZip further down).
-    // `source` is a File (read inside the import worker) or a Uint8Array
-    // (from an .ifcZIP; handed to the worker without copying).
-    const loadOneIfc = async (source, displayName) => {
+    // A model the fragments worker builds for a load that was given up (Cancel,
+    // the build watchdog) must not stay in memory: abort the build, or dispose
+    // the model once it exists.
+    const discardModel = (core, modelId, building) => {
+      try {
+        core.abort?.(modelId);
+      } catch {
+        // not loading any more
+      }
+      building?.then(() => core.disposeModel(modelId)).catch(() => {});
+    };
+
+    // Parses one .ifc into a model and wires it into the scene — shared by a
+    // directly-selected/dropped .ifc file and by each .ifc entry unpacked
+    // from an archive below, so both paths get identical handling (including
+    // retaining the original bytes for "Save as .ifcZIP", see saveAsIfcZip).
+    // `source` is a Blob or File (read inside the import worker; handed over
+    // by reference, so an attempt that starts over costs no copy).
+    // `retryFile` is what Retry opens again if this one fails.
+    const loadOneIfc = async (source, displayName, retryFile) => {
       const existingId = [...modelNamesRef.current.entries()].find(([, name]) => name === displayName)?.[0];
       if (existingId) {
         const replace = await confirmReplaceFile(displayName);
+        if (abandoned()) return;
         if (!replace) {
           appendError(`Skipped "${displayName}": a model with that name is already loaded.`);
           return;
         }
-        await removeModel(existingId);
+        // The old model stays until the new one has loaded (see below), so a
+        // failed import never leaves the user with neither.
       }
       const modelId = nextId();
+      // `building`/`buildCore`: the current attempt's fragments build, so a
+      // load that is given up can dispose what it made.
+      let building = null;
+      let buildCore = null;
       try {
         // A worker that hangs is restarted by the client's progress watchdog
-        // (stallMs below), one that dies is noticed through its Web Lock; the
-        // import is raced against Cancel only.
+        // (stallMs below; on an insecure origin, where Web Locks are missing,
+        // it is the only detector), one that dies is noticed through its Web
+        // Lock; a fragments build that never finishes by the build watchdog.
         const stallMs = stallLimitMs(source.size ?? source.byteLength);
         const shortName = displayName.length > 28 ? `${displayName.slice(0, 25)}…` : displayName;
         // The wasm conversion runs in a worker (see ifc/ifcImportClient.js) so
@@ -5261,7 +5281,6 @@ export function useIfcViewer() {
         // One attempt: a worker converts the file, the result goes to the
         // fragments worker. `fresh` skips the prewarmed worker.
         const runImport = async (fresh, allSchemas) => {
-          // The worker takes ownership of the bytes of an .ifcZIP entry, so each attempt gets its own copy.
           const input = source instanceof Blob ? { file: source } : { bytes: source.slice() };
           const importJob = importIfcInWorker(input, {
             wasm: { path: wasm.path, absolute: wasm.absolute },
@@ -5279,12 +5298,35 @@ export function useIfcViewer() {
           const loadPromise = importJob.promise.then(async ({ fragments, source: originalBytes }) => {
             sourceBytes = originalBytes;
             setLoadingLabel(`Building ${shortName}…`);
-            pipeline.fragments.core.settings.autoCoordinate = true;
-            return pipeline.fragments.core.load(fragments, { modelId });
+            const core = pipeline.fragments.core; // read now: a restart replaces it
+            core.settings.autoCoordinate = true;
+            buildCore = core;
+            building = core.load(fragments, { modelId });
+            building.catch(() => {});
+            // The fragments worker gets a size-scaled time to build the model;
+            // past that it is taken as hung and the attempt starts over.
+            const limit = buildLimitMs(fragments.byteLength);
+            let timer = 0;
+            const hung = new Promise((_, reject) => {
+              timer = setTimeout(() => {
+                const error = new ImportError(KIND.TIMEOUT, `The 3D engine did not finish building the model in ${Math.round(limit / 1000)} s`, { stage: "build" });
+                reject(Object.assign(error, { buildHung: true, stalledMs: limit }));
+              }, limit);
+            });
+            try {
+              return await Promise.race([building, hung]);
+            } finally {
+              clearTimeout(timer);
+            }
           });
           loadPromise.catch(() => {});
           try {
             return await Promise.race([loadPromise, cancelled]);
+          } catch (err) {
+            // Given up (Cancel, the build watchdog): whatever the build makes is thrown away.
+            if (building) discardModel(buildCore, modelId, building);
+            building = null;
+            throw err;
           } finally {
             importJob.cancel(); // no-op once finished; stops an import that lost the race
           }
@@ -5298,6 +5340,9 @@ export function useIfcViewer() {
         // After an unexpected error (UNKNOWN: a wasm trap, a TypeError) the next
         // attempt loads every schema's tables, in case the header sniff was wrong.
         let allSchemas = false;
+        // Time lost to stalls so far; capped (see mayRetryStall) so a file too
+        // big for the device ends in minutes, not three full stall limits.
+        let stalledMs = 0;
         for (let attempt = 1; ; attempt++) {
           try {
             model = await runImport(attempt > 1, allSchemas);
@@ -5306,7 +5351,15 @@ export function useIfcViewer() {
             const failure = toImportError(err);
             const memory = failure.kind === KIND.OUT_OF_MEMORY;
             if (failure.kind === KIND.CANCELLED || abandoned()) throw failure;
-            if (!(memory ? !freedMemory : isRetryable(failure.kind) && attempt < BACKOFF_MS.length)) throw failure;
+            if (failure.kind === KIND.TIMEOUT) {
+              stalledMs += err?.stalledMs ?? stallMs;
+              failure.stalledMs = stalledMs;
+            }
+            const another =
+              attempt < BACKOFF_MS.length &&
+              isRetryable(failure.kind) &&
+              (failure.kind !== KIND.TIMEOUT || mayRetryStall(stalledMs, err?.stalledMs ?? stallMs));
+            if (!(memory ? !freedMemory : another)) throw failure;
             if (failure.kind === KIND.UNKNOWN) allSchemas = true;
             console.warn(`Import of ${displayName} failed (${failure.kind}), starting over`, err);
             // This tab may simply be older than the deployed build: then a reload, not a retry, is the cure.
@@ -5314,6 +5367,9 @@ export function useIfcViewer() {
               failure.stale = true;
               throw failure;
             }
+            // The fragments worker stopped answering: start a fresh one, which
+            // is only possible while no other model lives in it.
+            if (err?.buildHung && modelsRef.current.size === 0) pipeline.fragments.restart?.();
             if (memory) {
               freedMemory = true;
               releaseImporterMemory();
@@ -5326,7 +5382,17 @@ export function useIfcViewer() {
             if (abandoned()) throw new ImportError(KIND.CANCELLED, "cancelled");
           }
         }
-        if (abandoned()) return;
+        // Loaded for a load that was cancelled meanwhile: dispose it again.
+        if (abandoned()) {
+          discardModel(buildCore, modelId, building);
+          return;
+        }
+        // Replace: only now that the new model is in does the old one go.
+        if (existingId && modelsRef.current.has(existingId)) await removeModel(existingId);
+        if (abandoned()) {
+          discardModel(buildCore, modelId, building);
+          return;
+        }
 
         if (cameraRef.current) model.useCamera(cameraRef.current);
         modelsGroup.add(model.object);
@@ -5356,70 +5422,90 @@ export function useIfcViewer() {
         if (failure.kind === KIND.CANCELLED) return;
         console.error(`Failed to load ${displayName}`, err);
         // The retry above did not help. If this tab is simply older than the
-        // deployed build, reloading fixes it and reopens the model by itself.
+        // deployed build, reloading fixes it and reopens the model by itself,
+        // but only when nothing else would be lost: with a model open (or more
+        // files waiting) the user decides, through the Reload button.
         let reloading = false;
         let staleBuild = false;
         if (failure.kind === KIND.APP_ASSET_FAILED && !abandoned()) {
           if (failure.stale || (await isStaleBuild())) {
             staleBuild = true;
-            reloading = await reloadResuming(currentIntent, () => setError(describeFailure(failure, { name: displayName, reloading: true })));
+            if (modelsRef.current.size === 0 && queue.size === 0) {
+              reloading = await reloadResuming(currentIntent, () => setError(describeFailure(failure, { name: displayName, reloading: true })));
+            }
           }
         }
-        if (reloading) return;
+        if (reloading || abandoned()) return;
         // Every automatic attempt has failed: only now are buttons offered.
         // A file the importer rejected gets no Retry (it would fail again), only "Choose another file".
         const invalid = failure.kind === KIND.INVALID_FILE;
+        if (!invalid && retryFile) failedFiles.push(retryFile);
         const info = {
           details: failureDetails(failure, { name: displayName, buildId: runningBuildId(), userAgent: navigator.userAgent }),
           // A failure that a fresh page may cure gets a Reload button.
-          intent: isRetryable(failure.kind) ? currentIntent : undefined,
-          reload: isRetryable(failure.kind),
+          intent: isRetryable(failure.kind) || staleBuild ? currentIntent : undefined,
+          reload: isRetryable(failure.kind) || staleBuild,
           chooseAnother: invalid,
         };
-        appendError(describeFailure(failure, { name: displayName, retried: true, staleBuild }), !invalid, info);
+        appendError(describeFailure(failure, { name: displayName, retried: true, staleBuild, stalledMs: failure.stalledMs }), !invalid, info);
       }
     };
 
-    for (const file of files) {
+    // One picked file: an .ifc, or an archive (.ifcZIP, or a .zip that holds an .ifc).
+    const openFile = async (file) => {
       currentIntent = file.argusIntent ?? { type: "local", name: file.name };
-      if (IFCZIP_EXTENSION.test(file.name)) {
+      const kind = fileKind(file.name);
+      if (kind === "zip") {
         setLoadingLabel(`Unpacking ${file.name}…`);
+        let unzipped;
         try {
-          const buffer = await file.arrayBuffer();
-          const unzipped = await new Promise((resolve, reject) => {
-            unzip(new Uint8Array(buffer), (err, result) => (err ? reject(err) : resolve(result)));
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          if (!isZip(bytes)) {
+            appendError(`"${file.name}" is not a ZIP archive, so it cannot be opened as an .ifcZIP.`, false, { chooseAnother: true });
+            return;
+          }
+          unzipped = await new Promise((resolve, reject) => {
+            unzip(bytes, (err, result) => (err ? reject(err) : resolve(result)));
           });
-          const innerNames = Object.keys(unzipped).filter((name) => IFC_EXTENSION.test(name));
-          if (innerNames.length === 0) {
-            appendError(`"${file.name}" doesn't contain any .ifc files`);
-            continue;
-          }
-          for (const innerName of innerNames) {
-            setLoadingLabel(`Parsing ${innerName}…`);
-            // Base name only (ifcZIP entries are commonly flat, but a
-            // path prefix would otherwise leak into the model list).
-            await loadOneIfc(unzipped[innerName], innerName.split("/").pop());
-          }
         } catch (err) {
-          console.error(`Failed to unpack ${file.name}`, err);
-          appendError(`Could not unpack "${file.name}": it doesn't look like a valid .ifcZIP file.`);
+          console.warn(`Failed to unpack ${file.name}`, err);
+          appendError(`Could not unpack "${file.name}": it doesn't look like a valid .ifcZIP file.`, false, { chooseAnother: true });
+          return;
         }
-        continue;
-      }
-
-      if (!IFC_EXTENSION.test(file.name)) {
-        appendError(`"${file.name}" is not an .ifc or .ifcZIP file`);
-        continue;
+        const innerNames = ifcEntries(Object.keys(unzipped));
+        if (innerNames.length === 0) {
+          appendError(`"${file.name}" does not contain an .ifc file.`, false, { chooseAnother: true });
+          return;
+        }
+        for (const innerName of innerNames) {
+          // Base name only (ifcZIP entries are commonly flat, but a
+          // path prefix would otherwise leak into the model list).
+          const baseName = innerName.split("/").pop();
+          // A Blob, so a restarted attempt needs no copy of the bytes; the
+          // unpacked array is let go at once.
+          const blob = new Blob([unzipped[innerName]]);
+          delete unzipped[innerName];
+          const retryFile = new File([blob], baseName);
+          retryFile.argusIntent = currentIntent;
+          setLoadingLabel(`Parsing ${baseName}…`);
+          await loadOneIfc(blob, baseName, retryFile);
+          if (abandoned()) return;
+        }
+        return;
       }
 
       const name = file.displayName ?? file.name;
+      if (kind !== "ifc") {
+        appendError(`"${name}" is not an .ifc, .ifcZIP or .zip file.`, false, { chooseAnother: true });
+        return;
+      }
       if (file.size === 0) {
-        appendError(`"${name}" is empty.`);
-        continue;
+        appendError(`"${name}" is empty.`, false, { chooseAnother: true });
+        return;
       }
       if (file.size > MAX_IFC_BYTES) {
         appendError(`"${name}" is ${Math.round(file.size / 1048576)} MB, which is too large to open in a browser. Try splitting the model or exporting a lighter one.`);
-        continue;
+        return;
       }
       // Every IFC (STEP) file starts with an ISO-10303-21 header (after a BOM,
       // whitespace or comments, so the first 64 KB are read), so anything else
@@ -5427,50 +5513,95 @@ export function useIfcViewer() {
       const head = await file.slice(0, HEAD_BYTES).arrayBuffer().then((b) => new Uint8Array(b)).catch(() => new Uint8Array());
       if (!hasStepHeader(head)) {
         appendError(`"${name}" is not a valid IFC file (no ISO-10303-21 header).`, false, { chooseAnother: true });
-        continue;
+        return;
       }
       if (file.size > 150 * 1048576) setToast({ id: Date.now(), text: `Large file (${Math.round(file.size / 1048576)} MB). This can take a few minutes.` });
       setLoadingLabel(`Reading ${name}…`);
-      await loadOneIfc(file, name);
-      if (abandoned()) return;
-    }
+      await loadOneIfc(file, name, file);
+    };
 
-    // Let a few frames of streamed geometry land before measuring bounds.
-    if (abandoned()) return;
-    await Promise.race([pipeline.fragments.core.update(true), new Promise((resolve) => setTimeout(resolve, 15000))]);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    const geometryless = [];
-    for (const [id, entry] of modelsRef.current.entries()) {
-      if (entry.localBox !== undefined) continue;
-      try {
-        entry.localBox = await computeModelLocalBox(entry.model, modelsGroup);
-        if (entry.localBox === null) geometryless.push([id, entry.fileName]);
-      } catch (err) {
-        console.error("Could not measure model bounds", err);
-        entry.localBox = null;
+    try {
+      for (;;) {
+        for (let file = queue.next(); file; file = queue.next()) {
+          await openFile(file);
+          if (abandoned()) return;
+        }
+
+        // Let a few frames of streamed geometry land before measuring bounds.
+        await Promise.race([pipeline.fragments.core.update(true), new Promise((resolve) => setTimeout(resolve, 15000))]);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        if (abandoned()) return;
+        const geometryless = [];
+        for (const [id, entry] of modelsRef.current.entries()) {
+          if (entry.localBox !== undefined) continue;
+          try {
+            entry.localBox = await computeModelLocalBox(entry.model, modelsGroup);
+            if (entry.localBox === null) geometryless.push([id, entry.fileName]);
+          } catch (err) {
+            console.error("Could not measure model bounds", err);
+            entry.localBox = null;
+          }
+        }
+        // A valid IFC that carries no 3D geometry would otherwise sit in the list
+        // as an invisible model: say so and take it out again.
+        for (const [id, name] of geometryless) {
+          await removeModel(id);
+          appendError(`"${name}" has no 3D geometry to show.`);
+        }
+        if (cameraRef.current && controlsRef.current) {
+          autoFramedRef.current = true;
+          frameCameraOnScene(
+            cameraRef.current,
+            controlsRef.current,
+            modelsRef.current.values(),
+            getVisibleFrac(),
+          );
+        }
+        if (abandoned()) return;
+        // Files picked while this one was being framed: open them too.
+        if (queue.size === 0) break;
       }
-    }
-    // A valid IFC that carries no 3D geometry would otherwise sit in the list
-    // as an invisible model: say so and take it out again.
-    for (const [id, name] of geometryless) {
-      await removeModel(id);
-      appendError(`"${name}" has no 3D geometry to show.`);
-    }
-    if (cameraRef.current && controlsRef.current) {
-      autoFramedRef.current = true;
-      frameCameraOnScene(
-        cameraRef.current,
-        controlsRef.current,
-        modelsRef.current.values(),
-        getVisibleFrac(),
-      );
-    }
 
-    if (abandoned()) return;
-    performance.mark("model-shown");
-    setIsLoading(false);
-    setLoadingLabel("");
+      lastLoadFilesRef.current = failedFiles.length ? failedFiles : null;
+      performance.mark("model-shown");
+      setIsLoading(false);
+      setLoadingLabel("");
+    } finally {
+      if (!abandoned()) loadRunningRef.current = false;
+    }
   }, [confirmReplaceFile, removeModel, getVisibleFrac, spaces.hideOnLoad]);
+
+  const loadFiles = useCallback((fileList) => {
+    const files = Array.from(fileList ?? []);
+    if (files.length === 0) return;
+    if (!pipelineRef.current || !modelsGroupRef.current) {
+      // Still booting: keep the choice and load it as soon as the viewer is
+      // ready (see the effect after cancelLoad).
+      pendingFilesRef.current = [...(pendingFilesRef.current ?? []), ...files];
+      setIsLoading(true);
+      setLoadingLabel("Starting the viewer…");
+      return;
+    }
+    loadQueueRef.current.add(files);
+    if (loadRunningRef.current) {
+      showToastRef.current(queuedText(files));
+      return;
+    }
+    runLoadQueue();
+  }, [runLoadQueue]);
+
+  // Counts for tests and bug reports (read-only): models the fragments engine
+  // holds, models in the scene, files waiting. Equal first two = nothing leaked.
+  useEffect(() => {
+    window.__argusLoadStats = () => ({
+      engine: pipelineRef.current?.fragments.core.models.list.size ?? 0,
+      open: modelsRef.current.size,
+      queued: loadQueueRef.current.size,
+    });
+    return () => {
+      delete window.__argusLoadStats;
+    };
+  }, []);
 
   // Argus reloaded itself to get a newer version while a file from this device
   // was being opened: the browser cannot keep a File across a reload, so ask again.
@@ -5486,10 +5617,19 @@ export function useIfcViewer() {
     loadFiles(files);
   }, [ready, loadFiles]);
 
+  // Cancel stops the running import (its worker is killed), drops the files
+  // waiting behind it, and closes a "replace?" question that belongs to it
+  // (the old model stays).
   const cancelLoad = useCallback(() => {
     pendingFilesRef.current = null;
+    loadQueueRef.current.clear();
     cancelLoadRef.current();
     loadTokenRef.current += 1;
+    loadRunningRef.current = false;
+    const question = confirmRef.current;
+    confirmRef.current = null;
+    setConfirmReplace(null);
+    question?.resolve(false);
     setIsLoading(false);
     setLoadingLabel("");
     setError(null);
@@ -5497,9 +5637,12 @@ export function useIfcViewer() {
     setLoadFailed(false);
   }, []);
 
+  // The last-resort Retry (shown only after every automatic attempt failed)
+  // opens again only the files that failed, never one that already loaded.
   const retryLoad = useCallback(() => {
     const files = lastLoadFilesRef.current;
-    if (files) loadFiles(files);
+    lastLoadFilesRef.current = null;
+    if (files?.length) loadFiles(files);
   }, [loadFiles]);
 
   // Bundles every currently-loaded model's original bytes back into a

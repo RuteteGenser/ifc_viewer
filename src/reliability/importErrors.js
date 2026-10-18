@@ -98,6 +98,9 @@ export function describeFailure(error, { name, reloading = false, retried = fals
     case KIND.OUT_OF_MEMORY:
       return `Not enough memory to open "${name}" on this device, even after freeing what Argus could. Close other tabs or try a smaller model.`;
     case KIND.TIMEOUT: {
+      if (error.stage === "build") {
+        return `Argus's 3D engine stopped responding while building "${name}", even after restarting it. Reload the page and open the file again.`;
+      }
       const minutes = Math.round(stalledMs / 60000);
       const spent = minutes >= 1 ? ` for about ${minutes} minute${minutes === 1 ? "" : "s"} in all` : "";
       return `"${name}" stopped making progress${spent}, even after Argus restarted the import. It may be too large for this device. Try a smaller file, or reload and try once more.`;

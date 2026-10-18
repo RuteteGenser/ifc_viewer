@@ -432,7 +432,7 @@ function App() {
       <input
         ref={fileInputRef}
         type="file"
-        accept={COARSE_POINTER ? undefined : ".ifc,.ifczip"}
+        accept={COARSE_POINTER ? undefined : ".ifc,.ifczip,.zip"}
         multiple
         hidden
         onChange={(e) => {

@@ -38,6 +38,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const [alsoSave, setAlsoSaveState] = useState(readPref);
 
   const abortDownloadRef = useRef(null);
+  const waitingRecordsRef = useRef([]); // library models clicked while another downloads
   const abortUploadRef = useRef(null);
   const uploadQueueRef = useRef([]);
   const uploadingRef = useRef(false);
@@ -103,7 +104,12 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   // ---- open from the library ----
   const openRecord = useCallback(
     async (record) => {
-      if (abortDownloadRef.current) return;
+      // Another download is running: this one waits its turn (never dropped silently).
+      if (abortDownloadRef.current) {
+        if (!waitingRecordsRef.current.some((r) => r.id === record.id)) waitingRecordsRef.current.push(record);
+        say(`Added to the queue: ${record.name}`);
+        return;
+      }
       const controller = new AbortController();
       abortDownloadRef.current = controller;
       onOpenedRef.current?.();
@@ -134,10 +140,16 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
       } finally {
         abortDownloadRef.current = null;
         setDownload(null);
+        // Cancel drops the waiting ones too; otherwise the next one starts.
+        const next = controller.signal.aborted ? null : waitingRecordsRef.current.shift();
+        if (controller.signal.aborted) waitingRecordsRef.current = [];
+        if (next) openRecordRef.current?.(next);
       }
     },
     [say],
   );
+  const openRecordRef = useRef(null);
+  openRecordRef.current = openRecord;
 
   const open = useCallback(
     (item) => {

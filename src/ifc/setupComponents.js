@@ -19,19 +19,42 @@ import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
  * visit.
  */
 export async function createIfcPipeline() {
-  const core = new FragmentsModels(fragmentsWorkerUrl);
-
-  const fragments = { core, get list() { return core.models.list; } };
+  const fragments = {
+    core: new FragmentsModels(fragmentsWorkerUrl),
+    get list() {
+      return this.core.models.list;
+    },
+    // The fragments worker stopped answering (a model build that never
+    // finishes): replace the engine with a fresh one and stop the old one's
+    // workers. Only called while no model is loaded, since the old engine's
+    // models go with it. Everything reads `fragments.core` at the time of use.
+    restart() {
+      const old = this.core;
+      this.core = new FragmentsModels(fragmentsWorkerUrl);
+      terminateWorkers(old);
+      old.dispose().catch(() => {});
+    },
+  };
 
   const ifcLoader = { settings: ifcImportSettings() };
 
   const components = {
     dispose() {
-      core.dispose();
+      fragments.core.dispose();
     },
   };
 
   return { components, fragments, ifcLoader };
+}
+
+// Best effort: the worker pool is internal to @thatopen/fragments (3.4), so a
+// version without these fields just leaves the old workers to the garbage collector.
+function terminateWorkers(core) {
+  try {
+    for (const worker of core._connection?._data?._threadsModelAmount?.keys?.() ?? []) worker.terminate?.();
+  } catch {
+    // nothing to stop
+  }
 }
 
 // How the import worker runs web-ifc: the local wasm copy (never a CDN), and

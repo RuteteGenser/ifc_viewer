@@ -182,17 +182,21 @@ export default function RightPanel({
         <button
           type="button"
           className={`element-panel__tab${activeTab === "measurements" ? " element-panel__tab--active" : ""}`}
+          aria-label="Measurements"
           onClick={() => onTabChange("measurements")}
         >
-          Measurements
+          <span className="tab-label tab-label--full">Measurements</span>
+          <span className="tab-label tab-label--short" aria-hidden="true">Measure</span>
           {activeTab === "measurements" && <TabUnderline />}
         </button>
         <button
           type="button"
           className={`element-panel__tab${activeTab === "dimensions" ? " element-panel__tab--active" : ""}`}
+          aria-label="Dimensions"
           onClick={() => onTabChange("dimensions")}
         >
-          Dimensions
+          <span className="tab-label tab-label--full">Dimensions</span>
+          <span className="tab-label tab-label--short" aria-hidden="true">Dims</span>
           {activeTab === "dimensions" && <TabUnderline />}
         </button>
         <button

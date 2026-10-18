@@ -2838,3 +2838,14 @@
     height: 28px;
   }
 }
+
+/* Touch tablets on the wide layout: 44px controls. */
+@media (pointer: coarse) {
+  .sidebar-collapse,
+  .history-buttons__button,
+  .element-panel__collapse,
+  .panel-reveal {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

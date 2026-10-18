@@ -89,7 +89,7 @@ await suite("navigation", [
       for (let i = 0; i < 3; i++) await zin.click();
       await page.waitForTimeout(800);
       assert.ok((await pngDiff(page, before, await viewShot(page))) > 3, "Zoom in did not change the view");
-      for (let i = 0; i < 40 && (await zin.getAttribute("aria-disabled")) !== "true"; i++) await zin.click();
+      for (let i = 0; i < 40 && (await zin.getAttribute("aria-disabled")) !== "true"; i++) await zin.click({ force: true }); // it may grey out mid-click
       assert.equal(await zin.getAttribute("aria-disabled"), "true", "Zoom in never reached its limit");
       assert.notEqual(await page.getByRole("button", { name: "Zoom out" }).getAttribute("aria-disabled"), "true");
     },

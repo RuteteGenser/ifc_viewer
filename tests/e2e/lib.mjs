@@ -236,8 +236,9 @@ export async function suite(title, cases) {
       const page = await ctx.newPage();
       page.on("console", (m) => m.type() === "error" && errors.push(`console.error: ${m.text()}`));
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-      // Leaving the landing page cancels its lazy images (ERR_ABORTED): not an app error.
-      page.on("requestfailed", (r) => !(r.failure()?.errorText === "net::ERR_ABORTED" && /\/img\//.test(r.url())) && errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`));
+      // ERR_ABORTED is a request the browser itself cancelled (a navigation left the page, an
+      // image scrolled away): not an app error. Real failures have other error texts.
+      page.on("requestfailed", (r) => r.failure()?.errorText !== "net::ERR_ABORTED" && errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`));
       page.on("response", (r) => r.status() >= 400 && errors.push(`http ${r.status()}: ${r.url()}`));
       let outcome = "PASS";
       let detail = "";

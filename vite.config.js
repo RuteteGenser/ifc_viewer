@@ -10,6 +10,14 @@ export default defineConfig(({ command }) => ({
   build: {
     rollupOptions: {
       output: {
+        // The fragments worker is emitted as an asset with an .mjs name, and
+        // plain static hosts (nginx's default mime.types) serve .mjs as
+        // text/plain, which browsers refuse for a module worker, so models
+        // would never finish loading. A .js name gets a JavaScript type.
+        assetFileNames: (asset) =>
+          asset.names?.some((name) => name.endsWith('.mjs'))
+            ? 'assets/[name]-[hash].js'
+            : 'assets/[name]-[hash][extname]',
         // Three.js and the @thatopen/* IFC stack are large and rarely
         // change between deploys; splitting them into their own chunk
         // means a future app-only change doesn't invalidate the browser's

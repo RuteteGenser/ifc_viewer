@@ -453,6 +453,12 @@
   cursor: not-allowed;
 }
 
+.sidebar__demo-button {
+  flex: none;
+  width: 100%;
+  margin-top: 8px;
+}
+
 .sidebar__reset-visibility-button {
   background: var(--bg);
   color: var(--text);
@@ -2077,4 +2083,30 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
+.empty-hint__button--secondary {
+  background: transparent;
+}
+
+/* With no model loaded the details panel has nothing to show, so on a
+   phone it is removed entirely and nothing is inset for it. */
+@media (max-width: 768px) and (min-height: 501px) {
+  .app-body[data-sheet="none"] {
+    --sheet-inset: 0px;
+  }
+
+  .app-body[data-sheet="none"] .element-panel {
+    display: none;
+  }
+}
+
+@media (max-height: 500px) and (pointer: coarse) {
+  .app-body[data-sheet="none"] .element-panel {
+    display: none;
+  }
+
+  .app-body[data-sheet="none"] .panel-inset-probe {
+    width: 0;
+  }
 }

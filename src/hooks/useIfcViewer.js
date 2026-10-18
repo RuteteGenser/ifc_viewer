@@ -4349,6 +4349,7 @@ export function useIfcViewer() {
     removeModel,
     resetView,
     clearError,
+    setError,
     clipPlanes,
     setClipPlaneEnabled,
     setClipPlaneGizmoVisible,

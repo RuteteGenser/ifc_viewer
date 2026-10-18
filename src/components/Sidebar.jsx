@@ -82,6 +82,7 @@ export default function Sidebar({
   className = "",
   models,
   onFilesSelected,
+  onLoadDemo,
   onToggleVisible,
   onRemove,
   onSetModelColor,
@@ -120,6 +121,15 @@ export default function Sidebar({
           Save as .ifcZIP
         </button>
       </div>
+      <button
+        type="button"
+        className="sidebar__save-button sidebar__demo-button"
+        onClick={onLoadDemo}
+        disabled={isLoading}
+        title="Load a small built-in sample building to try every tool"
+      >
+        Load demo model
+      </button>
       <input
         ref={fileInputRef}
         type="file"

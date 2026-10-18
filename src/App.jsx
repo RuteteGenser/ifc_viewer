@@ -42,6 +42,7 @@ function App() {
     resetView,
     resetVisibility,
     clearError,
+    setError,
     clipPlanes,
     setClipPlaneEnabled,
     setClipPlaneGizmoVisible,
@@ -95,6 +96,7 @@ function App() {
     setViewInsets,
   } = useIfcViewer();
 
+  const hasNoModels = models.length === 0;
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeRightTab, setActiveRightTab] = useState("info");
@@ -131,7 +133,7 @@ function App() {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [panelOpen, setViewInsets]);
+  }, [panelOpen, hasNoModels, setViewInsets]);
 
   const handleTabChange = useCallback(
     (tab) => {
@@ -141,6 +143,20 @@ function App() {
     },
     [activeRightTab],
   );
+
+  // The demo is a static .ifc served with the app, pushed through the same
+  // loadFiles path as a user-picked file so it exercises the real pipeline.
+  const handleLoadDemo = useCallback(async () => {
+    setSidebarOpen(false);
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}demo/demo-building.ifc`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      loadFiles([new File([blob], "demo-building.ifc")]);
+    } catch (err) {
+      setError(`Could not load the demo model (${err.message}).`);
+    }
+  }, [loadFiles, setError]);
 
   const handleClosePanel = useCallback(() => {
     clearSelection();
@@ -182,7 +198,7 @@ function App() {
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
       />
 
-      <div className="app-body" data-sheet={panelOpen ? "open" : "peek"}>
+      <div className="app-body" data-sheet={hasNoModels ? "none" : panelOpen ? "open" : "peek"}>
         <div className="sheet-inset-probe" ref={insetProbeRef} aria-hidden="true" />
         <div className="panel-inset-probe" ref={insetProbeRightRef} aria-hidden="true" />
         {sidebarOpen && (
@@ -201,6 +217,7 @@ function App() {
             loadFiles(files);
             setSidebarOpen(false);
           }}
+          onLoadDemo={handleLoadDemo}
           onToggleVisible={setVisible}
           onSetModelColor={setModelColor}
           onRemove={removeModel}
@@ -231,6 +248,9 @@ function App() {
               <p>No model loaded yet</p>
               <button type="button" className="empty-hint__button" onClick={() => setSidebarOpen(true)}>
                 Add a model
+              </button>
+              <button type="button" className="empty-hint__button empty-hint__button--secondary" onClick={handleLoadDemo}>
+                Load demo model
               </button>
             </div>
           )}

@@ -2307,6 +2307,7 @@
 .empty-state__icon {
   width: 52px;
   height: 52px;
+  flex: none;
   color: var(--accent);
 }
 

@@ -2495,7 +2495,13 @@
   }
 }
 
+/* At the bottom of the view, so dismissing it never moves a button the user is tapping. */
 .first-run {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sheet-inset, 0px) + 72px + var(--transfer-h, 0px));
+  transform: translateX(-50%);
+  z-index: 18;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3167,11 +3173,13 @@
 /* Floating notes centre on the 3D area that is left of the details column,
    so they never sit over its tabs. */
 @media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
+  .first-run,
   .hud,
   .status-stack {
     left: calc((100% - var(--panel-w, 320px)) / 2);
     max-width: calc(100% - var(--panel-w, 320px) - 24px);
   }
+  .app-body--no-panel .first-run,
   .app-body--no-panel .hud,
   .app-body--no-panel .status-stack {
     left: 50%;
@@ -3569,5 +3577,12 @@
   }
   .compass:not(.compass--open) .compass__offset {
     display: none;
+  }
+}
+
+/* Phones: undo and redo stack up the right edge, so the hint sits above them. */
+@media (max-width: 768px) and (min-height: 501px) {
+  .first-run {
+    bottom: calc(var(--sheet-inset, 0px) + 124px + var(--transfer-h, 0px));
   }
 }

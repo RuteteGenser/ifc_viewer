@@ -523,7 +523,6 @@ function App() {
           />
           <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} />
           <Hud>
-            <FirstRunHint visible={models.length > 0 && !isLoading} />
             <ToolHint tool={armedTool} onDone={exitArmedTool} />
             <CameraClipPanel
               enabled={cameraClipEnabled}
@@ -533,6 +532,7 @@ function App() {
               onDone={() => setCameraClipEnabled(false)}
             />
           </Hud>
+          <FirstRunHint visible={models.length > 0 && !isLoading} />
           <div className="history-buttons">
             <button
               type="button"

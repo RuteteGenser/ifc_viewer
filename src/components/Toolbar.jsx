@@ -22,6 +22,15 @@ function TagIcon() {
   );
 }
 
+function HomeIcon() {
+  return (
+    <svg className="top-bar__home-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5.5 10v10h13V10" />
+    </svg>
+  );
+}
+
 function EyeIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -105,8 +114,10 @@ export default function Toolbar({
           className={`top-bar__home-button${hasModels ? "" : " is-blocked"}`}
           onClick={hasModels ? onResetView : onBlocked}
           aria-disabled={!hasModels}
+          aria-label="Home: fit the whole model in view"
         >
-          Home
+          <span className="top-bar__home-text">Home</span>
+          <HomeIcon />
         </button>
       </Tooltip>
       <Tooltip description={locked("Measure: click two points")} hotkey="M">

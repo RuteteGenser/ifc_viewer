@@ -2923,3 +2923,124 @@
     display: none;
   }
 }
+
+/* ---------- Toolbar icons that only the compact layouts show ---------- */
+.top-bar__home-icon,
+.search-bar__icon {
+  display: none;
+}
+
+/* Wide layouts: the toolbar stops where the details column starts, so the
+   search dropdown and isolate banner never sit over the panel's tabs. */
+@media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
+  .toolbar {
+    right: var(--panel-w, 320px);
+  }
+  .app-body--no-panel .toolbar {
+    right: 0;
+  }
+}
+
+/* Short portrait phones (iPhone SE class): one slim toolbar row so the 3D
+   view keeps its height. Search is an icon that opens a full-width field. */
+@media (max-width: 768px) and (max-height: 600px) and (min-height: 501px) {
+  .toolbar {
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px calc(4px + var(--safe-right)) 4px calc(4px + var(--safe-left));
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .toolbar .top-bar__icon-button,
+  .toolbar .top-bar__home-button,
+  .toolbar .search-bar__input {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .toolbar .top-bar__home-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .top-bar__home-text {
+    display: none;
+  }
+  .top-bar__home-icon {
+    display: block;
+    width: 20px;
+    height: 20px;
+  }
+  .shortcuts-help {
+    display: none;
+  }
+  .search-bar {
+    order: 0;
+    flex: 0 0 42px;
+    width: 42px;
+    margin-left: 0;
+  }
+  .search-bar__icon {
+    display: block;
+    position: absolute;
+    left: 11px;
+    top: 11px;
+    width: 20px;
+    height: 20px;
+    color: var(--text);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .toolbar .search-bar__input {
+    color: transparent;
+    caret-color: transparent;
+    cursor: pointer;
+    border-color: var(--border-strong);
+  }
+  .toolbar .search-bar__input::placeholder {
+    color: transparent;
+  }
+  .toolbar .search-bar__input:not(:placeholder-shown) {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .search-bar:focus-within {
+    position: fixed;
+    left: 6px;
+    right: 6px;
+    top: calc(var(--header-height) + 5px);
+    width: auto;
+    z-index: 60;
+  }
+  .search-bar:focus-within .toolbar .search-bar__input,
+  .toolbar .search-bar:focus-within .search-bar__input {
+    width: 100%;
+    color: var(--text);
+    caret-color: auto;
+    cursor: text;
+    padding: 0 12px 0 38px;
+    font-size: 16px;
+  }
+  .toolbar .search-bar:focus-within .search-bar__input::placeholder {
+    color: var(--text-faint);
+  }
+  .search-bar__dropdown {
+    position: fixed;
+    left: 6px;
+    right: 6px;
+    top: calc(var(--header-height) + var(--toolbar-h, 52px) + 6px);
+  }
+  .app-body {
+    --sheet-open-h: clamp(
+      132px,
+      32dvh,
+      calc(100dvh - var(--header-height) - var(--toolbar-h, 52px) - 260px)
+    );
+  }
+}

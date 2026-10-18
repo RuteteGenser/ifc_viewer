@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { prettyCategory } from "../ifc/elementDetails";
 import { useBrowser } from "../hooks/BrowserContext";
 import "./dataPanels.css";
@@ -59,6 +59,29 @@ function TargetIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg className="search-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4.5 4.5" />
+    </svg>
+  );
+}
+
+// Landscape phones are short and wide: a shorter prompt keeps the field readable.
+const SHORT_PLACEHOLDER_QUERY = "(max-height: 500px) and (pointer: coarse)";
+function useShortPlaceholder() {
+  const [short, setShort] = useState(() => !!window.matchMedia?.(SHORT_PLACEHOLDER_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(SHORT_PLACEHOLDER_QUERY);
+    if (!mq) return undefined;
+    const update = () => setShort(mq.matches);
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+  return short;
+}
+
 export default function SearchBar({
   query,
   onQueryChange,
@@ -68,6 +91,7 @@ export default function SearchBar({
   onClearIsolation,
 }) {
   const browser = useBrowser();
+  const shortPlaceholder = useShortPlaceholder();
   const [open, setOpen] = useState(false);
   const [groupMode, setGroupMode] = useState("category");
   const [catFilter, setCatFilter] = useState(() => new Set());
@@ -166,11 +190,12 @@ export default function SearchBar({
 
   return (
     <div className="search-bar" ref={containerRef}>
+      <SearchIcon />
       <input
         ref={inputRef}
         type="text"
         className="search-bar__input"
-        placeholder="Search elements by name or type…"
+        placeholder={shortPlaceholder ? "Search" : "Search elements by name or type…"}
         value={query}
         role="combobox"
         aria-label="Search elements"

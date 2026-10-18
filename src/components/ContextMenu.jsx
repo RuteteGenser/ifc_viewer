@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-export default function ContextMenu({ x, y, onCreateClipPlane, onHideElement, onClose }) {
+export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, onHideElement, onClose }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -18,9 +18,17 @@ export default function ContextMenu({ x, y, onCreateClipPlane, onHideElement, on
     };
   }, [onClose]);
 
+  // Under a finger the menu would be hidden by the hand, so a touch menu
+  // opens above the press point (or below it when there's no room above).
+  const MENU_HEIGHT = touch ? 130 : 110;
+  const top = touch
+    ? y - MENU_HEIGHT - 24 >= 8
+      ? y - MENU_HEIGHT - 24
+      : Math.min(y + 24, window.innerHeight - MENU_HEIGHT)
+    : Math.min(y, window.innerHeight - MENU_HEIGHT);
   const style = {
-    left: Math.min(x, window.innerWidth - 260),
-    top: Math.min(y, window.innerHeight - 110),
+    left: Math.max(8, Math.min(x - (touch ? 115 : 0), window.innerWidth - 260)),
+    top,
   };
 
   return (

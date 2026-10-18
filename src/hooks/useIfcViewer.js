@@ -244,6 +244,8 @@ export function useIfcViewer() {
   // entry is a { undo, redo } pair of (possibly async) callbacks. Model
   // load/remove, camera/view changes, visibility checkboxes, and
   // selection are intentionally not tracked here.
+  const viewInsetBottomRef = useRef(0);
+  const applyViewInsetRef = useRef(() => {});
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   // Degrees, measured from the model's own local -Z axis (an arbitrary
@@ -1730,16 +1732,23 @@ export function useIfcViewer() {
     // it's ready (or close to it) by the time the user picks a menu item;
     // the menu itself opens without waiting on it.
     let contextMenuSeq = 0;
-    const onContextMenu = (event) => {
-      event.preventDefault();
+    const openContextMenuAt = (clientX, clientY, touch = false) => {
       const id = ++contextMenuSeq;
-      const promise = raycastVisible(event.clientX, event.clientY).catch((err) => {
+      const promise = raycastVisible(clientX, clientY).catch((err) => {
         console.error("Surface pick failed", err);
         return null;
       });
       pendingSurfacePickRef.current = { id, promise };
-      setContextMenu({ x: event.clientX, y: event.clientY });
+      setContextMenu({ x: clientX, y: clientY, touch });
     };
+    const onContextMenu = (event) => {
+      event.preventDefault();
+      // A long-press on Android fires "contextmenu" too; our own
+      // long-press (below) already opened the menu for that touch.
+      if (event.pointerType === "touch" && longPressFiredAt && Date.now() - longPressFiredAt < 1500) return;
+      openContextMenuAt(event.clientX, event.clientY, event.pointerType === "touch");
+    };
+    let longPressFiredAt = 0;
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
 
     // Escape while measuring: cancel just the pending point A if one's
@@ -2609,6 +2618,10 @@ export function useIfcViewer() {
       const hit = await raycastPromise;
       if (!hit) return;
       const key = `${hit.fragments.modelId}::${hit.localId}`;
+      // A mouse has already hovered the element (and so built its tag)
+      // before the click; a finger tap has not — there is no hover on a
+      // touch screen — so build the tag for the tapped element now.
+      if (key !== currentHoveredDimensionKey) await handleDimensionHoverResult(hit);
       if (key !== currentHoveredDimensionKey) return;
       const entry = dimensionTags.get(key);
       // Mirrors refreshDimensionTagEntry's own "anything to show?" check
@@ -2938,7 +2951,8 @@ export function useIfcViewer() {
     // Returns true if a drag was started (caller should not also start a
     // rotate gesture for this same pointerdown).
     const tryStartClipPlaneDrag = (event) => {
-      if (!event.shiftKey || event.button !== 0) return false;
+      // Shift+drag with a mouse; a plain one-finger drag on touch, which has no Shift key.
+      if ((!event.shiftKey && event.pointerType !== "touch") || event.button !== 0) return false;
       const hittable = clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh);
       if (hittable.length === 0) return false;
       const ndc = getNdc(event);
@@ -3119,6 +3133,40 @@ export function useIfcViewer() {
         .catch((err) => console.error("Pivot raycast failed", err));
     };
     renderer.domElement.addEventListener("pointerdown", onRotateStart);
+
+    // Touch has no right-click: a still finger held on the canvas opens
+    // the same context menu (create clip plane / hide element). The
+    // pending rotate gesture is cancelled so lifting the finger doesn't
+    // also select whatever is underneath.
+    const LONG_PRESS_MS = 500;
+    const LONG_PRESS_SLOP_PX = 10;
+    let longPress = null; // { id, x, y, timer } | null
+    const cancelLongPress = () => {
+      if (!longPress) return;
+      clearTimeout(longPress.timer);
+      longPress = null;
+    };
+    const onLongPressDown = (event) => {
+      cancelLongPress();
+      if (event.pointerType !== "touch" || !event.isPrimary) return;
+      if (modelsGroup.children.length === 0) return;
+      const pressed = { id: event.pointerId, x: event.clientX, y: event.clientY, timer: 0 };
+      pressed.timer = setTimeout(() => {
+        longPress = null;
+        longPressFiredAt = Date.now();
+        if (activePointerId !== null) onRotateEnd({ pointerId: activePointerId, type: "pointercancel" });
+        openContextMenuAt(pressed.x, pressed.y, true);
+      }, LONG_PRESS_MS);
+      longPress = pressed;
+    };
+    const onLongPressMove = (event) => {
+      if (!longPress || event.pointerId !== longPress.id) return;
+      if (Math.hypot(event.clientX - longPress.x, event.clientY - longPress.y) > LONG_PRESS_SLOP_PX) cancelLongPress();
+    };
+    renderer.domElement.addEventListener("pointerdown", onLongPressDown);
+    renderer.domElement.addEventListener("pointermove", onLongPressMove);
+    window.addEventListener("pointerup", cancelLongPress);
+    window.addEventListener("pointercancel", cancelLongPress);
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(20, 30, 15);
@@ -3358,6 +3406,7 @@ export function useIfcViewer() {
       if (width === 0 || height === 0) return;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      applyViewInsetRef.current();
       renderer.setSize(width, height);
       measureLineResolution.set(width, height);
       requestRender();
@@ -3389,6 +3438,11 @@ export function useIfcViewer() {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onRotateStart);
+      renderer.domElement.removeEventListener("pointerdown", onLongPressDown);
+      renderer.domElement.removeEventListener("pointermove", onLongPressMove);
+      window.removeEventListener("pointerup", cancelLongPress);
+      window.removeEventListener("pointercancel", cancelLongPress);
+      cancelLongPress();
       renderer.domElement.removeEventListener("pointermove", onMeasureMarkerHoverCursor);
       renderer.domElement.style.cursor = "";
       renderer.domElement.removeEventListener(
@@ -4243,6 +4297,32 @@ export function useIfcViewer() {
     requestRenderRef.current();
   }, []);
 
+  // Part of the viewport can be covered by UI that sits over it (on a phone,
+  // the info bottom sheet). Rather than shrinking the canvas — which would
+  // also shrink the model on screen — shift the camera's projection so the
+  // model is centred in the part that is still visible.
+  const applyViewInset = useCallback(() => {
+    const camera = cameraRef.current;
+    const container = containerRef.current;
+    if (!camera || !container) return;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    if (width === 0 || height === 0) return;
+    const inset = Math.min(viewInsetBottomRef.current, height * 0.8);
+    if (inset > 0) camera.setViewOffset(width, height, 0, inset / 2, width, height);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+    requestRenderRef.current();
+  }, []);
+  applyViewInsetRef.current = applyViewInset;
+  const setViewInsetBottom = useCallback(
+    (px) => {
+      viewInsetBottomRef.current = Math.max(0, px || 0);
+      applyViewInset();
+    },
+    [applyViewInset],
+  );
+
   const clearError = useCallback(() => setError(null), []);
   const clearSelection = useCallback(() => {
     clearHighlightRef.current?.();
@@ -4317,5 +4397,6 @@ export function useIfcViewer() {
     canUndo: historyCounts.undo > 0,
     canRedo: historyCounts.redo > 0,
     hideSelectedElement,
+    setViewInsetBottom,
   };
 }

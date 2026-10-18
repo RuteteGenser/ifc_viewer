@@ -92,6 +92,7 @@ function App() {
     canUndo,
     canRedo,
     hideSelectedElement,
+    setViewInsetBottom,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -115,6 +116,19 @@ function App() {
     }
     lastAutoSwitchGuidRef.current = guid;
   }, [selectedElement?.guid]);
+
+  // Tell the 3D view how much of its bottom edge the info sheet covers
+  // (0 whenever the layout isn't a bottom sheet), read from a probe element
+  // whose height CSS sets, so the model stays centred in what's visible.
+  const insetProbeRef = useRef(null);
+  useEffect(() => {
+    const probe = insetProbeRef.current;
+    if (!probe) return undefined;
+    const update = () => setViewInsetBottom(probe.offsetHeight);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [panelOpen, setViewInsetBottom]);
 
   const handleTabChange = useCallback(
     (tab) => {
@@ -166,6 +180,7 @@ function App() {
       />
 
       <div className="app-body" data-sheet={panelOpen ? "open" : "peek"}>
+        <div className="sheet-inset-probe" ref={insetProbeRef} aria-hidden="true" />
         {sidebarOpen && (
           <button
             type="button"
@@ -272,6 +287,7 @@ function App() {
           <ContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
+            touch={contextMenu.touch}
             onCreateClipPlane={createClipPlaneHere}
             onHideElement={hideElementHere}
             onClose={closeContextMenu}

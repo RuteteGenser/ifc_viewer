@@ -3582,13 +3582,10 @@ export function useIfcViewer() {
           // A miss (click landed on empty space, or the pipeline wasn't
           // ready) falls back to the closest model actually under the
           // cursor, or as a last resort the whole-group bounding sphere.
-          // A finger drag orbits the middle of the model, not the surface
-          // point under the fingertip: a horizontal swipe that starts near
-          // an edge (or beside the model) would otherwise swing it right
-          // off screen. A mouse still pivots on the grabbed point, and
-          // falls back to the model's centre when it grabs empty space.
-          const pivotPoint =
-            event.pointerType !== "touch" && hit ? hit.point : sphere.center.clone();
+          // Mouse and touch pivot on the grabbed surface point. A drag that
+          // starts on empty space (no hit) orbits the model's centre, so it
+          // can never swing the model off screen.
+          const pivotPoint = hit ? hit.point : sphere.center.clone();
           anchorGesture(ndc, pivotPoint);
           rotating = true;
         })

@@ -2423,7 +2423,7 @@
 
 /* Undo / redo are useful with a mouse too; sit them above the compass
    corner of the 3D view, clear of the details column. */
-@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+@media (min-width: 769px) {
   .history-buttons {
     display: flex;
     flex-direction: column;

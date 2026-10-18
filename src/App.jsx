@@ -167,6 +167,7 @@ function App() {
   // Only meaningful on narrow screens, where the right panel is a bottom
   // sheet that starts collapsed to a peek bar; on desktop it's always shown.
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const dragDepthRef = useRef(0);
   const lastAutoSwitchGuidRef = useRef(null);
   const hadSelectionRef = useRef(false);
@@ -183,7 +184,10 @@ function App() {
     }
     // Selection cleared (tap on empty space, Escape): drop the sheet back to
     // its peek bar so it stops covering the model, unless another tab is in use.
-    if (!guid && hadSelectionRef.current && activeRightTab === "info") setPanelOpen(false);
+    if (!guid && hadSelectionRef.current && activeRightTab === "info") {
+      setPanelOpen(false);
+      setPanelExpanded(false);
+    }
     hadSelectionRef.current = !!guid;
     lastAutoSwitchGuidRef.current = guid;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,7 +207,7 @@ function App() {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [panelOpen, hasNoModels, setViewInsets, panelCollapsed, panelWidth]);
+  }, [panelOpen, panelExpanded, hasNoModels, setViewInsets, panelCollapsed, panelWidth]);
 
   // Bring a newly selected element into the middle of the visible area once
   // the sheet has taken its size (after the inset effect above has run).
@@ -214,14 +218,55 @@ function App() {
     return () => cancelAnimationFrame(id);
   }, [selectedGuid, focusSelection]);
 
+  const handleClosePanel = useCallback(() => {
+    clearSelection();
+    setPanelOpen(false);
+    setPanelExpanded(false);
+  }, [clearSelection]);
+
   const handleTabChange = useCallback(
     (tab) => {
-      // Tapping the already-open tab folds the sheet back down.
-      setPanelOpen((open) => !(open && tab === activeRightTab));
+      // Tapping the tab that is already showing switches between the compact
+      // and the expanded sheet; any other tab just shows that tab.
+      if (!panelOpen) setPanelOpen(true);
+      else if (tab === activeRightTab) setPanelExpanded((x) => !x);
       setActiveRightTab(tab);
     },
-    [activeRightTab],
+    [activeRightTab, panelOpen],
   );
+
+  const sheetMode = !panelOpen ? "hidden" : panelExpanded ? "full" : "compact";
+  const setSheetMode = useCallback(
+    (mode) => {
+      if (mode === "hidden") handleClosePanel();
+      else {
+        setPanelOpen(true);
+        setPanelExpanded(mode === "full");
+      }
+    },
+    [handleClosePanel],
+  );
+
+  // On narrow layouts Esc folds the sheet away again.
+  useEffect(() => {
+    if (!panelOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (!window.matchMedia?.("(max-width: 768px), (max-height: 500px) and (pointer: coarse)").matches) return;
+      if (document.querySelector(".context-menu, .confirm-dialog-backdrop, .measure-leg-edit-popup")) return;
+      handleClosePanel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen, handleClosePanel]);
+
+  // Something to look at that the sheet holds even with nothing selected.
+  const detailsCount = measurements.length + pinnedDimensionTags.length;
+  const openDetails = useCallback(() => {
+    setActiveRightTab(measurements.length > 0 ? "measurements" : "dimensions");
+    setPanelOpen(true);
+    setPanelExpanded(false);
+  }, [measurements.length]);
 
   // The sample is an ordinary .ifc served with the app and pushed through
   // the same loadFiles path as a user-picked file; only its display name
@@ -264,10 +309,6 @@ function App() {
   }, [armedTool, setClipMoveMode, measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
   const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
-  const handleClosePanel = useCallback(() => {
-    clearSelection();
-    setPanelOpen(false);
-  }, [clearSelection]);
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -323,7 +364,7 @@ function App() {
       <div
         className={`app-body${sidebarCollapsed ? " app-body--no-sidebar" : ""}${panelCollapsed ? " app-body--no-panel" : ""}`}
         style={{ "--panel-w": `${panelWidth}px` }}
-        data-sheet={hasNoModels ? "none" : panelOpen ? "open" : "peek"}
+        data-sheet={hasNoModels ? "none" : sheetMode === "hidden" ? "hidden" : sheetMode === "full" ? "full" : "open"}
       >
         <div className="sheet-inset-probe" ref={insetProbeRef} aria-hidden="true" />
         <div className="panel-inset-probe" ref={insetProbeRightRef} aria-hidden="true" />
@@ -429,6 +470,14 @@ function App() {
           />
           <StatusBanner error={error} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} />
           <Toast toast={toast} />
+          {!panelOpen && detailsCount > 0 && (
+            <button type="button" className="details-fab" aria-label={`Show details, ${detailsCount} item${detailsCount === 1 ? "" : "s"}`} onClick={openDetails}>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h10" />
+              </svg>
+              <span className="details-fab__count">{detailsCount}</span>
+            </button>
+          )}
           <div className="hover-label" ref={hoverLabelRef} hidden aria-hidden="true" />
           {panelCollapsed && !hasNoModels && (
             <button type="button" className="panel-reveal" aria-label="Show details panel" onClick={() => setPanelCollapsedSaved(false)}>
@@ -454,9 +503,10 @@ function App() {
 
         <RightPanel
           activeTab={activeRightTab}
-          open={panelOpen}
+          mode={sheetMode}
+          onModeChange={setSheetMode}
           onTabChange={handleTabChange}
-          onToggleOpen={() => setPanelOpen((open) => !open)}
+          onToggleOpen={() => setSheetMode(sheetMode === "full" ? "compact" : "full")}
           collapsed={panelCollapsed}
           onCollapse={() => setPanelCollapsedSaved(true)}
           width={panelWidth}

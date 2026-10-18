@@ -1845,16 +1845,24 @@
   .app-body {
     /* Leave at least ~170px of 3D view between the toolbar and the sheet
        on short phones, where the toolbar wraps to several rows. */
+    /* Expanded: tall, but never under the toolbar. */
+    --sheet-full-h: min(85dvh, calc(100dvh - var(--header-height) - var(--toolbar-h, 56px) - 8px));
+    /* Compact: leaves at least ~170px of 3D view on short phones. */
     --sheet-open-h: clamp(
       168px,
-      min(44dvh, 380px),
-      calc(100dvh - var(--header-height) - var(--toolbar-h, 56px) - 170px)
+      min(42dvh, 380px),
+      min(var(--sheet-full-h), calc(100dvh - var(--header-height) - var(--toolbar-h, 56px) - 170px))
     );
-    --sheet-inset: calc(var(--peek-h) + var(--safe-bottom));
+    /* Hidden by default: the 3D view has the full height. */
+    --sheet-inset: var(--safe-bottom);
   }
 
   .app-body[data-sheet="open"] {
     --sheet-inset: var(--sheet-open-h);
+  }
+
+  .app-body[data-sheet="full"] {
+    --sheet-inset: var(--sheet-full-h);
   }
 
   .sheet-inset-probe {
@@ -1868,19 +1876,42 @@
     bottom: 0;
     width: 100%;
     max-width: none;
-    height: var(--sheet-open-h);
+    height: var(--sheet-full-h);
     padding-bottom: var(--safe-bottom);
     border-left: none;
     border-top: 1px solid var(--border-strong);
     border-radius: 14px 14px 0 0;
     box-shadow: 0 -6px 24px rgba(42, 38, 34, 0.16);
     z-index: 18;
-    transform: translateY(calc(100% - var(--peek-h) - var(--safe-bottom)));
-    transition: transform 0.24s cubic-bezier(0.22, 0.9, 0.3, 1);
+    /* Fully off screen until needed. */
+    transform: translateY(calc(100% + 24px));
+    visibility: hidden;
+    transition: transform 0.26s cubic-bezier(0.22, 0.9, 0.3, 1), visibility 0s linear 0.26s;
+    will-change: transform;
   }
 
   .element-panel--open {
+    transform: translateY(calc(var(--sheet-full-h) - var(--sheet-open-h)));
+    visibility: visible;
+    transition: transform 0.26s cubic-bezier(0.22, 0.9, 0.3, 1), visibility 0s;
+  }
+
+  .element-panel--open.element-panel--full {
     transform: translateY(0);
+  }
+
+  .element-panel--dragging {
+    transition: none;
+  }
+
+  /* The lower part of a compact sheet is below the screen edge; keep the
+     last lines of content reachable by scrolling. */
+  .element-panel--open:not(.element-panel--full) .element-panel__body {
+    padding-bottom: calc(24px + var(--sheet-full-h) - var(--sheet-open-h) + var(--safe-bottom));
+  }
+
+  .details-fab {
+    bottom: calc(var(--sheet-inset) + 12px + 104px);
   }
 
   .element-panel__grabber,
@@ -1958,10 +1989,11 @@
   }
 
   .panel-inset-probe {
-    width: 28px;
+    width: 0;
   }
 
-  .app-body[data-sheet="open"] .panel-inset-probe {
+  .app-body[data-sheet="open"] .panel-inset-probe,
+  .app-body[data-sheet="full"] .panel-inset-probe {
     width: min(340px, 62vw);
   }
 
@@ -1972,12 +2004,26 @@
     z-index: 18;
     padding-right: var(--safe-right);
     box-shadow: -6px 0 24px rgba(42, 38, 34, 0.16);
-    transform: translateX(calc(100% - 28px));
-    transition: transform 0.24s cubic-bezier(0.22, 0.9, 0.3, 1);
+    /* Fully off screen until needed. */
+    transform: translateX(calc(100% + 24px));
+    visibility: hidden;
+    transition: transform 0.26s cubic-bezier(0.22, 0.9, 0.3, 1), visibility 0s linear 0.26s;
+    will-change: transform;
   }
 
   .element-panel--open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.26s cubic-bezier(0.22, 0.9, 0.3, 1), visibility 0s;
+  }
+
+  .element-panel--dragging {
+    transition: none;
+  }
+
+  .details-fab {
+    bottom: 8px;
+    right: calc(12px + var(--safe-right) + 108px);
   }
 
   .element-panel__grabber {
@@ -1994,6 +2040,11 @@
     border: none;
     border-right: 1px solid var(--border);
     cursor: pointer;
+  }
+
+  .element-panel__grabber,
+  .element-panel__tabbar {
+    touch-action: none;
   }
 
   .element-panel__grabber span {
@@ -2030,7 +2081,7 @@
   .history-buttons {
     flex-direction: row;
     bottom: 8px;
-    right: calc(40px + var(--safe-right));
+    right: calc(12px + var(--safe-right));
   }
 }
 
@@ -2705,5 +2756,56 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Floating "Details" button: narrow layouts only, shown when there is
+   something in the sheet (measurements, pinned tags) and it is closed. */
+.details-fab {
+  display: none;
+}
+
+.element-panel__compact-probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: var(--sheet-open-h, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  .details-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    right: calc(12px + var(--safe-right));
+    z-index: 16;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+  }
+
+  .details-fab__count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
   }
 }

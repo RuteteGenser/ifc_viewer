@@ -20,9 +20,10 @@ function TabUnderline() {
 
 export default function RightPanel({
   activeTab,
-  open,
+  mode,
   onTabChange,
   onToggleOpen,
+  onModeChange,
   onClose,
   onHideElement,
   element,
@@ -37,29 +38,75 @@ export default function RightPanel({
   width,
   onResize,
 }) {
-  // Swipe the handle / tab bar up to open the sheet and down to fold it
-  // away (a plain tap still toggles via the buttons' click handlers).
-  const swipeRef = useRef(null);
+  // Narrow layouts: the panel is a sheet that is fully hidden until needed,
+  // with a compact and an expanded height (a side drawer on landscape phones).
+  // The handle and tab bar follow the finger and snap on release; everything
+  // is a transform, so a drag can be interrupted at any point.
+  const asideRef = useRef(null);
+  const compactProbeRef = useRef(null);
+  const dragRef = useRef(null);
   const swipedRef = useRef(false);
+  const sideways = () => !!window.matchMedia?.("(max-height: 500px) and (pointer: coarse)").matches;
+  // Offsets (px) of each snap point along the drag axis, 0 = fully shown.
+  const offsets = () => {
+    const el = asideRef.current;
+    const side = sideways();
+    const size = side ? el.offsetWidth : el.offsetHeight;
+    const compact = side ? 0 : size - (compactProbeRef.current?.offsetHeight ?? size);
+    return { side, full: 0, compact, hidden: size + 24 };
+  };
+  const modeOffset = (o, m) => (m === "full" ? o.full : m === "compact" ? o.compact : o.hidden);
   const swipe = {
     onPointerDown: (e) => {
-      if (e.pointerType === "mouse") return;
-      swipeRef.current = { y: e.clientY, x: e.clientX };
+      if (e.pointerType === "mouse" || mode === "hidden") return;
+      const o = offsets();
+      dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, o, start: modeOffset(o, mode), cur: modeOffset(o, mode), t: performance.now(), v: 0, moved: false };
       swipedRef.current = false;
     },
     onPointerMove: (e) => {
-      const s = swipeRef.current;
-      if (!s) return;
-      const dy = e.clientY - s.y;
-      if (Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(e.clientX - s.x)) {
-        swipeRef.current = null;
+      const d = dragRef.current;
+      if (!d || d.id !== e.pointerId) return;
+      const delta = d.o.side ? e.clientX - d.x : e.clientY - d.y;
+      const cross = d.o.side ? e.clientY - d.y : e.clientX - d.x;
+      if (!d.moved) {
+        if (Math.abs(delta) < 8 || Math.abs(cross) > Math.abs(delta)) return;
+        d.moved = true;
         swipedRef.current = true;
-        if (dy < 0 && !open) onToggleOpen();
-        if (dy > 0 && open) onToggleOpen();
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+        asideRef.current.classList.add("element-panel--dragging");
+      }
+      const minOff = d.o.full;
+      const maxOff = d.o.hidden;
+      const next = Math.min(maxOff, Math.max(minOff, d.start + delta));
+      const now = performance.now();
+      d.v = (next - d.cur) / Math.max(1, now - d.t);
+      d.cur = next;
+      d.t = now;
+      asideRef.current.style.transform = d.o.side ? `translateX(${next}px)` : `translateY(${next}px)`;
+    },
+    onPointerUp: () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d || !d.moved) return;
+      const el = asideRef.current;
+      el.classList.remove("element-panel--dragging");
+      el.style.transform = "";
+      const projected = d.cur + d.v * 160;
+      const modes = d.o.side ? ["compact", "hidden"] : ["full", "compact", "hidden"];
+      let best = modes[0];
+      for (const m of modes) {
+        if (Math.abs(modeOffset(d.o, m) - projected) < Math.abs(modeOffset(d.o, best) - projected)) best = m;
+      }
+      if (best !== mode) onModeChange(best);
+    },
+    onPointerCancel: () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (d?.moved) {
+        asideRef.current.classList.remove("element-panel--dragging");
+        asideRef.current.style.transform = "";
       }
     },
-    onPointerUp: () => { swipeRef.current = null; },
-    onPointerCancel: () => { swipeRef.current = null; },
     onClickCapture: (e) => {
       if (swipedRef.current) {
         swipedRef.current = false;
@@ -94,7 +141,12 @@ export default function RightPanel({
     e.preventDefault();
   };
   return (
-    <aside className={`element-panel${open ? " element-panel--open" : ""}`} aria-hidden={collapsed ? "true" : undefined} inert={collapsed ? "" : undefined}>
+    <aside
+      ref={asideRef}
+      className={`element-panel${mode !== "hidden" ? " element-panel--open" : ""}${mode === "full" ? " element-panel--full" : ""}`}
+      aria-label="Details"
+      aria-hidden={collapsed ? "true" : undefined} inert={collapsed ? "" : undefined}>
+      <div className="element-panel__compact-probe" ref={compactProbeRef} aria-hidden="true" />
       <div
         className="element-panel__resize"
         role="separator"
@@ -112,8 +164,8 @@ export default function RightPanel({
         className="element-panel__grabber"
         {...swipe}
         onClick={onToggleOpen}
-        aria-label={open ? "Collapse details panel" : "Expand details panel"}
-        aria-expanded={open}
+        aria-label={mode === "full" ? "Make details panel smaller" : "Make details panel larger"}
+        aria-expanded={mode === "full"}
       >
         <span />
       </button>

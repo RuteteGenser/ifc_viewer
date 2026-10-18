@@ -1,0 +1,310 @@
+/* Floating view controls, top right of the 3D view. */
+
+.view-tools {
+  position: absolute;
+  top: calc(var(--toolbar-h, 52px) + 10px);
+  right: calc(12px + var(--safe-right, 0px));
+  z-index: 17; /* above the history buttons, below the details sheet */
+}
+
+/* The "Isolating N elements" banner sits right under the toolbar. */
+.view-tools--lower {
+  top: calc(var(--toolbar-h, 52px) + 70px);
+}
+
+.view-tools__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.view-tools__button {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.view-tools__button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.view-tools__button:hover {
+  background: var(--bg-subtle);
+}
+
+.view-tools__button.is-open {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.view-tools__button[aria-disabled="true"] {
+  opacity: 0.45;
+}
+
+.view-tools__button:focus-visible,
+.view-tools__chip:focus-visible,
+.view-tools__mini:focus-visible,
+.view-tools__level-name:focus-visible,
+.view-tools__action:focus-visible,
+.view-tools__close:focus-visible,
+.view-tools__switch input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.view-tools__panel {
+  position: absolute;
+  top: 0;
+  right: 56px;
+  width: min(300px, calc(100vw - 84px - var(--safe-right, 0px)));
+  max-height: calc(100dvh - var(--toolbar-h, 52px) - 90px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: paper-settle 0.16s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+
+.view-tools__panel--menu {
+  width: min(230px, calc(100vw - 84px));
+  padding: 6px;
+  gap: 2px;
+  top: 52px;
+}
+
+.view-tools__heading {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 4px;
+}
+
+.view-tools__heading:first-child {
+  margin-top: 0;
+}
+
+.view-tools__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.view-tools__chip,
+.view-tools__mini,
+.view-tools__close {
+  min-height: 44px;
+  padding: 0 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.view-tools__chip:hover,
+.view-tools__mini:hover,
+.view-tools__close:hover,
+.view-tools__action:hover {
+  background: var(--bg-subtle);
+}
+
+.view-tools__chip:active {
+  background: var(--accent-soft);
+}
+
+.view-tools__switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.view-tools__switch input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.view-tools__switch small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.view-tools__slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-tools__slider input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  accent-color: var(--accent);
+}
+
+.view-tools__note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.view-tools__levels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.view-tools__level {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-tools__level-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13.5px;
+}
+
+.view-tools__level-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-tools__level-elev {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.view-tools__level-name {
+  flex: 1 1 auto;
+  min-height: 44px;
+  text-align: left;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.view-tools__chip.is-active,
+.view-tools__mini.is-active,
+.view-tools__level-name.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.view-tools__mini {
+  flex: 0 0 auto;
+  min-width: 52px;
+  font-size: 12.5px;
+}
+
+.view-tools__close {
+  margin-top: 2px;
+}
+
+.view-tools__action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: var(--radius);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.view-tools__action kbd {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink-faint);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* Phones: the tool hint and the isolate banner are full-width pills right
+   under the toolbar, so the buttons start below them. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  .view-tools {
+    top: calc(var(--toolbar-h, 52px) + 70px);
+  }
+
+  .view-tools__panel {
+    max-height: calc(100dvh - var(--toolbar-h, 52px) - 130px);
+  }
+
+  .view-tools--lower .view-tools__panel {
+    max-height: calc(100dvh - var(--toolbar-h, 52px) - 190px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-tools__panel {
+    animation: none;
+  }
+}
+
+/* No model yet: nothing to show. */
+.app-body[data-sheet="none"] .view-tools {
+  display: none;
+}
+
+/* Wide layouts: sit beside the always-visible details panel. */
+@media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
+  .view-tools {
+    right: calc(var(--panel-w, 320px) + 12px);
+  }
+
+  .app-body--no-panel .view-tools {
+    right: 12px;
+  }
+}
+
+/* Landscape phone: the details drawer opens at the right. */
+@media (max-height: 500px) and (pointer: coarse) {
+  .app-body[data-sheet="open"] .view-tools,
+  .app-body[data-sheet="full"] .view-tools {
+    right: calc(min(340px, 62vw) + 12px);
+  }
+}

@@ -12,6 +12,7 @@ import MeasureLegEditPopup from "./components/MeasureLegEditPopup";
 import ConfirmDialog from "./components/ConfirmDialog";
 import Header from "./components/Header";
 import Toolbar from "./components/Toolbar";
+import ViewTools from "./components/ViewTools";
 import Compass from "./components/Compass";
 import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
@@ -136,6 +137,7 @@ function App() {
     loadFailed,
     retryLoad,
     cancelLoad,
+    viewFeatures,
   } = useIfcViewer();
 
   const hasNoModels = models.length === 0;
@@ -435,6 +437,7 @@ function App() {
             onClearIsolation={clearIsolation}
             onBlocked={notifyBlocked}
           />
+          <ViewTools views={viewFeatures} />
           <ToolHint tool={armedTool} onDone={exitArmedTool} />
           <div className="history-buttons">
             <button

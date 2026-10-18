@@ -17,6 +17,7 @@ const SHORTCUTS = [
   { keys: "T", description: "Tag tool (pin dimension tags)" },
   { keys: "G", description: "Hide a whole category" },
   { keys: "V", description: "Show or hide tags, measurements and colours" },
+  { keys: "P", description: "Save the current view as an image" },
   { keys: "Esc", description: "Exit the current tool or clear the selection" },
   { keys: "Ctrl+Z", description: "Undo" },
   { keys: "Ctrl+Y / Ctrl+Shift+Z", description: "Redo" },

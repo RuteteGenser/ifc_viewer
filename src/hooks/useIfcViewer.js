@@ -1190,28 +1190,44 @@ export function useIfcViewer() {
     // `align` defaults to "center" for measurement labels (main/leg
     // labels, always centered on their measured point); dimension tags
     // pass "left" instead so their text reads left-aligned in the box.
+    // Every label is a solid dark pill with white text (15:1 contrast). A line
+    // that has its own colour (a leg, a tag style) keeps it as a small dot in
+    // front of the text, so colour is never the only thing that is readable.
+    const MEASURE_LABEL_DOTS = new Set(["#ef4444", "#3b82f6", "#22c55e", "#e0a458"]);
     const drawMeasureLabelCanvas = (canvas, ctx, lines, align = "center") => {
       const font = "600 36px sans-serif";
       const lineHeight = MEASURE_LABEL_LINE_HEIGHT;
       const paddingX = 28;
       const paddingY = MEASURE_LABEL_PADDING_Y;
+      const dotSpace = 34;
+      const dotted = (line) => MEASURE_LABEL_DOTS.has(line.color);
+      const hasDots = lines.some(dotted);
       ctx.font = font;
-      const width = Math.max(...lines.map((l) => ctx.measureText(l.text).width));
+      const width = Math.max(...lines.map((l) => ctx.measureText(l.text).width + (hasDots ? dotSpace : 0)));
       canvas.width = Math.ceil(width + paddingX * 2);
       canvas.height = Math.ceil(lineHeight * lines.length + paddingY * 2);
       // Resizing the canvas resets all context state, so font/fill/etc.
       // must be re-applied below.
       ctx.font = font;
-      ctx.fillStyle = "rgba(27, 30, 36, 0.85)";
+      ctx.fillStyle = "#1b1e24";
       ctx.beginPath();
-      ctx.roundRect(0, 0, canvas.width, canvas.height, 10);
+      ctx.roundRect(0, 0, canvas.width, canvas.height, Math.min(canvas.height / 2, 30));
       ctx.fill();
-      ctx.textAlign = align;
+      ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      const textX = align === "left" ? paddingX : canvas.width / 2;
       lines.forEach((line, i) => {
-        ctx.fillStyle = line.color;
-        ctx.fillText(line.text, textX, paddingY + lineHeight * (i + 0.5));
+        const y = paddingY + lineHeight * (i + 0.5);
+        const textWidth = ctx.measureText(line.text).width;
+        const contentWidth = textWidth + (hasDots ? dotSpace : 0);
+        const x = align === "left" ? paddingX : (canvas.width - contentWidth) / 2;
+        if (dotted(line)) {
+          ctx.fillStyle = line.color;
+          ctx.beginPath();
+          ctx.arc(x + 9, y, 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(line.text, x + (hasDots ? dotSpace : 0), y);
       });
     };
     const createMeasureLabel = (lines, align = "center", anchorY = 0.5) => {

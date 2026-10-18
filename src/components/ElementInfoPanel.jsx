@@ -37,13 +37,28 @@ function CopyableValue({ value, className }) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
+    let ok = false;
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch (err) {
-      console.error("Failed to copy to clipboard", err);
+      ok = true;
+    } catch {
+      // Insecure page or permission denied: fall back to the old selection copy.
+      try {
+        const area = document.createElement("textarea");
+        area.value = value;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.append(area);
+        area.select();
+        ok = document.execCommand("copy");
+        area.remove();
+      } catch {
+        ok = false;
+      }
     }
+    setCopied(ok);
+    if (ok) setTimeout(() => setCopied(false), 1200);
   };
 
   return (

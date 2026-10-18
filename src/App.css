@@ -1901,6 +1901,17 @@
     cursor: pointer;
   }
 
+  .element-panel__grabber {
+    position: relative;
+  }
+
+  /* Taller touch area than the 32px strip it draws. */
+  .element-panel__grabber::before {
+    content: "";
+    position: absolute;
+    inset: -6px 0;
+  }
+
   .element-panel__grabber span {
     width: 40px;
     height: 4px;
@@ -2675,5 +2686,13 @@
 @media (pointer: coarse) {
   .hover-label {
     display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .element-panel__tab,
+  .element-panel__close {
+    min-width: 44px;
+    flex-shrink: 0;
   }
 }

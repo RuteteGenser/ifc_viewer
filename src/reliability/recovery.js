@@ -12,7 +12,7 @@ const PENDING_TTL_MS = 120_000;
 export function canAutoReload(storage, now = Date.now()) {
   try {
     const last = Number(storage.getItem(GUARD_KEY));
-    return !(last && now - last < RELOAD_GUARD_MS && now >= last);
+    return !(last && (now < last || now - last < RELOAD_GUARD_MS));
   } catch {
     return false; // no storage, no way to prove it is not a loop
   }

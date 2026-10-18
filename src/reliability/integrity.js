@@ -25,8 +25,16 @@ export async function checkDownload({ chunks, contentLength, recordSize, sha }) 
   const received = chunks.reduce((n, c) => n + c.byteLength, 0);
   if (contentLength && received !== contentLength) return { ok: false, reason: `got ${received} of ${contentLength} bytes` };
   if (recordSize && received !== recordSize) return { ok: false, reason: `got ${received} bytes, expected ${recordSize}` };
-  const first = chunks.find((c) => c.byteLength > 0);
-  if (!first || !hasIfcOrZipMagic(first)) return { ok: false, reason: "not an IFC or ZIP file" };
+  // The first 64 bytes may span several small chunks.
+  const head = new Uint8Array(64);
+  let filled = 0;
+  for (const c of chunks) {
+    if (filled >= head.length) break;
+    const part = c.subarray(0, head.length - filled);
+    head.set(part, filled);
+    filled += part.length;
+  }
+  if (filled === 0 || !hasIfcOrZipMagic(head.subarray(0, filled))) return { ok: false, reason: "not an IFC or ZIP file" };
   if (sha && received <= SHA_LIMIT && globalThis.crypto?.subtle) {
     const digest = hex(await crypto.subtle.digest("SHA-256", await new Blob(chunks).arrayBuffer()));
     if (digest !== sha) return { ok: false, reason: "checksum mismatch" };

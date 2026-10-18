@@ -51,10 +51,9 @@ export function sameNames(a, b) {
   return [...a].sort().every((name, i) => name === sorted[i]);
 }
 
-export function screenshotFileName(modelName) {
+export function screenshotFileName() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-  const base = (modelName || "view").replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "") || "view";
-  return `${base}-${stamp}.png`;
+  return `argus-view-${stamp}.png`;
 }

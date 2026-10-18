@@ -1,4 +1,4 @@
-// Renders the PWA icons in public/ from the "M" mark (same shape as
+// Renders the PWA icons in public/ from the eye-and-section mark (same shape as
 // src/components/LogoMark.jsx). Not part of the build: sharp is not a
 // dependency here, run it with a sharp that resolves, e.g.
 //   NODE_PATH=/opt/repos/web/node_modules node scripts/make-icons.mjs
@@ -14,7 +14,9 @@ const svg = (inset, rounded) => {
   <rect width="32" height="32" fill="${rounded ? 'none' : '#2a2622'}"/>
   <g transform="translate(${o} ${o}) scale(${s / 32})">
     <rect width="32" height="32" rx="${rounded ? 7 : 0}" fill="#2a2622"/>
-    <text x="16" y="23" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" fill="#ffffff">M</text>
+    <path d="M3.5 16C8 9.2 12 7.6 16 7.6S24 9.2 28.5 16C24 22.8 20 24.4 16 24.4S8 22.8 3.5 16Z" fill="none" stroke="#fbfaf6" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M1.5 16H30.5" stroke="#fbfaf6" stroke-width="1.6"/>
+    <circle cx="16" cy="16" r="4.6" fill="#96662c"/>
   </g>
 </svg>`
 }

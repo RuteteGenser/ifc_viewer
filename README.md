@@ -1,4 +1,4 @@
-# IFC Viewer
+# Argus (IFC viewer)
 
 A local, client-side web app for viewing IFC (Industry Foundation Classes) 3D
 building models. No backend, no uploads — files are parsed and rendered

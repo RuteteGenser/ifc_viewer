@@ -1504,6 +1504,20 @@
   display: none;
 }
 
+.panel-inset-probe {
+  position: absolute;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media (min-width: 769px) {
+  .panel-inset-probe {
+    width: 320px;
+  }
+}
+
 .sheet-inset-probe {
   position: absolute;
   width: 0;
@@ -1893,6 +1907,10 @@
 
   .app-body {
     padding-right: min(300px, 42vw);
+  }
+
+  .panel-inset-probe {
+    width: 0;
   }
 
   .element-panel {

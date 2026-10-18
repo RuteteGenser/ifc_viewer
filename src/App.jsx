@@ -92,7 +92,7 @@ function App() {
     canUndo,
     canRedo,
     hideSelectedElement,
-    setViewInsetBottom,
+    setViewInsets,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -117,18 +117,21 @@ function App() {
     lastAutoSwitchGuidRef.current = guid;
   }, [selectedElement?.guid]);
 
-  // Tell the 3D view how much of its bottom edge the info sheet covers
-  // (0 whenever the layout isn't a bottom sheet), read from a probe element
-  // whose height CSS sets, so the model stays centred in what's visible.
+  // Tell the 3D view how much of its edges the info panel covers (the
+  // bottom sheet on a phone, the right-hand column on desktop), read from
+  // probe elements whose size CSS sets per layout, so the model stays
+  // centred in the part that is still visible instead of hiding behind it.
   const insetProbeRef = useRef(null);
+  const insetProbeRightRef = useRef(null);
   useEffect(() => {
-    const probe = insetProbeRef.current;
-    if (!probe) return undefined;
-    const update = () => setViewInsetBottom(probe.offsetHeight);
+    const bottom = insetProbeRef.current;
+    const right = insetProbeRightRef.current;
+    if (!bottom || !right) return undefined;
+    const update = () => setViewInsets({ bottom: bottom.offsetHeight, right: right.offsetWidth });
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [panelOpen, setViewInsetBottom]);
+  }, [panelOpen, setViewInsets]);
 
   const handleTabChange = useCallback(
     (tab) => {
@@ -181,6 +184,7 @@ function App() {
 
       <div className="app-body" data-sheet={panelOpen ? "open" : "peek"}>
         <div className="sheet-inset-probe" ref={insetProbeRef} aria-hidden="true" />
+        <div className="panel-inset-probe" ref={insetProbeRightRef} aria-hidden="true" />
         {sidebarOpen && (
           <button
             type="button"

@@ -245,6 +245,7 @@ export function useIfcViewer() {
   // load/remove, camera/view changes, visibility checkboxes, and
   // selection are intentionally not tracked here.
   const viewInsetBottomRef = useRef(0);
+  const viewInsetRightRef = useRef(0);
   const applyViewInsetRef = useRef(() => {});
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
@@ -4308,16 +4309,18 @@ export function useIfcViewer() {
     const width = container.clientWidth;
     const height = container.clientHeight;
     if (width === 0 || height === 0) return;
-    const inset = Math.min(viewInsetBottomRef.current, height * 0.8);
-    if (inset > 0) camera.setViewOffset(width, height, 0, inset / 2, width, height);
+    const insetBottom = Math.min(viewInsetBottomRef.current, height * 0.8);
+    const insetRight = Math.min(viewInsetRightRef.current, width * 0.6);
+    if (insetBottom > 0 || insetRight > 0) camera.setViewOffset(width, height, insetRight / 2, insetBottom / 2, width, height);
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     requestRenderRef.current();
   }, []);
   applyViewInsetRef.current = applyViewInset;
-  const setViewInsetBottom = useCallback(
-    (px) => {
-      viewInsetBottomRef.current = Math.max(0, px || 0);
+  const setViewInsets = useCallback(
+    ({ bottom = 0, right = 0 }) => {
+      viewInsetBottomRef.current = Math.max(0, bottom || 0);
+      viewInsetRightRef.current = Math.max(0, right || 0);
       applyViewInset();
     },
     [applyViewInset],
@@ -4397,6 +4400,6 @@ export function useIfcViewer() {
     canUndo: historyCounts.undo > 0,
     canRedo: historyCounts.redo > 0,
     hideSelectedElement,
-    setViewInsetBottom,
+    setViewInsets,
   };
 }

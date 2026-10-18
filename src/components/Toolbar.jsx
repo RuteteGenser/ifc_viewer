@@ -77,6 +77,7 @@ export default function Toolbar({
   isolatedKeys,
   onToggleIsolate,
   onClearIsolation,
+  onBlocked,
 }) {
   const rootRef = useRef(null);
 
@@ -93,24 +94,27 @@ export default function Toolbar({
     return () => observer.disconnect();
   }, []);
 
+  const eyeUsable = hasModels && (hasPinnedTags || hasMeasurements || hasModelColors);
+  const locked = (text) => (hasModels ? text : "Open a model first");
+
   return (
     <div className="toolbar" ref={rootRef}>
-      <Tooltip description="Reset to the default view">
+      <Tooltip description={locked("Fit the whole model in view")}>
         <button
           type="button"
-          className="top-bar__home-button"
-          onClick={onResetView}
-          disabled={!hasModels}
+          className={`top-bar__home-button${hasModels ? "" : " is-blocked"}`}
+          onClick={hasModels ? onResetView : onBlocked}
+          aria-disabled={!hasModels}
         >
           Home
         </button>
       </Tooltip>
-      <Tooltip description="Measure — click two points in the view" hotkey="M">
+      <Tooltip description={locked("Measure: click two points")} hotkey="M">
         <button
           type="button"
-          className={`top-bar__icon-button${measureModeActive ? " top-bar__icon-button--active" : ""}`}
-          onClick={onToggleMeasureMode}
-          disabled={!hasModels}
+          className={`top-bar__icon-button${measureModeActive ? " top-bar__icon-button--active" : ""}${hasModels ? "" : " is-blocked"}`}
+          onClick={hasModels ? onToggleMeasureMode : onBlocked}
+          aria-disabled={!hasModels}
           aria-label="Toggle measure mode"
         >
           <MeasureIcon />
@@ -123,35 +127,36 @@ export default function Toolbar({
         cameraClipMax={cameraClipMax}
         onSetCameraClipDistance={onSetCameraClipDistance}
         disabled={!hasModels}
+        onBlocked={onBlocked}
       />
-      <Tooltip description="Tag tool — hover an element, click to pin its tag" hotkey="T">
+      <Tooltip description={locked("Tag tool: pin an element's dimensions")} hotkey="T">
         <button
           type="button"
-          className={`top-bar__icon-button${tagToolActive ? " top-bar__icon-button--active" : ""}`}
-          onClick={onToggleTagTool}
-          disabled={!hasModels}
+          className={`top-bar__icon-button${tagToolActive ? " top-bar__icon-button--active" : ""}${hasModels ? "" : " is-blocked"}`}
+          onClick={hasModels ? onToggleTagTool : onBlocked}
+          aria-disabled={!hasModels}
           aria-label="Toggle tag tool"
         >
           <TagIcon />
         </button>
       </Tooltip>
-      <Tooltip description="Hide category — click an element to hide/show its whole category" hotkey="G">
+      <Tooltip description={locked("Hide a whole category of elements")} hotkey="G">
         <button
           type="button"
-          className={`top-bar__icon-button${categoryHideModeActive ? " top-bar__icon-button--active" : ""}`}
-          onClick={onToggleCategoryHideMode}
-          disabled={!hasModels}
+          className={`top-bar__icon-button${categoryHideModeActive ? " top-bar__icon-button--active" : ""}${hasModels ? "" : " is-blocked"}`}
+          onClick={hasModels ? onToggleCategoryHideMode : onBlocked}
+          aria-disabled={!hasModels}
           aria-label="Toggle hide-category tool"
         >
           <HideCategoryIcon />
         </button>
       </Tooltip>
-      <Tooltip description="Toggle tag/measurement visibility & model color overrides" hotkey="V">
+      <Tooltip description={eyeUsable ? "Show or hide tags, measurements and colours" : locked("Nothing to show or hide yet")} hotkey="V">
         <button
           type="button"
-          className={`top-bar__icon-button${tagsVisible ? "" : " top-bar__icon-button--active"}`}
-          onClick={onToggleTagsVisibility}
-          disabled={!hasModels || (!hasPinnedTags && !hasMeasurements && !hasModelColors)}
+          className={`top-bar__icon-button${tagsVisible ? "" : " top-bar__icon-button--active"}${eyeUsable ? "" : " is-blocked"}`}
+          onClick={eyeUsable ? onToggleTagsVisibility : () => onBlocked(hasModels ? "Nothing to show or hide yet. Add a measurement, tag or colour first." : undefined)}
+          aria-disabled={!eyeUsable}
           aria-label="Toggle tag & measurement visibility"
         >
           {tagsVisible ? <EyeIcon /> : <EyeOffIcon />}

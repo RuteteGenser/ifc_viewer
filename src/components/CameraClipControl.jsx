@@ -16,15 +16,16 @@ export default function CameraClipControl({
   cameraClipMax,
   onSetCameraClipDistance,
   disabled,
+  onBlocked,
 }) {
   return (
     <div className="camera-clip">
-      <Tooltip description="Clip in front of camera">
+      <Tooltip description={disabled ? "Open a model first" : "Clip in front of the camera"}>
         <button
           type="button"
-          className={`top-bar__icon-button${cameraClipEnabled ? " top-bar__icon-button--active" : ""}`}
-          onClick={() => onSetCameraClipEnabled(!cameraClipEnabled)}
-          disabled={disabled}
+          className={`top-bar__icon-button${cameraClipEnabled ? " top-bar__icon-button--active" : ""}${disabled ? " is-blocked" : ""}`}
+          onClick={() => (disabled ? onBlocked?.() : onSetCameraClipEnabled(!cameraClipEnabled))}
+          aria-disabled={disabled}
           aria-label="Toggle camera clip"
         >
           <ClipIcon />

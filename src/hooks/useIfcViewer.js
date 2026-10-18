@@ -20,6 +20,7 @@ const IFC_EXTENSION = /\.ifc$/i;
 // re-encoding. Case is inconsistent in the wild (.ifcZIP/.ifczip), hence
 // the case-insensitive match.
 const IFCZIP_EXTENSION = /\.ifczip$/i;
+const MAX_IFC_BYTES = 1.5 * 1024 * 1024 * 1024; // beyond this a browser tab cannot hold the file and its geometry
 
 let uid = 0;
 function nextId() {
@@ -366,6 +367,8 @@ export function useIfcViewer() {
   const viewInsetBottomRef = useRef(0);
   const autoFramedRef = useRef(false); // true until the user moves the camera themselves; insets then re-fit the model
   const cameraAnimRef = useRef(0);
+  const showToastRef = useRef(() => {});
+  const refitModelRef = useRef(() => {});
   const fitByFocusRef = useRef(false); // the last focus re-fitted the whole model; re-fit again when the sheet size changes
   const selectionAnchorRef = useRef(null); // selected point in modelsGroup-local coordinates
   const viewInsetRightRef = useRef(0);
@@ -402,6 +405,12 @@ export function useIfcViewer() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
   const [error, setError] = useState(null);
+  const [loadFailed, setLoadFailed] = useState(false); // the last load ended in an error worth retrying
+  const [toast, setToast] = useState(null); // { id, text } | null — short self-dismissing notice
+  const toastTimerRef = useRef(0);
+  const loadTokenRef = useRef(0); // bumped by every load and by Cancel, so a stale load can tell it was abandoned
+  const cancelLoadRef = useRef(() => {});
+  const lastLoadFilesRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [clipPlanes, setClipPlanes] = useState([]); // [{ id, enabled, gizmoVisible }]
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
@@ -1883,6 +1892,13 @@ export function useIfcViewer() {
       });
       pendingSurfacePickRef.current = { id, promise };
       setContextMenu({ x: clientX, y: clientY, touch });
+      // Nothing under the pointer: the menu has nothing to act on, so close
+      // it and say what to do instead of leaving an inert menu.
+      promise.then((hit) => {
+        if (hit || id !== contextMenuSeq) return;
+        setContextMenu(null);
+        showToastRef.current(touch ? "Press and hold on a model part" : "Right-click on a model part");
+      });
     };
     const onContextMenu = (event) => {
       event.preventDefault();
@@ -1897,20 +1913,36 @@ export function useIfcViewer() {
     // Escape while measuring: cancel just the pending point A if one's
     // been placed (so the tool stays armed for a fresh A), otherwise exit
     // measure mode entirely.
-    const onMeasureKeyDown = (event) => {
-      if (event.key !== "Escape") return;
+    // Cancels a half-placed measurement, else disarms whichever tool is on.
+    // Shared by Escape and by clicking/tapping empty space. Returns true if
+    // it did something.
+    const exitActiveTool = () => {
       if (measurePendingPoint !== null) {
         measureManager.cancelPending();
-      } else if (measureModeActiveRef.current) {
+        return true;
+      }
+      if (measureModeActiveRef.current) {
         measureModeActiveRef.current = false;
         setMeasureModeActiveState(false);
-      } else if (tagToolActiveRef.current) {
+        return true;
+      }
+      if (tagToolActiveRef.current) {
         tagToolActiveRef.current = false;
         setTagToolActiveState(false);
         clearHoveredDimensionTagRef.current?.();
-      } else if (categoryHideModeActiveRef.current) {
+        return true;
+      }
+      if (categoryHideModeActiveRef.current) {
         categoryHideModeActiveRef.current = false;
         setCategoryHideModeActiveState(false);
+        return true;
+      }
+      return false;
+    };
+    const onMeasureKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (exitActiveTool()) {
+        // handled
       } else if (selectedHitRef.current) {
         // Inlined rather than calling the `clearSelection` callback
         // directly — that's defined later in this same hook function via
@@ -2741,9 +2773,15 @@ export function useIfcViewer() {
     };
 
     const handleMeasureClick = async (raycastPromise) => {
-      if (!raycastPromise) return;
+      if (!raycastPromise) {
+        exitActiveTool();
+        return;
+      }
       const hit = await raycastPromise;
-      if (!hit) return;
+      if (!hit) {
+        exitActiveTool();
+        return;
+      }
       modelsGroup.updateMatrixWorld(true);
       const localPoint = modelsGroup.worldToLocal(hit.point.clone());
       const localNormal = hit.normal ? localDirectionFromWorld(hit.normal) : null;
@@ -2759,9 +2797,15 @@ export function useIfcViewer() {
     // no-op, matching how Measure mode already tolerates clicks that
     // don't hit usable geometry.
     const handleTagToolClick = async (raycastPromise) => {
-      if (!raycastPromise) return;
+      if (!raycastPromise) {
+        exitActiveTool();
+        return;
+      }
       const hit = await raycastPromise;
-      if (!hit) return;
+      if (!hit) {
+        exitActiveTool();
+        return;
+      }
       const key = `${hit.fragments.modelId}::${hit.localId}`;
       // A mouse has already hovered the element (and so built its tag)
       // before the click; a finger tap has not — there is no hover on a
@@ -2793,9 +2837,15 @@ export function useIfcViewer() {
     // list is the only way back once every instance is hidden, since a
     // hidden element can no longer be raycast-clicked at all.
     const handleCategoryHideClick = async (raycastPromise) => {
-      if (!raycastPromise) return;
+      if (!raycastPromise) {
+        exitActiveTool();
+        return;
+      }
       const hit = await raycastPromise;
-      if (!hit) return;
+      if (!hit) {
+        exitActiveTool();
+        return;
+      }
       const [data] = await hit.fragments.getItemsData([hit.localId], { attributesDefault: true });
       const category = data?._category?.value;
       if (!category) return;
@@ -2804,6 +2854,7 @@ export function useIfcViewer() {
     };
 
     let activePointerId = null;
+    let lastClick = null; // { t, x, y } of the previous plain click, for double-click zoom
     let gestureSeq = 0;
     // True from mousedown until the pivot raycast below resolves (or the
     // gesture ends first) — see onRotateStart for why the gesture waits
@@ -2845,6 +2896,15 @@ export function useIfcViewer() {
             handleCategoryHideClick(pivotRaycastPromise);
           } else {
             selectElementFrom(pivotRaycastPromise);
+            // A second click/tap in the same spot zooms to that element.
+            const now = performance.now();
+            if (lastClick && now - lastClick.t < 350 && Math.hypot(event.clientX - lastClick.x, event.clientY - lastClick.y) < 24) {
+              lastClick = null;
+              const promise = pivotRaycastPromise;
+              promise?.then((hit) => hit && zoomToHitRef.current(hit));
+            } else {
+              lastClick = { t: now, x: event.clientX, y: event.clientY };
+            }
           }
         }
       }
@@ -3564,6 +3624,7 @@ export function useIfcViewer() {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       applyViewInsetRef.current();
+      if (autoFramedRef.current || fitByFocusRef.current) refitModelRef.current(false);
       renderer.setSize(width, height);
       measureLineResolution.set(width, height);
       requestRender();
@@ -3998,57 +4059,182 @@ export function useIfcViewer() {
     await hideHit({ fragments: entry.model, localId: sel.localId });
   }, [hideHit]);
 
-  // Global keyboard shortcuts: "h" hide the selection, "c" create a clip
-  // plane under the cursor, "m" toggle measure mode, Ctrl+Z undo,
-  // Ctrl+Y/Ctrl+Shift+Z redo (Cmd on macOS via metaKey). Guarded against
-  // typing in the search box (or any future text input) and against
-  // other modifier combos, which should fall through to the browser/OS
-  // as normal rather than being hijacked.
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      const target = document.activeElement;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
-        return;
+  const showToast = useCallback((text, ms = 2800) => {
+    clearTimeout(toastTimerRef.current);
+    setToast({ id: Date.now(), text });
+    toastTimerRef.current = setTimeout(() => setToast(null), ms);
+  }, []);
+  showToastRef.current = showToast;
+  const dismissToast = useCallback(() => {
+    clearTimeout(toastTimerRef.current);
+    setToast(null);
+  }, []);
+
+  // The part of the canvas not covered by the info sheet / side panel, as a
+  // fraction of the canvas size (see computeFit).
+  const getVisibleFrac = useCallback(() => {
+    const container = containerRef.current;
+    const w = container?.clientWidth || 1;
+    const h = container?.clientHeight || 1;
+    const insetB = Math.min(viewInsetBottomRef.current, h * 0.8);
+    const insetR = Math.min(viewInsetRightRef.current, w * 0.6);
+    return { x: Math.max(0.2, 1 - insetR / w), y: Math.max(0.2, 1 - insetB / h) };
+  }, []);
+
+  const cancelCameraAnim = useCallback(() => {
+    if (cameraAnimRef.current) cancelAnimationFrame(cameraAnimRef.current);
+    cameraAnimRef.current = 0;
+  }, []);
+
+  // Smoothly moves the camera to `pose` (position + target) instead of
+  // snapping, so a re-fit never reads as a jump.
+  const easeToPose = useCallback(
+    (pose, ms = 280) => {
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls) return;
+      cancelCameraAnim();
+      const fromPos = camera.position.clone();
+      const fromTarget = controls.target.clone();
+      const t0 = performance.now();
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / ms);
+        const e = k * k * (3 - 2 * k);
+        applyPose(camera, controls, {
+          position: fromPos.clone().lerp(pose.position, e),
+          target: fromTarget.clone().lerp(pose.target, e),
+          distance: undefined,
+        });
+        requestRenderRef.current();
+        cameraAnimRef.current = k < 1 ? requestAnimationFrame(step) : 0;
+      };
+      cameraAnimRef.current = requestAnimationFrame(step);
+    },
+    [cancelCameraAnim],
+  );
+
+  // Re-fits the whole model into the visible area, keeping the current
+  // viewing direction. Used when the sheet changes size before the user has
+  // touched the camera.
+  const refitModel = useCallback(
+    (animate) => {
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls || modelsRef.current.size === 0) return;
+      const box = getSceneBox(modelsRef.current.values());
+      if (!box) return;
+      const dir = camera.position.clone().sub(controls.target);
+      if (dir.lengthSq() < 1e-9) return;
+      dir.normalize();
+      const pose = computeFit(camera, box, getVisibleFrac(), dir);
+      if (animate) easeToPose(pose);
+      else applyPose(camera, controls, pose);
+      requestRenderRef.current();
+    },
+    [easeToPose, getVisibleFrac],
+  );
+
+  refitModelRef.current = refitModel;
+
+  // Pans (no zoom) so the selected point sits in the middle of the visible
+  // area, then nudges the whole model back inside that area if it fits.
+  const focusSelection = useCallback(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const group = modelsGroupRef.current;
+    const anchor = selectionAnchorRef.current;
+    if (!camera || !controls || !group || !anchor) return;
+    if (viewInsetBottomRef.current <= 0) return; // side panel layouts keep the view where the user put it
+    group.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+    const pose = withoutViewOffset(camera, () => {
+    const frac = getVisibleFrac();
+    const world = anchor.clone().applyMatrix4(group.matrixWorld);
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    const fwd = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).negate();
+    const depthOf = (pt) => Math.max(pt.clone().sub(camera.position).dot(fwd), 0.01);
+    const p = world.clone().project(camera);
+    // Offset needed, in NDC; pan the camera by the same world amount.
+    let dx = p.x;
+    let dy = p.y;
+    const box = getSceneBox(modelsRef.current.values());
+    if (box) {
+      const corners = boxCorners(box);
+      const b = ndcBounds(camera, corners);
+      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.96 && (b.maxY - b.minY) <= 2 * frac.y * 0.96;
+      // Whole model currently framed (not zoomed into a detail) but too big
+      // for the space the sheet left: ease it back to fit instead of
+      // leaving parts of it hidden behind the sheet.
+      const framedWhole = (b.maxX - b.minX) <= 2.05 && (b.maxY - b.minY) <= 2.05;
+      if (!fits && framedWhole) {
+        const dir = camera.position.clone().sub(controls.target).normalize();
+        fitByFocusRef.current = true;
+        return computeFitRaw(camera, box, frac, dir, 0.92);
       }
-      const mod = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
-      if (mod && key === "z" && !event.shiftKey) {
-        event.preventDefault();
-        undo();
-        return;
+      if (fits) {
+        // After the pan, keep the model's bounds inside the visible rectangle.
+        const lim = 0.98;
+        const clampD = (d, lo, hi, flo, fhi) => {
+          // moving content by -d: bounds become lo-d..hi-d
+          const maxD = lo + fhi * lim; // d must be <= lo + lim*f (keep lo-d >= -lim*f)
+          const minD = hi - fhi * lim; // d must be >= hi - lim*f
+          return Math.min(Math.max(d, minD), maxD);
+        };
+        dx = clampD(dx, b.minX, b.maxX, 0, frac.x);
+        dy = clampD(dy, b.minY, b.maxY, 0, frac.y);
       }
-      if (mod && (key === "y" || (key === "z" && event.shiftKey))) {
-        event.preventDefault();
-        redo();
-        return;
-      }
-      if (event.ctrlKey || event.altKey || event.metaKey) return;
-      switch (key) {
-        case "h":
-          hideSelectedElement();
-          break;
-        case "c":
-          createClipPlaneUnderCursor();
-          break;
-        case "m":
-          toggleMeasureMode();
-          break;
-        case "t":
-          toggleTagTool();
-          break;
-        case "g":
-          toggleCategoryHideMode();
-          break;
-        case "v":
-          toggleTagsVisibility();
-          break;
-        default:
-          return;
-      }
+    }
+    const depth = depthOf(world);
+    const delta = new THREE.Vector3()
+      .addScaledVector(right, dx * tanHalf * camera.aspect * depth)
+      .addScaledVector(up, dy * tanHalf * depth);
+    if (delta.length() < 1e-4) return null;
+    const pose = {
+      position: camera.position.clone().add(delta),
+      target: controls.target.clone().add(delta),
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hideSelectedElement, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode, toggleTagsVisibility, undo, redo]);
+    return pose;
+    });
+    if (pose) easeToPose(pose);
+  }, [easeToPose, getVisibleFrac]);
+
+  // Eases the camera so `box` (world space) fills the visible area, keeping
+  // the current viewing direction.
+  const zoomToBox = useCallback(
+    (box) => {
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls || !box || box.isEmpty()) return;
+      const dir = camera.position.clone().sub(controls.target);
+      if (dir.lengthSq() < 1e-9) return;
+      autoFramedRef.current = false;
+      fitByFocusRef.current = false;
+      easeToPose(computeFit(camera, box, getVisibleFrac(), dir.normalize(), 0.6));
+    },
+    [easeToPose, getVisibleFrac],
+  );
+
+  const zoomToHit = useCallback(
+    async (hit) => {
+      if (!hit) return;
+      const [box] = await hit.fragments.getBoxes([hit.localId]);
+      zoomToBox(box);
+    },
+    [zoomToBox],
+  );
+  const zoomToHitRef = useRef(zoomToHit);
+  zoomToHitRef.current = zoomToHit;
+
+  const zoomToSelection = useCallback(() => {
+    const sel = selectedHitRef.current;
+    if (!sel) return false;
+    const entry = modelsRef.current.get(sel.modelId);
+    if (!entry) return false;
+    zoomToHit({ fragments: entry.model, localId: sel.localId });
+    return true;
+  }, [zoomToHit]);
 
   const resetVisibility = useCallback(async () => {
     // Also exits isolate mode — otherwise the search checkboxes would
@@ -4132,6 +4318,107 @@ export function useIfcViewer() {
     setIsolatedKeys(new Set());
     resetVisibility();
   }, [resetVisibility]);
+
+  // Isolates / un-isolates the selected element (same keys as the search
+  // checkboxes use, so both stay in sync).
+  const isolateSelection = useCallback(() => {
+    const sel = selectedHitRef.current;
+    if (!sel) {
+      showToast("Select an element first, then press I to isolate it");
+      return;
+    }
+    toggleIsolate(`${sel.modelId}::${sel.localId}`);
+  }, [toggleIsolate, showToast]);
+
+  // Right-click / long-press menu actions on the element that was picked.
+  const withPendingHit = useCallback(async (fn) => {
+    const pending = pendingSurfacePickRef.current;
+    setContextMenu(null);
+    if (!pending) return;
+    const hit = await pending.promise;
+    if (hit) await fn(hit);
+  }, []);
+  const zoomToElementHere = useCallback(() => withPendingHit((hit) => zoomToHit(hit)), [withPendingHit, zoomToHit]);
+  const isolateElementHere = useCallback(
+    () => withPendingHit((hit) => toggleIsolate(`${hit.fragments.modelId}::${hit.localId}`)),
+    [withPendingHit, toggleIsolate],
+  );
+  const copyGuidHere = useCallback(
+    () =>
+      withPendingHit(async (hit) => {
+        const [guid] = await hit.fragments.getGuidsByLocalIds([hit.localId]);
+        if (!guid) {
+          showToast("This element has no GUID");
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(guid);
+          showToast("GUID copied");
+        } catch {
+          showToast(`GUID: ${guid}`, 6000);
+        }
+      }),
+    [withPendingHit, showToast],
+  );
+
+  // Global keyboard shortcuts: "h" hide the selection, "c" create a clip
+  // plane under the cursor, "m" toggle measure mode, Ctrl+Z undo,
+  // Ctrl+Y/Ctrl+Shift+Z redo (Cmd on macOS via metaKey). Guarded against
+  // typing in the search box (or any future text input) and against
+  // other modifier combos, which should fall through to the browser/OS
+  // as normal rather than being hijacked.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = document.activeElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (mod && (key === "y" || (key === "z" && event.shiftKey))) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      switch (key) {
+        case "h":
+          hideSelectedElement();
+          break;
+        case "f":
+          if (!zoomToSelection()) showToast("Select an element first, then press F to zoom to it");
+          break;
+        case "i":
+          isolateSelection();
+          break;
+        case "c":
+          createClipPlaneUnderCursor();
+          break;
+        case "m":
+          toggleMeasureMode();
+          break;
+        case "t":
+          toggleTagTool();
+          break;
+        case "g":
+          toggleCategoryHideMode();
+          break;
+        case "v":
+          toggleTagsVisibility();
+          break;
+        default:
+          return;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hideSelectedElement, zoomToSelection, showToast, isolateSelection, createClipPlaneUnderCursor, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode, toggleTagsVisibility, undo, redo]);
+
 
   const runSearch = useCallback(async (query) => {
     // One query entry per whitespace-separated term, each independently
@@ -4272,134 +4559,6 @@ export function useIfcViewer() {
   // Shows the "replace existing file?" modal and resolves to the user's
   // choice; ConfirmDialog (rendered from the `confirmReplace` state)
   // calls back into `resolve` via confirmReplaceAnswer below.
-  // The part of the canvas not covered by the info sheet / side panel, as a
-  // fraction of the canvas size (see computeFit).
-  const getVisibleFrac = useCallback(() => {
-    const container = containerRef.current;
-    const w = container?.clientWidth || 1;
-    const h = container?.clientHeight || 1;
-    const insetB = Math.min(viewInsetBottomRef.current, h * 0.8);
-    const insetR = Math.min(viewInsetRightRef.current, w * 0.6);
-    return { x: Math.max(0.2, 1 - insetR / w), y: Math.max(0.2, 1 - insetB / h) };
-  }, []);
-
-  const cancelCameraAnim = useCallback(() => {
-    if (cameraAnimRef.current) cancelAnimationFrame(cameraAnimRef.current);
-    cameraAnimRef.current = 0;
-  }, []);
-
-  // Smoothly moves the camera to `pose` (position + target) instead of
-  // snapping, so a re-fit never reads as a jump.
-  const easeToPose = useCallback(
-    (pose, ms = 280) => {
-      const camera = cameraRef.current;
-      const controls = controlsRef.current;
-      if (!camera || !controls) return;
-      cancelCameraAnim();
-      const fromPos = camera.position.clone();
-      const fromTarget = controls.target.clone();
-      const t0 = performance.now();
-      const step = (now) => {
-        const k = Math.min(1, (now - t0) / ms);
-        const e = k * k * (3 - 2 * k);
-        applyPose(camera, controls, {
-          position: fromPos.clone().lerp(pose.position, e),
-          target: fromTarget.clone().lerp(pose.target, e),
-          distance: undefined,
-        });
-        requestRenderRef.current();
-        cameraAnimRef.current = k < 1 ? requestAnimationFrame(step) : 0;
-      };
-      cameraAnimRef.current = requestAnimationFrame(step);
-    },
-    [cancelCameraAnim],
-  );
-
-  // Re-fits the whole model into the visible area, keeping the current
-  // viewing direction. Used when the sheet changes size before the user has
-  // touched the camera.
-  const refitModel = useCallback(
-    (animate) => {
-      const camera = cameraRef.current;
-      const controls = controlsRef.current;
-      if (!camera || !controls || modelsRef.current.size === 0) return;
-      const box = getSceneBox(modelsRef.current.values());
-      if (!box) return;
-      const dir = camera.position.clone().sub(controls.target);
-      if (dir.lengthSq() < 1e-9) return;
-      dir.normalize();
-      const pose = computeFit(camera, box, getVisibleFrac(), dir);
-      if (animate) easeToPose(pose);
-      else applyPose(camera, controls, pose);
-      requestRenderRef.current();
-    },
-    [easeToPose, getVisibleFrac],
-  );
-
-  // Pans (no zoom) so the selected point sits in the middle of the visible
-  // area, then nudges the whole model back inside that area if it fits.
-  const focusSelection = useCallback(() => {
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    const group = modelsGroupRef.current;
-    const anchor = selectionAnchorRef.current;
-    if (!camera || !controls || !group || !anchor) return;
-    if (viewInsetBottomRef.current <= 0 && viewInsetRightRef.current <= 0) return;
-    group.updateMatrixWorld(true);
-    camera.updateMatrixWorld(true);
-    const pose = withoutViewOffset(camera, () => {
-    const frac = getVisibleFrac();
-    const world = anchor.clone().applyMatrix4(group.matrixWorld);
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-    const fwd = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).negate();
-    const depthOf = (pt) => Math.max(pt.clone().sub(camera.position).dot(fwd), 0.01);
-    const p = world.clone().project(camera);
-    // Offset needed, in NDC; pan the camera by the same world amount.
-    let dx = p.x;
-    let dy = p.y;
-    const box = getSceneBox(modelsRef.current.values());
-    if (box) {
-      const corners = boxCorners(box);
-      const b = ndcBounds(camera, corners);
-      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.96 && (b.maxY - b.minY) <= 2 * frac.y * 0.96;
-      // Whole model currently framed (not zoomed into a detail) but too big
-      // for the space the sheet left: ease it back to fit instead of
-      // leaving parts of it hidden behind the sheet.
-      const framedWhole = (b.maxX - b.minX) <= 2.05 && (b.maxY - b.minY) <= 2.05;
-      if (!fits && framedWhole) {
-        const dir = camera.position.clone().sub(controls.target).normalize();
-        fitByFocusRef.current = true;
-        return computeFitRaw(camera, box, frac, dir, 0.92);
-      }
-      if (fits) {
-        // After the pan, keep the model's bounds inside the visible rectangle.
-        const lim = 0.98;
-        const clampD = (d, lo, hi, flo, fhi) => {
-          // moving content by -d: bounds become lo-d..hi-d
-          const maxD = lo + fhi * lim; // d must be <= lo + lim*f (keep lo-d >= -lim*f)
-          const minD = hi - fhi * lim; // d must be >= hi - lim*f
-          return Math.min(Math.max(d, minD), maxD);
-        };
-        dx = clampD(dx, b.minX, b.maxX, 0, frac.x);
-        dy = clampD(dy, b.minY, b.maxY, 0, frac.y);
-      }
-    }
-    const depth = depthOf(world);
-    const delta = new THREE.Vector3()
-      .addScaledVector(right, dx * tanHalf * camera.aspect * depth)
-      .addScaledVector(up, dy * tanHalf * depth);
-    if (delta.length() < 1e-4) return null;
-    const pose = {
-      position: camera.position.clone().add(delta),
-      target: controls.target.clone().add(delta),
-    };
-    return pose;
-    });
-    if (pose) easeToPose(pose);
-  }, [easeToPose, getVisibleFrac]);
-
   const confirmReplaceFile = useCallback((name) => {
     return new Promise((resolve) => {
       setConfirmReplace({ name, resolve });
@@ -4424,11 +4583,23 @@ export function useIfcViewer() {
     const files = Array.from(fileList);
     if (files.length === 0) return;
 
+    lastLoadFilesRef.current = files;
+    const token = ++loadTokenRef.current;
+    const abandoned = () => token !== loadTokenRef.current;
+    // Rejects when the user presses Cancel, so a stuck parse never traps them.
+    const cancelled = new Promise((_, reject) => {
+      cancelLoadRef.current = () => reject(new Error("cancelled"));
+    });
+    cancelled.catch(() => {});
+
     setError(null);
+    setLoadFailed(false);
     setIsLoading(true);
 
-    const appendError = (message) =>
+    const appendError = (message, retryable = false) => {
+      if (retryable) setLoadFailed(true);
       setError((prev) => (prev ? `${prev} · ${message}` : message));
+    };
 
     // Parses one .ifc buffer into a model and wires it into the scene —
     // shared by a directly-selected/dropped .ifc file and by each .ifc
@@ -4452,18 +4623,39 @@ export function useIfcViewer() {
         // worker (transferable objects get detached, not cloned), which
         // would otherwise silently zero out sourceBytes after the load.
         const sourceBytes = data.slice();
-        const model = await pipeline.ifcLoader.load(data, true, modelId, {
+        // A worker that dies or hangs never settles on its own, so the parse
+        // is raced against a timeout (scaled with file size) and Cancel.
+        const sizeMb = data.byteLength / 1048576;
+        const timeoutMs = Math.min(60000 + sizeMb * 4000, 20 * 60000);
+        let timer = 0;
+        const timedOut = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+        });
+        const shortName = displayName.length > 28 ? `${displayName.slice(0, 25)}…` : displayName;
+        const loadPromise = pipeline.ifcLoader.load(data, true, modelId, {
+          processData: {
+            progressCallback: (_progress, info) => {
+              const stage = { geometries: "geometry", attributes: "properties", relations: "relations", conversion: "finishing" }[info?.process];
+              if (stage) setLoadingLabel(`Reading ${shortName}: ${stage}…`);
+            },
+          },
           // Some IFC exporters produce geometry with inconsistent winding
           // (a face's front side doesn't reliably match its outward
           // normal), which front-face-only rendering shows as missing or
-          // "inside-out" surfaces — visible from one side only, or only
-          // when looking at the model from an angle that happens to hit
-          // the actual front face. Render both faces so those surfaces
+          // "inside-out" surfaces. Render both faces so those surfaces
           // are never invisible, at the cost of some fill-rate.
           instanceCallback: (importer) => {
             importer.doubleSidedMaterials = true;
           },
         });
+        loadPromise.catch(() => {});
+        let model;
+        try {
+          model = await Promise.race([loadPromise, timedOut, cancelled]);
+        } finally {
+          clearTimeout(timer);
+        }
+        if (abandoned()) return;
 
         if (cameraRef.current) model.useCamera(cameraRef.current);
         modelsGroup.add(model.object);
@@ -4488,8 +4680,13 @@ export function useIfcViewer() {
           { id: modelId, name: displayName, visible: true, color: null },
         ]);
       } catch (err) {
+        if (err?.message === "cancelled") return;
         console.error(`Failed to load ${displayName}`, err);
-        appendError(`Could not parse "${displayName}" — it doesn't look like a valid IFC file.`);
+        if (err?.message === "timeout") {
+          appendError(`"${displayName}" is taking too long to open. It may be too large or damaged. You can retry or pick a smaller file.`, true);
+        } else {
+          appendError(`Could not read "${displayName}". It doesn't look like a valid IFC file.`, true);
+        }
       }
     };
 
@@ -4524,13 +4721,40 @@ export function useIfcViewer() {
         continue;
       }
 
-      setLoadingLabel(`Parsing ${file.name}…`);
-      const buffer = await file.arrayBuffer();
-      await loadOneIfc(new Uint8Array(buffer), file.name);
+      const name = file.displayName ?? file.name;
+      if (file.size === 0) {
+        appendError(`"${name}" is empty.`);
+        continue;
+      }
+      if (file.size > MAX_IFC_BYTES) {
+        appendError(`"${name}" is ${Math.round(file.size / 1048576)} MB, which is too large to open in a browser. Try splitting the model or exporting a lighter one.`);
+        continue;
+      }
+      // Every IFC (STEP) file starts with an ISO-10303-21 header, so anything
+      // else can be rejected immediately instead of after a long parse.
+      const head = await file.slice(0, 4096).text().catch(() => "");
+      if (!/ISO-10303-21/i.test(head)) {
+        appendError(`"${name}" is not a valid IFC file (no ISO-10303-21 header).`);
+        continue;
+      }
+      if (file.size > 150 * 1048576) setToast({ id: Date.now(), text: `Large file (${Math.round(file.size / 1048576)} MB). This can take a few minutes.` });
+      setLoadingLabel(`Reading ${name}…`);
+      let buffer;
+      try {
+        buffer = await file.arrayBuffer();
+      } catch (err) {
+        console.error(err);
+        appendError(`Could not read "${name}" from disk.`);
+        continue;
+      }
+      if (abandoned()) return;
+      await loadOneIfc(new Uint8Array(buffer), name);
+      if (abandoned()) return;
     }
 
     // Let a few frames of streamed geometry land before measuring bounds.
-    await pipeline.fragments.core.update(true);
+    if (abandoned()) return;
+    await Promise.race([pipeline.fragments.core.update(true), new Promise((resolve) => setTimeout(resolve, 15000))]);
     await new Promise((resolve) => setTimeout(resolve, 150));
     for (const entry of modelsRef.current.values()) {
       if (entry.localBox !== undefined) continue;
@@ -4551,9 +4775,24 @@ export function useIfcViewer() {
       );
     }
 
+    if (abandoned()) return;
     setIsLoading(false);
     setLoadingLabel("");
   }, [confirmReplaceFile, removeModel, getVisibleFrac]);
+
+  const cancelLoad = useCallback(() => {
+    cancelLoadRef.current();
+    loadTokenRef.current += 1;
+    setIsLoading(false);
+    setLoadingLabel("");
+    setError(null);
+    setLoadFailed(false);
+  }, []);
+
+  const retryLoad = useCallback(() => {
+    const files = lastLoadFilesRef.current;
+    if (files) loadFiles(files);
+  }, [loadFiles]);
 
   // Bundles every currently-loaded model's original bytes back into a
   // single buildingSMART-style .ifcZIP (a plain ZIP of the .ifc files —
@@ -4570,10 +4809,11 @@ export function useIfcViewer() {
     const usedNames = new Set();
     const files = {};
     for (const entry of entries) {
-      let name = entry.fileName;
+      const baseName = IFC_EXTENSION.test(entry.fileName) ? entry.fileName : `${entry.fileName}.ifc`;
+      let name = baseName;
       let suffix = 2;
       while (usedNames.has(name)) {
-        name = entry.fileName.replace(IFC_EXTENSION, `-${suffix}.ifc`);
+        name = baseName.replace(IFC_EXTENSION, `-${suffix}.ifc`);
         suffix += 1;
       }
       usedNames.add(name);
@@ -4588,7 +4828,7 @@ export function useIfcViewer() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = entries.length === 1 ? entries[0].fileName.replace(IFC_EXTENSION, ".ifczip") : "models.ifczip";
+    link.download = entries.length === 1 ? entries[0].fileName.replace(IFC_EXTENSION, "") + ".ifczip" : "models.ifczip";
     link.click();
     URL.revokeObjectURL(url);
   }, []);
@@ -4645,7 +4885,10 @@ export function useIfcViewer() {
     [applyViewInset, refitModel],
   );
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setLoadFailed(false);
+  }, []);
   const clearSelection = useCallback(() => {
     clearHighlightRef.current?.();
     selectedHitRef.current = null;
@@ -4723,5 +4966,16 @@ export function useIfcViewer() {
     hideSelectedElement,
     setViewInsets,
     focusSelection,
+    toast,
+    dismissToast,
+    showToast,
+    zoomToSelection,
+    isolateSelection,
+    zoomToElementHere,
+    isolateElementHere,
+    copyGuidHere,
+    loadFailed,
+    retryLoad,
+    cancelLoad,
   };
 }

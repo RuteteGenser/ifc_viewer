@@ -6,14 +6,18 @@ import Tooltip from "./Tooltip";
 // there's no single registry of {key, description} in the hook to read
 // from.
 const SHORTCUTS = [
-  { keys: "Long-press", description: "Touch: open the clip plane / hide menu (same as right-click)" },
+  { keys: "Click / tap", description: "Select an element" },
+  { keys: "Double-click", description: "Zoom to the element" },
+  { keys: "Right-click / press and hold", description: "Menu: zoom, isolate, hide, cut a section" },
+  { keys: "F", description: "Zoom to the selected element" },
   { keys: "H", description: "Hide the selected element" },
-  { keys: "C", description: "Create a clip plane under the cursor" },
-  { keys: "M", description: "Toggle measure mode" },
-  { keys: "T", description: "Toggle tag tool (pin a hovered dimension tag)" },
-  { keys: "G", description: "Toggle hide-category tool (click an element to hide/show its whole category)" },
-  { keys: "V", description: "Toggle tag/measurement visibility & model color overrides" },
-  { keys: "Esc", description: "Exit the current tool" },
+  { keys: "I", description: "Isolate the selected element" },
+  { keys: "C", description: "Cut a section under the cursor" },
+  { keys: "M", description: "Measure two points" },
+  { keys: "T", description: "Tag tool (pin dimension tags)" },
+  { keys: "G", description: "Hide a whole category" },
+  { keys: "V", description: "Show or hide tags, measurements and colours" },
+  { keys: "Esc", description: "Exit the current tool or clear the selection" },
   { keys: "Ctrl+Z", description: "Undo" },
   { keys: "Ctrl+Y / Ctrl+Shift+Z", description: "Redo" },
 ];

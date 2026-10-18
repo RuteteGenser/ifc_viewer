@@ -2074,41 +2074,6 @@
   }
 }
 
-.empty-hint {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  pointer-events: none;
-  color: var(--ink-muted, #7a7167);
-}
-
-.empty-hint p {
-  margin: 0;
-  font-size: 15px;
-}
-
-.empty-hint__button {
-  pointer-events: auto;
-  min-height: 48px;
-  padding: 0 24px;
-  border-radius: 12px;
-  border: 1px solid var(--border-strong);
-  background: var(--paper-ivory);
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.empty-hint__button--secondary {
-  background: transparent;
-}
-
 /* With no model loaded the details panel has nothing to show, so on a
    phone it is removed entirely and nothing is inset for it. */
 @media (max-width: 768px) and (min-height: 501px) {
@@ -2128,5 +2093,385 @@
 
   .app-body[data-sheet="none"] .panel-inset-probe {
     width: 0;
+  }
+}
+
+
+/* ---------- One-flow empty state ---------- */
+
+.empty-state {
+  position: absolute;
+  inset: var(--toolbar-h, 0px) 0 0 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.empty-state__card {
+  pointer-events: auto;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 28px 24px 22px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 1px dashed var(--ink-faint);
+  color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .empty-state__card {
+    cursor: pointer;
+    padding: 40px 32px 30px;
+  }
+  .empty-state__card:hover {
+    background: var(--bg);
+    border-color: var(--accent);
+  }
+}
+
+.empty-state__icon {
+  width: 52px;
+  height: 52px;
+  color: var(--accent);
+}
+
+.empty-state__title {
+  margin: 4px 0 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.empty-state__text {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  max-width: 32ch;
+}
+
+.empty-state__primary {
+  min-height: 48px;
+  padding: 0 28px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.empty-state__primary:hover {
+  background: var(--accent-hover);
+}
+
+.empty-state__drop {
+  display: none;
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .empty-state__drop {
+    display: block;
+  }
+}
+
+.empty-state__link {
+  min-height: 44px;
+  padding: 0 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.empty-state__link:hover {
+  color: var(--accent-hover);
+}
+
+/* Nothing to list or inspect yet: on a wide screen the empty state owns
+   the whole window, and the side columns appear once a model opens. */
+@media (min-width: 769px) {
+  .app-body[data-sheet="none"] .sidebar,
+  .app-body[data-sheet="none"] .element-panel {
+    display: none;
+  }
+  .app-body[data-sheet="none"] .panel-inset-probe {
+    width: 0;
+  }
+}
+
+/* ---------- Toast, tool hint, first-run card ---------- */
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sheet-inset, 0px) + 20px);
+  transform: translateX(-50%);
+  z-index: 44;
+  max-width: min(92%, 420px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper-white);
+  font-size: 14px;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  animation: toast-in 0.18s ease;
+  pointer-events: none;
+}
+
+@media (min-width: 769px) {
+  .toast {
+    left: calc(50% - 160px);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+.tool-hint {
+  position: absolute;
+  top: calc(var(--toolbar-h, var(--header-height)) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 19;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(94%, 520px);
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: var(--shadow-md);
+}
+
+@media (min-width: 769px) {
+  .tool-hint {
+    left: calc(50% - 160px);
+  }
+}
+
+.tool-hint__done {
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tool-hint__done:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+@media (pointer: coarse) {
+  .tool-hint__done {
+    min-height: 40px;
+  }
+}
+
+.first-run {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sheet-inset, 0px) + 16px);
+  transform: translateX(-50%);
+  z-index: 18;
+  width: min(340px, calc(100% - 24px));
+  padding: 14px 16px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+
+@media (min-width: 769px) {
+  .first-run {
+    left: calc(50% - 160px);
+  }
+}
+
+.first-run__title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.first-run__list {
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.first-run__row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.first-run__row dt {
+  flex: 0 0 104px;
+  font-weight: 700;
+}
+
+.first-run__row dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.first-run__button {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.first-run__button:hover {
+  background: var(--accent-hover);
+}
+
+.loading-overlay__cancel,
+.status-banner__retry {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.loading-overlay__cancel {
+  margin-left: 6px;
+  color: var(--text-muted);
+}
+
+@media (pointer: coarse) {
+  .loading-overlay__cancel,
+  .status-banner__retry {
+    min-height: 44px;
+  }
+  .context-menu kbd {
+    display: none;
+  }
+  .status-banner__close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+.context-menu kbd {
+  float: right;
+  margin-left: 16px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.top-bar__home-button.is-blocked,
+.top-bar__icon-button.is-blocked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Undo / redo are useful with a mouse too; sit them above the compass
+   corner of the 3D view, clear of the details column. */
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .history-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: absolute;
+    right: 332px;
+    bottom: 12px;
+    z-index: 15;
+  }
+  .history-buttons__button {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    box-shadow: var(--shadow-sm);
+    padding: 0;
+    cursor: pointer;
+  }
+  .history-buttons__button svg {
+    width: 18px;
+    height: 18px;
+  }
+  .history-buttons__button:disabled {
+    opacity: 0.35;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* No model yet: only the empty state, no tools that cannot be used. */
+.app-body[data-sheet="none"] .toolbar,
+.app-body[data-sheet="none"] .compass,
+.app-body[data-sheet="none"] .history-buttons {
+  display: none;
+}
+
+@media (max-height: 640px) {
+  .empty-state__card {
+    padding: 18px 20px 12px;
+    gap: 6px;
+  }
+  .empty-state__icon {
+    width: 40px;
+    height: 40px;
+  }
+  .empty-state__title {
+    font-size: 21px;
+  }
+  .empty-state__text {
+    margin-bottom: 4px;
   }
 }

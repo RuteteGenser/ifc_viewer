@@ -1,11 +1,4 @@
-import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
-
-// iOS/Android file pickers grey out files with extensions they can't map
-// to a known type (.ifc/.ifcZIP), making them unselectable — so on touch
-// devices the filter is dropped; loadFiles reports unparseable files.
-const COARSE_POINTER =
-  typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   return (
@@ -81,8 +74,7 @@ function HiddenCategoryRow({ category, onShow }) {
 export default function Sidebar({
   className = "",
   models,
-  onFilesSelected,
-  onLoadDemo,
+  onAddFiles,
   onToggleVisible,
   onRemove,
   onSetModelColor,
@@ -98,18 +90,16 @@ export default function Sidebar({
   hiddenCategories,
   onShowCategory,
 }) {
-  const fileInputRef = useRef(null);
-
   return (
     <aside className={`sidebar ${className}`.trim()}>
       <div className="sidebar__top-buttons">
         <button
           type="button"
           className="sidebar__add-button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={onAddFiles}
           disabled={isLoading}
         >
-          {isLoading ? loadingLabel || "Loading…" : "+ Add file(s)"}
+          {isLoading ? loadingLabel || "Loading…" : "+ Add file"}
         </button>
         <button
           type="button"
@@ -121,34 +111,11 @@ export default function Sidebar({
           Save as .ifcZIP
         </button>
       </div>
-      <button
-        type="button"
-        className="sidebar__save-button sidebar__demo-button"
-        onClick={onLoadDemo}
-        disabled={isLoading}
-        title="Load a small built-in sample building to try every tool"
-      >
-        Load demo model
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={COARSE_POINTER ? undefined : ".ifc,.ifczip"}
-        multiple
-        hidden
-        onChange={(e) => {
-          if (e.target.files?.length) onFilesSelected(e.target.files);
-          e.target.value = "";
-        }}
-      />
 
       <div className="sidebar__section-title">Loaded models</div>
 
       {models.length === 0 ? (
-        <p className="sidebar__empty">
-          No models loaded yet. Add an .ifc or .ifcZIP file, or drop one
-          onto the viewport.
-        </p>
+        <p className="sidebar__empty">No models open yet.</p>
       ) : (
         <ul className="model-list">
           {models.map((model) => (

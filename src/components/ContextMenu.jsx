@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, onHideElement, onClose }) {
+export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, onHideElement, onZoomTo, onIsolate, onCopyGuid, onClose }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -51,15 +51,30 @@ export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, on
   const style = position ?? { left: 0, top: 0, visibility: "hidden" };
 
   return (
-    <ul ref={menuRef} className="context-menu" style={style}>
+    <ul ref={menuRef} className="context-menu" style={style} role="menu">
       <li>
-        <button type="button" onClick={onCreateClipPlane}>
-          Create clip plane here
+        <button type="button" role="menuitem" onClick={onZoomTo}>
+          Zoom to element <kbd>F</kbd>
         </button>
       </li>
       <li>
-        <button type="button" onClick={onHideElement}>
-          Hide element
+        <button type="button" role="menuitem" onClick={onIsolate}>
+          Isolate element <kbd>I</kbd>
+        </button>
+      </li>
+      <li>
+        <button type="button" role="menuitem" onClick={onHideElement}>
+          Hide element <kbd>H</kbd>
+        </button>
+      </li>
+      <li>
+        <button type="button" role="menuitem" onClick={onCreateClipPlane}>
+          Cut a section here <kbd>C</kbd>
+        </button>
+      </li>
+      <li>
+        <button type="button" role="menuitem" onClick={onCopyGuid}>
+          Copy GUID
         </button>
       </li>
     </ul>

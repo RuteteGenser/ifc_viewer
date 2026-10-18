@@ -13,6 +13,16 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import Header from "./components/Header";
 import Toolbar from "./components/Toolbar";
 import Compass from "./components/Compass";
+import EmptyState from "./components/EmptyState";
+import Toast from "./components/Toast";
+import ToolHint from "./components/ToolHint";
+import FirstRunHint from "./components/FirstRunHint";
+
+// iOS/Android file pickers grey out files with extensions they can't map
+// to a known type (.ifc/.ifcZIP), making them unselectable, so on touch
+// devices the filter is dropped; loadFiles reports unparseable files.
+const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+const SAMPLE_NAME = "Sample building";
 import "./App.css";
 
 // Matches the colors already used for each leg in the 3D dogleg
@@ -97,6 +107,14 @@ function App() {
     hideSelectedElement,
     setViewInsets,
     focusSelection,
+    toast,
+    showToast,
+    zoomToElementHere,
+    isolateElementHere,
+    copyGuidHere,
+    loadFailed,
+    retryLoad,
+    cancelLoad,
   } = useIfcViewer();
 
   const hasNoModels = models.length === 0;
@@ -156,28 +174,40 @@ function App() {
     [activeRightTab],
   );
 
-  // The demo is a static .ifc served with the app, pushed through the same
-  // loadFiles path as a user-picked file so it exercises the real pipeline.
-  const handleLoadDemo = useCallback(async () => {
+  // The sample is an ordinary .ifc served with the app and pushed through
+  // the same loadFiles path as a user-picked file; only its display name
+  // differs. The landing page deep-links to it with ?demo=1.
+  const handleLoadSample = useCallback(async () => {
     setSidebarOpen(false);
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}demo/demo-building.ifc`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
-      loadFiles([new File([blob], "demo-building.ifc")]);
+      const file = new File([blob], "demo-building.ifc");
+      file.displayName = SAMPLE_NAME;
+      loadFiles([file]);
     } catch (err) {
-      setError(`Could not load the demo model (${err.message}).`);
+      setError(`Could not load the sample building (${err.message}). Check your connection and try again.`);
     }
   }, [loadFiles, setError]);
 
-  // The landing page's "Try the demo model" link opens the app at ?demo=1.
-  const autoDemoRef = useRef(false);
+  const autoSampleRef = useRef(false);
   useEffect(() => {
-    if (autoDemoRef.current || !ready) return;
+    if (autoSampleRef.current || !ready) return;
     if (new URLSearchParams(window.location.search).get("demo") !== "1") return;
-    autoDemoRef.current = true;
-    handleLoadDemo();
-  }, [ready, handleLoadDemo]);
+    autoSampleRef.current = true;
+    handleLoadSample();
+  }, [ready, handleLoadSample]);
+
+  const fileInputRef = useRef(null);
+  const openFilePicker = useCallback(() => fileInputRef.current?.click(), []);
+  const armedTool = measureModeActive ? "measure" : tagToolActive ? "tag" : categoryHideModeActive ? "category" : null;
+  const exitArmedTool = useCallback(() => {
+    if (measureModeActive) toggleMeasureMode();
+    else if (tagToolActive) toggleTagTool();
+    else if (categoryHideModeActive) toggleCategoryHideMode();
+  }, [measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
+  const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
   const handleClosePanel = useCallback(() => {
     clearSelection();
@@ -214,6 +244,20 @@ function App() {
 
   return (
     <div className="app">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={COARSE_POINTER ? undefined : ".ifc,.ifczip"}
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files?.length) {
+            loadFiles(e.target.files);
+            setSidebarOpen(false);
+          }
+          e.target.value = "";
+        }}
+      />
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
@@ -234,11 +278,7 @@ function App() {
         <Sidebar
           className={sidebarOpen ? "sidebar--open" : ""}
           models={models}
-          onFilesSelected={(files) => {
-            loadFiles(files);
-            setSidebarOpen(false);
-          }}
-          onLoadDemo={handleLoadDemo}
+          onAddFiles={openFilePicker}
           onToggleVisible={setVisible}
           onSetModelColor={setModelColor}
           onRemove={removeModel}
@@ -264,18 +304,8 @@ function App() {
         >
           <Viewport containerRef={containerRef} />
           <DropOverlay visible={isDragging} />
-          {models.length === 0 && !isLoading && (
-            <div className="empty-hint">
-              <p>No model loaded yet</p>
-              <button type="button" className="empty-hint__button" onClick={() => setSidebarOpen(true)}>
-                Add a model
-              </button>
-              <button type="button" className="empty-hint__button empty-hint__button--secondary" onClick={handleLoadDemo}>
-                Load demo model
-              </button>
-            </div>
-          )}
-          <LoadingOverlay visible={isLoading} label={loadingLabel} />
+          {models.length === 0 && !isLoading && <EmptyState onOpenFiles={openFilePicker} onLoadSample={handleLoadSample} />}
+          <LoadingOverlay visible={isLoading} label={loadingLabel} onCancel={cancelLoad} />
           <Toolbar
             hasModels={models.length > 0}
             onResetView={resetView}
@@ -301,7 +331,9 @@ function App() {
             isolatedKeys={isolatedKeys}
             onToggleIsolate={toggleIsolate}
             onClearIsolation={clearIsolation}
+            onBlocked={notifyBlocked}
           />
+          <ToolHint tool={armedTool} onDone={exitArmedTool} />
           <div className="history-buttons">
             <button
               type="button"
@@ -334,7 +366,9 @@ function App() {
             onOffsetChange={setNorthOffset}
             disabled={models.length === 0}
           />
-          <StatusBanner error={error} onDismissError={clearError} />
+          <StatusBanner error={error} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} />
+          <Toast toast={toast} />
+          <FirstRunHint visible={models.length > 0 && !isLoading} />
         </div>
 
         {contextMenu && (
@@ -344,6 +378,9 @@ function App() {
             touch={contextMenu.touch}
             onCreateClipPlane={createClipPlaneHere}
             onHideElement={hideElementHere}
+            onZoomTo={zoomToElementHere}
+            onIsolate={isolateElementHere}
+            onCopyGuid={copyGuidHere}
             onClose={closeContextMenu}
           />
         )}

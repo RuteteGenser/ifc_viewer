@@ -1,32 +1,49 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 import ModelInfo from "./ModelInfo";
+import ModelName from "./ModelName";
+import { disciplineOf, splitModelName } from "../ifc/modelLabel";
 import ModelTree from "./ModelTree";
 import LibrarySection from "../library/LibrarySection";
 import { SaveToggle, SaveRowButton } from "../library/SaveControls";
 
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
+  const discipline = disciplineOf(model.name);
+  const { note } = splitModelName(model.name);
   return (
     <li className="model-row">
       <label className="model-row__label">
         <input
           type="checkbox"
           checked={model.visible}
+          aria-label={`Show ${model.name}`}
           onChange={(e) => onToggleVisible(model.id, e.target.checked)}
         />
-        <span className="model-row__name" title={model.name}>
-          {model.name}
+        <span className="model-row__text">
+          <ModelName name={model.name} className="model-row__name" />
+          {(discipline || note) && (
+            <span className="model-row__meta">
+              {discipline && (
+                <abbr className="model-row__badge" title={discipline.label}>
+                  {discipline.code}
+                </abbr>
+              )}
+              {note && <span className="model-row__note">{note}</span>}
+            </span>
+          )}
         </span>
       </label>
       <div className="model-row__actions">
-        <input
-          type="color"
-          className="model-row__color"
-          value={model.color ?? "#ffffff"}
-          onChange={(e) => onSetColor(model.id, e.target.value)}
-          aria-label={`Override ${model.name}'s color`}
-          title="Override this model's color (visual only). toggle with V"
-        />
+        <label className="model-row__tint" title={`Tint ${model.name} (visual only). Toggle with V`}>
+          <input
+            type="color"
+            className="model-row__color"
+            value={model.color ?? "#ffffff"}
+            onChange={(e) => onSetColor(model.id, e.target.value)}
+            aria-label="Model tint"
+          />
+          <span className="model-row__tint-caption" aria-hidden="true">Tint</span>
+        </label>
         {model.color && (
           <button
             type="button"

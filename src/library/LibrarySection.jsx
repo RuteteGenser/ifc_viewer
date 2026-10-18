@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmDialog from "../components/ConfirmDialog";
+import ModelName from "../components/ModelName";
 import { useLibraryContext } from "./LibraryContext";
 import { formatSize, relativeDate } from "./format";
 
@@ -102,9 +103,7 @@ function ModelItem({ item }) {
           aria-label={loaded ? `${item.name}, already open` : `Open ${item.name}`}
           onClick={() => library.open(item)}
         >
-          <span className="lib-row__name" title={item.name}>
-            {item.name}
-          </span>
+          <ModelName name={item.name} className="lib-row__name" />
           <span className="lib-row__meta">
             {meta}
             {item.schema && <span className="lib-badge">{item.schema}</span>}

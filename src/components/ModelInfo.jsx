@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { prettyCategory } from "../ifc/elementDetails";
+import ModelName from "./ModelName";
 import "./dataPanels.css";
 
 const TOP = 8;
@@ -24,7 +25,14 @@ function Card({ model, tree, showName }) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: open ? "rotate(90deg)" : "none", flex: "none" }}>
           <path d="m9 6 6 6-6 6" />
         </svg>
-        <span className="mi__name" title={model.name}>{showName ? `Info: ${model.name}` : "Model info"}</span>
+        {showName ? (
+          <span className="mi__name" title={`Info: ${model.name}`}>
+            <span className="mi__prefix">Info: </span>
+            <ModelName name={model.name} />
+          </span>
+        ) : (
+          <span className="mi__name">Model info</span>
+        )}
         {s?.schema && <span className="dp-group__count">{s.schema}</span>}
       </button>
       {open && (

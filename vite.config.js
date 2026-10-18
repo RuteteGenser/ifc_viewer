@@ -1,13 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { precompress, preloadHints, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
+import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   // GitHub Pages serves this repo at https://<user>.github.io/ifc_viewer/,
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
-  plugins: [react(), preloadHints(), serviceWorkerManifest(), precompress()],
+  plugins: [react(), serviceWorkerManifest(), precompress()],
   build: {
     rollupOptions: {
       output: {
@@ -27,7 +27,13 @@ export default defineConfig(({ command }) => ({
         codeSplitting: {
           groups: [
             { name: 'three', test: /node_modules[\\/]three[\\/]/, priority: 20 },
-            { name: 'ifc-engine', test: /node_modules[\\/](@thatopen|web-ifc|camera-controls)/, priority: 10 },
+            {
+              name: 'ifc-engine',
+              // Not the fragments worker's ?url module: main.jsx imports only
+              // that URL, which must not drag the engine chunk into the entry.
+              test: (id) => /node_modules[\\/](@thatopen|web-ifc|camera-controls)/.test(id) && !/[\\/]Worker[\\/]worker/.test(id),
+              priority: 10,
+            },
           ],
         },
       },

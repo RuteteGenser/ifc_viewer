@@ -4,36 +4,6 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
-// Adds preload hints for the files the viewer needs right after startup but
-// that Vite does not know about: the engine chunk (dynamic import), the
-// fragments worker (fetched as text) and the web-ifc wasm. Hrefs follow the build's base.
-export function preloadHints() {
-  let base = '/'
-  return {
-    name: 'preload-ifc-engine',
-    apply: 'build',
-    configResolved(config) {
-      base = config.base
-    },
-    transformIndexHtml: {
-      order: 'post',
-      handler(html, ctx) {
-        const worker = Object.keys(ctx.bundle ?? {}).find((f) => /(^|\/)worker-[^/]+\.js$/.test(f))
-        const tags = [{ tag: 'link', attrs: { rel: 'preload', as: 'fetch', crossorigin: '', href: `${base}wasm/web-ifc.wasm` } }]
-        if (worker) tags.push({ tag: 'link', attrs: { rel: 'preload', as: 'fetch', crossorigin: '', href: `${base}${worker}` } })
-        // The engine chunk is reached by a dynamic import, which Vite does not
-        // preload; fetch it from the first byte of HTML, next to the entry.
-        for (const f of Object.keys(ctx.bundle ?? {})) {
-          if (/(^|\/)(ifc-engine|setupComponents)-[^/]+\.js$/.test(f)) {
-            tags.push({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: '', href: `${base}${f}` } })
-          }
-        }
-        return { html, tags: tags.map((t) => ({ ...t, injectTo: 'head-prepend' })) }
-      },
-    },
-  }
-}
-
 // Fills the placeholders in the built public/sw.js: a version derived from
 // the built files (so an unchanged build is a byte-identical worker) and the
 // list of files to keep offline. Must run before precompress.

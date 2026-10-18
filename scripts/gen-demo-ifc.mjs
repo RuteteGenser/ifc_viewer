@@ -36,10 +36,10 @@ const place3 = (x, y, z, ref) =>
 const localPlacement = (parent, x, y, z, ref) =>
   add(`IFCLOCALPLACEMENT(${parent ?? "$"},${place3(x, y, z, ref)})`);
 
-const person = add("IFCPERSON($,'Demo','Demo',$,$,$,$,$)");
-const organization = add("IFCORGANIZATION($,'Demo',$,$,$)");
+const person = add("IFCPERSON($,'Sample','Sample',$,$,$,$,$)");
+const organization = add("IFCORGANIZATION($,'Sample',$,$,$)");
 const owner = add(`IFCPERSONANDORGANIZATION(${person},${organization},$)`);
-const application = add(`IFCAPPLICATION(${organization},'1.0','Demo generator','demo')`);
+const application = add(`IFCAPPLICATION(${organization},'1.0','Sample generator','sample')`);
 const history = add(`IFCOWNERHISTORY(${owner},${application},$,.NOCHANGE.,$,$,$,0)`);
 const units = add(
   `IFCUNITASSIGNMENT(${list([
@@ -56,7 +56,7 @@ const bodyContext = add(
   `IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,${context},$,.MODEL_VIEW.,$)`,
 );
 const project = add(
-  `IFCPROJECT(${guid()},${history},'Demo Building',$,$,$,$,${list([context])},${units})`,
+  `IFCPROJECT(${guid()},${history},'Sample Building',$,$,$,$,${list([context])},${units})`,
 );
 
 // One surface style per element class so the model reads at a glance.
@@ -78,11 +78,11 @@ makeStyle("roof", 0.7, 0.3, 0.24);
 // Spatial structure: site > building > three storeys.
 const sitePlacement = localPlacement(null, 0, 0, 0);
 const site = add(
-  `IFCSITE(${guid()},${history},'Demo Site',$,$,${sitePlacement},$,$,.ELEMENT.,$,$,$,$,$)`,
+  `IFCSITE(${guid()},${history},'Sample Site',$,$,${sitePlacement},$,$,.ELEMENT.,$,$,$,$,$)`,
 );
 const buildingPlacement = localPlacement(sitePlacement, 0, 0, 0);
 const building = add(
-  `IFCBUILDING(${guid()},${history},'Demo House',$,$,${buildingPlacement},$,$,.ELEMENT.,$,$,$)`,
+  `IFCBUILDING(${guid()},${history},'Sample House',$,$,${buildingPlacement},$,$,.ELEMENT.,$,$,$)`,
 );
 add(`IFCRELAGGREGATES(${guid()},${history},$,$,${project},${list([site])})`);
 add(`IFCRELAGGREGATES(${guid()},${history},$,$,${site},${list([building])})`);
@@ -187,7 +187,7 @@ storeys.forEach((storey) => {
 const header = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition [ReferenceView_V1.2]'),'2;1');
-FILE_NAME('demo-building.ifc','2026-01-01T00:00:00',(''),(''),'','Demo generator','');
+FILE_NAME('demo-building.ifc','2026-01-01T00:00:00',(''),(''),'','Sample generator','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;

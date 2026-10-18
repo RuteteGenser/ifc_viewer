@@ -456,6 +456,7 @@ export function useIfcViewer() {
   const [cameraClipMax, setCameraClipMax] = useState(1);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
+  const [zoomLimit, setZoomLimit] = useState(null); // "min" | "max" while the camera sits at a zoom limit
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
   const [measurements, setMeasurements] = useState([]); // [{ id, depth, horizontal, vertical, length }]
   const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
@@ -2273,6 +2274,7 @@ export function useIfcViewer() {
     // Shows "Closest zoom" / "Furthest zoom" once per contact with a limit;
     // `null` (the camera moved away from the limit) re-arms it.
     const noteZoomLimit = (kind) => {
+      setZoomLimit(kind || null);
       if (!kind) {
         zoomLimitKind = null;
         return;
@@ -5567,6 +5569,7 @@ export function useIfcViewer() {
     flipClipPlane,
     removeClipPlane,
     zoomStep,
+    zoomLimit,
   });
 
   const browser = useModelBrowser({

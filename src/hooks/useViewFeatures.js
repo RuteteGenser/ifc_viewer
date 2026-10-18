@@ -178,6 +178,10 @@ export function useViewFeatures(ctx) {
     return box.isEmpty() ? null : box;
   };
 
+  // The plane a Plan/Side/Front button made. Choosing another preset moves it
+  // instead of stacking a second plane, and choosing the same one again takes it away.
+  const presetRef = useRef({ id: null, kind: null });
+
   const addSection = useCallback(
     (kind) => {
       const { clipPlaneManagerRef, setClipPlanes, pushUndo } = ctxRef.current;
@@ -185,22 +189,39 @@ export function useViewFeatures(ctx) {
       const box = localBoxOf();
       const axis = SECTION_AXES[kind];
       if (!manager || !box || axis === undefined) return;
+      const preset = presetRef.current;
+      const previous = preset.id !== null ? manager.getPlaneSnapshot(preset.id) : null;
+      const prev = previous ? { kind: preset.kind, normal: previous.normal.clone(), point: previous.point.clone() } : null;
+      const sameKind = prev?.kind === kind;
       // Keeps the side below/left/behind the plane, so a plan cut removes the roof first.
       const normal = new THREE.Vector3();
       normal.setComponent(axis, -1);
       const point = box.getCenter(new THREE.Vector3());
-      const idBox = { id: manager.add(normal, point) };
-      setClipPlanes(manager.list());
-      pushUndo({
-        undo: () => {
-          manager.remove(idBox.id);
-          setClipPlanes(manager.list());
-        },
-        redo: () => {
-          idBox.id = manager.add(normal, point);
-          setClipPlanes(manager.list());
-        },
-      });
+      let prevId = prev ? preset.id : null;
+      let newId = null;
+      const apply = () => {
+        if (prev) manager.remove(prevId);
+        if (sameKind) {
+          presetRef.current = { id: null, kind: null };
+        } else {
+          newId = manager.add(normal, point);
+          presetRef.current = { id: newId, kind };
+        }
+        setClipPlanes(manager.list());
+      };
+      const revert = () => {
+        if (newId !== null) manager.remove(newId);
+        newId = null;
+        if (prev) {
+          prevId = manager.add(prev.normal, prev.point);
+          presetRef.current = { id: prevId, kind: prev.kind };
+        } else {
+          presetRef.current = { id: null, kind: null };
+        }
+        setClipPlanes(manager.list());
+      };
+      apply();
+      pushUndo({ undo: revert, redo: apply });
     },
     [],
   );
@@ -402,6 +423,7 @@ export function useViewFeatures(ctx) {
     saveScreenshot,
     copyViewLink,
     busy,
+    zoomLimit: ctx.zoomLimit,
     zoomIn: () => ctxRef.current.zoomStep(1),
     zoomOut: () => ctxRef.current.zoomStep(-1),
   };

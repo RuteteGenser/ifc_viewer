@@ -2809,3 +2809,20 @@
     text-align: center;
   }
 }
+
+/* Mouse layouts: small icon buttons still get a comfortable click area. */
+@media (pointer: fine) {
+  .model-row__remove,
+  .model-row__color,
+  .element-panel__close,
+  .element-panel__copy-button,
+  .element-panel__collapse,
+  .status-banner__close {
+    min-width: 28px;
+    min-height: 28px;
+  }
+  .element-panel__copy-button {
+    width: 28px;
+    height: 28px;
+  }
+}

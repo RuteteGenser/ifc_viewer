@@ -3848,6 +3848,7 @@ export function useIfcViewer() {
       .then((pipeline) => {
         if (disposed) return;
         pipelineRef.current = pipeline;
+        performance.mark("viewer-ready");
         setReady(true);
       })
       .catch((err) => {
@@ -4995,6 +4996,7 @@ export function useIfcViewer() {
     }
 
     if (abandoned()) return;
+    performance.mark("model-shown");
     setIsLoading(false);
     setLoadingLabel("");
   }, [confirmReplaceFile, removeModel, getVisibleFrac]);

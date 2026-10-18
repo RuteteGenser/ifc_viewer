@@ -82,7 +82,13 @@
 }
 
 .lib--sidebar .lib-list {
-  max-height: min(420px, 55vh);
+  max-height: none;
+  overflow: visible;
+}
+
+.lib-more {
+  align-self: stretch;
+  min-height: 44px;
 }
 
 .lib-row {
@@ -441,7 +447,7 @@
 }
 
 @media (max-height: 640px) {
-  .lib-list {
+  .lib--empty .lib-list {
     max-height: 30vh;
   }
 }

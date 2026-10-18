@@ -181,14 +181,21 @@ function SampleItem() {
   );
 }
 
+const SIDEBAR_ROWS = 3;
+
 // variant "empty": inside the start card. variant "sidebar": collapsible section.
 export default function LibrarySection({ variant }) {
   const library = useLibraryContext();
   const [open, setOpen] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   if (!library || !library.available || library.status === "loading") return null;
   const isSidebar = variant === "sidebar";
   const headingId = `lib-heading-${variant}`;
   const listId = `lib-list-${variant}`;
+  // In the drawer the list is part of the one scrolling column, so it shows a
+  // few rows and a button for the rest, instead of scrolling inside the scroll.
+  const rows = isSidebar && !showAll ? library.items.slice(0, SIDEBAR_ROWS) : library.items;
+  const hidden = library.items.length - rows.length;
   const body = (
     <>
       {library.status === "error" ? (
@@ -202,10 +209,15 @@ export default function LibrarySection({ variant }) {
         <>
           <ul className="lib-list" id={listId} aria-labelledby={headingId}>
             <SampleItem />
-            {library.items.map((item) => (
+            {rows.map((item) => (
               <ModelItem key={item.id} item={item} />
             ))}
           </ul>
+          {isSidebar && library.items.length > SIDEBAR_ROWS && (
+            <button type="button" className="lib-btn lib-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Show fewer" : `Show all ${library.items.length} (${hidden} more)`}
+            </button>
+          )}
           {library.items.length === 0 && <p className="lib-quiet">Save a model here to open it from any device.</p>}
         </>
       )}

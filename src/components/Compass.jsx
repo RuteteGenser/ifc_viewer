@@ -24,6 +24,7 @@ export default function Compass({ angleDeg, offsetDeg, onOffsetChange, disabled 
         <span>N offset</span>
         <input
           type="number"
+          aria-label="North offset in degrees"
           min={0}
           max={359}
           step={1}

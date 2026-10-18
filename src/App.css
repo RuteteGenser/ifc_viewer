@@ -1249,6 +1249,8 @@
   display: block;
   width: 100%;
   height: 100%;
+  /* Pinch zooms the model, never the page, on the 3D view only. */
+  touch-action: none;
 }
 
 .drop-overlay {
@@ -1462,8 +1464,16 @@
     transition: transform 0.22s ease;
   }
 
+  /* A closed drawer is off screen: keep its controls out of the tab order. */
+  .sidebar {
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+
   .sidebar--open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.22s ease, visibility 0s;
   }
 
   .sidebar-backdrop {
@@ -2939,6 +2949,10 @@
   .app-body--no-panel .toolbar {
     right: 0;
   }
+  /* The toolbar stops at the panel, so the panel can use the full height. */
+  .element-panel {
+    top: var(--header-height);
+  }
 }
 
 /* Short portrait phones (iPhone SE class): one slim toolbar row so the 3D
@@ -3042,5 +3056,68 @@
       32dvh,
       calc(100dvh - var(--header-height) - var(--toolbar-h, 52px) - 260px)
     );
+  }
+}
+
+/* Floating notes centre on the 3D area that is left of the details column,
+   so they never sit over its tabs. */
+@media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
+  .first-run,
+  .tool-hint,
+  .status-stack {
+    left: calc((100% - var(--panel-w, 320px)) / 2);
+    max-width: calc(100% - var(--panel-w, 320px) - 24px);
+  }
+  .app-body--no-panel .first-run,
+  .app-body--no-panel .tool-hint,
+  .app-body--no-panel .status-stack {
+    left: 50%;
+    max-width: calc(100% - 24px);
+  }
+  .first-run__list {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+}
+
+/* Phones and narrow windows: the error banner uses the full width, with a
+   close button that is easy to hit. */
+@media (max-width: 768px) {
+  .status-stack {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: none;
+  }
+  .status-banner {
+    font-size: 14px;
+    line-height: 1.35;
+    align-items: flex-start;
+  }
+  .status-banner > span {
+    flex: 1;
+  }
+  .status-banner__close {
+    min-width: 44px;
+    min-height: 44px;
+    margin: -10px -10px -10px 0;
+    font-size: 18px;
+  }
+}
+
+/* Landscape phone: the armed-tool hint sits in the top-left corner so it
+   never covers the middle of the model. */
+@media (max-height: 500px) and (pointer: coarse) {
+  .tool-hint {
+    left: calc(8px + var(--safe-left));
+    transform: none;
+    top: calc(var(--toolbar-h, 56px) + 6px);
+    max-width: min(46%, 360px);
+    font-size: 12px;
+    padding: 2px 2px 2px 10px;
+    gap: 6px;
+  }
+  .tool-hint__done {
+    min-height: 36px;
   }
 }

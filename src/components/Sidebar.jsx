@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 import ModelInfo from "./ModelInfo";
 import ModelTree from "./ModelTree";
@@ -94,9 +95,32 @@ export default function Sidebar({
   browser,
   selectedId,
   onPickElement,
+  onRequestClose,
 }) {
+  // Swiping the open drawer to the left closes it again.
+  const swipeRef = useRef(null);
+  const swipe = {
+    onTouchStart: (e) => {
+      const t = e.touches[0];
+      swipeRef.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchMove: (e) => {
+      const start = swipeRef.current;
+      if (!start) return;
+      const t = e.touches[0];
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      if (dx < -56 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swipeRef.current = null;
+        onRequestClose?.();
+      }
+    },
+    onTouchEnd: () => {
+      swipeRef.current = null;
+    },
+  };
   return (
-    <aside className={`sidebar ${className}`.trim()}>
+    <aside className={`sidebar ${className}`.trim()} {...swipe}>
       <div className="sidebar__top-buttons">
         <button
           type="button"

@@ -1,3 +1,5 @@
+import { formatLength } from "../ifc/formatLength";
+
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
 // Read-only list of measurements — editing a leg's length happens by
@@ -16,16 +18,16 @@ export default function MeasureControl({ measurements, onRemoveMeasurement }) {
       ) : (
         measurements.map((m) => (
           <div className="clip-control__plane" key={m.id}>
-            <div className="measure-control__length">Length: {(m.length * 1000).toFixed(1)} mm</div>
+            <div className="measure-control__length">Length: {formatLength(m.length)}</div>
             <div className="measure-control__values">
               <span style={{ color: "#ef4444" }} title="Perpendicular distance to the second point's surface. click its label in the 3D view to edit">
-                Depth: {(m.depth * 1000).toFixed(1)} mm
+                Depth: {formatLength(m.depth)}
               </span>
               <span style={{ color: "#3b82f6" }} title="Click its label in the 3D view to edit">
-                Horizontal: {(m.horizontal * 1000).toFixed(1)} mm
+                Horizontal: {formatLength(m.horizontal)}
               </span>
               <span style={{ color: "#22c55e" }} title="Click its label in the 3D view to edit">
-                Vertical: {(m.vertical * 1000).toFixed(1)} mm
+                Vertical: {formatLength(m.vertical)}
               </span>
             </div>
             <div className="clip-control__buttons">

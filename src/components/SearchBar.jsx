@@ -163,10 +163,7 @@ export default function SearchBar({
   };
 
   const onKeyDown = (e) => {
-    if (e.key === "Escape") {
-      e.currentTarget.blur();
-      return;
-    }
+    if (e.key === "Escape") return; // handled by the container, wherever focus is inside it
     if (!showList || rowCount === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -189,7 +186,19 @@ export default function SearchBar({
   };
 
   return (
-    <div className="search-bar" ref={containerRef}>
+    <div
+      className="search-bar"
+      ref={containerRef}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        // Esc backs out of search entirely: text, isolation, focus.
+        if (query) onQueryChange("");
+        if (isolatedCount > 0) onClearIsolation();
+        setOpen(false);
+        inputRef.current?.blur();
+        if (containerRef.current?.contains(document.activeElement)) document.activeElement.blur();
+      }}
+    >
       <SearchIcon />
       <input
         ref={inputRef}

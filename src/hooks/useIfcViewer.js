@@ -1,5 +1,6 @@
 import { buildElementDetails, readProjectUnits } from "../ifc/elementDetails";
 import useModelBrowser from "./useModelBrowser";
+import { formatLength } from "../ifc/formatLength";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -175,6 +176,8 @@ function applyModelColorOverride(object, color) {
 // applied by the arcball drag below), unlike the fragments library's own
 // `model.box`, which is fixed at load time and would go stale once the
 // model group starts rotating.
+const MIN_SURFACE_DISTANCE = 0.2; // metres
+
 function getSceneBox(entries) {
   const box = new THREE.Box3();
   let hasContent = false;
@@ -810,6 +813,7 @@ export function useIfcViewer() {
     // modelsGroup.quaternion directly via its own pointer listeners, or
     // touch two-finger dolly/pan, which uses a separate code path).
     controls.enableRotate = false;
+    controls.minDistance = MIN_SURFACE_DISTANCE;
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
@@ -1197,8 +1201,7 @@ export function useIfcViewer() {
     // instead, matching this project's construction-drawing convention.
     // Metres with two decimals from a metre up, whole millimetres below —
     // short and readable on a phone (the sidebar list keeps exact mm).
-    const formatMm = (meters) =>
-      Math.abs(meters) >= 1 ? `${meters.toFixed(2)} m` : `${Math.round(meters * 1000)} mm`;
+    const formatMm = formatLength;
     const measureLabelLines = (length) => [
       { text: formatMm(length), color: "#e8eaed" },
     ];
@@ -1449,6 +1452,8 @@ export function useIfcViewer() {
           requestRender();
           return "started";
         }
+        // Two clicks on the same spot would make a 0 mm measurement.
+        if (measurePendingPoint.distanceTo(localPoint) < 0.001) return "rejected";
         clearMeasurePreview();
         const a = measurePendingPoint;
         const b = localPoint;
@@ -1790,14 +1795,21 @@ export function useIfcViewer() {
       const hit = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
       const pa = { x: 0, y: 0, z: 0 };
       const pb = { x: 0, y: 0, z: 0 };
+      // Everything already on screen, across all measurements, so labels of
+      // neighbouring measurements never sit on top of each other either.
+      const placed = [];
+      if (tagsVisibleRef.current) {
+        for (const entry of measurementsRuntime) {
+          placed.push(rectOf(entry.label, MEASURE_LEG_LABEL_PIXEL_HEIGHT, 2));
+          for (const m of [entry.markerA, entry.markerB]) {
+            toPx(m, pa);
+            const r = MEASURE_MARKER_PIXELS + 3;
+            placed.push({ l: pa.x - r, r: pa.x + r, t: pa.y - r, b: pa.y + r });
+          }
+        }
+      }
       for (const entry of measurementsRuntime) {
         if (!tagsVisibleRef.current) continue;
-        const placed = [rectOf(entry.label, MEASURE_LEG_LABEL_PIXEL_HEIGHT, 2)];
-        for (const m of [entry.markerA, entry.markerB]) {
-          toPx(m, pa);
-          const r = MEASURE_MARKER_PIXELS + 3;
-          placed.push({ l: pa.x - r, r: pa.x + r, t: pa.y - r, b: pa.y + r });
-        }
         const legs = [
           [entry.legRightLabel, entry.legRight, entry.horizontal],
           [entry.legUpLabel, entry.legUp, entry.vertical],
@@ -2038,8 +2050,9 @@ export function useIfcViewer() {
     const onMeasureKeyDown = (event) => {
       if (event.key !== "Escape") return;
       if (exitActiveTool()) {
-        // handled
+        event.ifcEscHandled = true;
       } else if (selectedHitRef.current) {
+        event.ifcEscHandled = true;
         // Inlined rather than calling the `clearSelection` callback
         // directly — that's defined later in this same hook function via
         // its own useCallback, so referencing it here would depend on
@@ -2331,7 +2344,10 @@ export function useIfcViewer() {
       // Tiny absolute floor — camera.near is kept proportional to the
       // *current* distance below, so this no longer needs to scale with
       // the whole model's size.
-      const minDistance = 1e-4;
+      // Never let the camera sink into the surface under the cursor (a wall
+      // filling the screen with flat colour): stop 20 cm short of it, unless
+      // it is already closer than that, in which case zooming in just stops.
+      const minDistance = Math.min(MIN_SURFACE_DISTANCE, prevDistance);
       const newDistance = Math.max(rawDistance, minDistance);
       const radiusDelta = prevDistance - newDistance;
 
@@ -2984,8 +3000,11 @@ export function useIfcViewer() {
       modelsGroup.updateMatrixWorld(true);
       const localPoint = modelsGroup.worldToLocal(hit.point.clone());
       const localNormal = hit.normal ? localDirectionFromWorld(hit.normal) : null;
-      if (measureManager.addPoint(localPoint, localNormal) === "completed") {
+      const outcome = measureManager.addPoint(localPoint, localNormal);
+      if (outcome === "completed") {
         setMeasurements(measureManager.list());
+      } else if (outcome === "rejected") {
+        showToastRef.current("Pick a second point away from the first");
       }
     };
 
@@ -3292,11 +3311,34 @@ export function useIfcViewer() {
           owner.set(entry[key], { entry, which });
         }
       }
-      const ndc = getNdc(event);
-      raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObjects(hittable, false);
-      if (hits.length === 0) return false;
-      const hit = owner.get(hits[0].object);
+      // Screen-space hit test: a leg label is only 22-30 px tall, so on touch
+      // its target is padded out to at least 44 x 44 px around its centre.
+      const canvasRect = renderer.domElement.getBoundingClientRect();
+      const px = event.clientX - canvasRect.left;
+      const py = event.clientY - canvasRect.top;
+      const minSide = TOUCH_UI || event.pointerType === "touch" ? 44 : 0;
+      let hit = null;
+      let bestDist = Infinity;
+      for (const label of hittable) {
+        if (!label.visible) continue;
+        const p = label.getWorldPosition(new THREE.Vector3()).project(camera);
+        if (p.z > 1) continue;
+        const cx = (p.x * 0.5 + 0.5) * canvasRect.width;
+        const cy0 = (-p.y * 0.5 + 0.5) * canvasRect.height;
+        const hPx = MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT;
+        const wPx = hPx * label.userData.aspect;
+        // The sprite hangs below (center.y > 0.5) or above its anchor point.
+        const cy = cy0 + (label.center.y - 0.5) * hPx;
+        const halfW = Math.max(wPx, minSide) / 2;
+        const halfH = Math.max(hPx, minSide) / 2;
+        if (Math.abs(px - cx) <= halfW && Math.abs(py - cy) <= halfH) {
+          const d = Math.hypot(px - cx, py - cy);
+          if (d < bestDist) {
+            bestDist = d;
+            hit = owner.get(label);
+          }
+        }
+      }
       if (!hit) return false;
 
       event.preventDefault();
@@ -4570,6 +4612,19 @@ export function useIfcViewer() {
     setIsolatedKeys(new Set());
     resetVisibility();
   }, [resetVisibility]);
+
+  // Escape leaves isolation once nothing else (a tool, the selection, a
+  // popover) wanted the key first.
+  useEffect(() => {
+    if (isolatedKeys.size === 0) return undefined;
+    const onKey = (event) => {
+      if (event.key !== "Escape" || event.ifcEscHandled || event.defaultPrevented) return;
+      if (document.querySelector(".context-menu, .confirm-dialog-backdrop, .measure-leg-edit-popup")) return;
+      clearIsolation();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isolatedKeys, clearIsolation]);
 
   // Replaces the whole isolate set at once (used by the Levels control).
   const isolateKeys = useCallback(

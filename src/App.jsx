@@ -298,6 +298,15 @@ function App() {
     handleLoadSample();
   }, [handleLoadSample]);
 
+  useEffect(() => {
+    if (!sidebarOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape" && !document.querySelector(".confirm-dialog-backdrop")) setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarOpen]);
+
   const fileInputRef = useRef(null);
   const openFilePicker = useCallback(() => fileInputRef.current?.click(), []);
   const sectionHint = COARSE_POINTER && clipPlanes.length > 0 ? (clipMoveMode ? "sectionMove" : "sectionIdle") : null;
@@ -404,6 +413,7 @@ function App() {
           browser={browser}
           selectedId={browser.selectedId}
           onPickElement={() => setSidebarOpen(false)}
+          onRequestClose={() => setSidebarOpen(false)}
         />
 
         <div

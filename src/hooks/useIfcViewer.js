@@ -5191,7 +5191,6 @@ export function useIfcViewer() {
     renderForAWhile,
   });
 
-  window.__vm = { modelsRef };
   return {
     browser,
     containerRef,

@@ -26,7 +26,7 @@ export default function ClipPlaneControl({
 
       {clipPlanes.length === 0 ? (
         <p className="clip-control__hint">
-          {TOUCH_UI ? "Press and hold a surface to place a clip plane there." : "Right-click a surface to place a clip plane there."}
+          {TOUCH_UI ? "Press and hold a surface to cut a section there." : "Right-click a surface to cut a section there."}
         </p>
       ) : (
         <>

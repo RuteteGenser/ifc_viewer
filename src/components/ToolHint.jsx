@@ -13,7 +13,16 @@ const HINTS = {
     touch: "Tap an element to hide its whole category.",
     mouse: "Click an element to hide its whole category.",
   },
+  sectionIdle: {
+    touch: "Section cut. Dragging turns the model.",
+    mouse: "",
+  },
+  sectionMove: {
+    touch: "Drag to slide the section.",
+    mouse: "",
+  },
 };
+const LABELS = { sectionIdle: "Move section" };
 
 // One line saying what the armed tool does, with an obvious way out.
 export default function ToolHint({ tool, onDone }) {
@@ -23,7 +32,7 @@ export default function ToolHint({ tool, onDone }) {
     <div className="tool-hint" role="status">
       <span className="tool-hint__text">{text}</span>
       <button type="button" className="tool-hint__done" onClick={onDone}>
-        Done
+        {LABELS[tool] ?? "Done"}
       </button>
     </div>
   );

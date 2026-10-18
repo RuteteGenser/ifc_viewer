@@ -1,3 +1,5 @@
+const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
 // Read-only list of measurements — editing a leg's length happens by
 // clicking its own floating label directly in the 3D view (see
 // MeasureLegEditPopup.jsx), not here. Deliberately shows nothing while a
@@ -9,7 +11,7 @@ export default function MeasureControl({ measurements, onRemoveMeasurement }) {
     <div className="measure-control">
       {measurements.length === 0 ? (
         <p className="clip-control__hint">
-          Turn on Measure, then click two points in the view.
+          Turn on Measure, then {COARSE ? "tap" : "click"} two points on the model.
         </p>
       ) : (
         measurements.map((m) => (

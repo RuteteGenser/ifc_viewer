@@ -107,6 +107,8 @@ function App() {
     hideSelectedElement,
     setViewInsets,
     focusSelection,
+    clipMoveMode,
+    setClipMoveMode,
     toast,
     showToast,
     zoomToElementHere,
@@ -207,12 +209,18 @@ function App() {
 
   const fileInputRef = useRef(null);
   const openFilePicker = useCallback(() => fileInputRef.current?.click(), []);
-  const armedTool = measureModeActive ? "measure" : tagToolActive ? "tag" : categoryHideModeActive ? "category" : null;
+  const sectionHint = COARSE_POINTER && clipPlanes.length > 0 ? (clipMoveMode ? "sectionMove" : "sectionIdle") : null;
+  const armedTool = measureModeActive ? "measure" : tagToolActive ? "tag" : categoryHideModeActive ? "category" : sectionHint;
+  useEffect(() => {
+    if (clipPlanes.length === 0 && clipMoveMode) setClipMoveMode(false);
+  }, [clipPlanes.length, clipMoveMode, setClipMoveMode]);
   const exitArmedTool = useCallback(() => {
-    if (measureModeActive) toggleMeasureMode();
+    if (armedTool === "sectionIdle") setClipMoveMode(true);
+    else if (armedTool === "sectionMove") setClipMoveMode(false);
+    else if (measureModeActive) toggleMeasureMode();
     else if (tagToolActive) toggleTagTool();
     else if (categoryHideModeActive) toggleCategoryHideMode();
-  }, [measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
+  }, [armedTool, setClipMoveMode, measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
   const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
   const handleClosePanel = useCallback(() => {

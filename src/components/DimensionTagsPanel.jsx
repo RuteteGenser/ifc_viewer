@@ -1,3 +1,5 @@
+const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 
 export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins }) {
@@ -13,7 +15,7 @@ export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins
       </button>
       {pinnedTags.length === 0 ? (
         <p className="clip-control__hint">
-          Turn on the Tag tool, then click a hovered element to pin its dimension tag.
+          Turn on the Tag tool, then {COARSE ? "tap" : "hover and click"} an element to pin its dimension tag.
         </p>
       ) : (
         pinnedTags.map((tag) => (

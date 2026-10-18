@@ -368,6 +368,7 @@ export function useIfcViewer() {
   const autoFramedRef = useRef(false); // true until the user moves the camera themselves; insets then re-fit the model
   const cameraAnimRef = useRef(0);
   const showToastRef = useRef(() => {});
+  const clipMoveModeRef = useRef(false);
   const refitModelRef = useRef(() => {});
   const fitByFocusRef = useRef(false); // the last focus re-fitted the whole model; re-fit again when the sheet size changes
   const selectionAnchorRef = useRef(null); // selected point in modelsGroup-local coordinates
@@ -408,6 +409,7 @@ export function useIfcViewer() {
   const [loadFailed, setLoadFailed] = useState(false); // the last load ended in an error worth retrying
   const [toast, setToast] = useState(null); // { id, text } | null — short self-dismissing notice
   const toastTimerRef = useRef(0);
+  const [clipMoveMode, setClipMoveModeState] = useState(false); // touch: one-finger drag slides the section plane instead of orbiting
   const loadTokenRef = useRef(0); // bumped by every load and by Cancel, so a stale load can tell it was abandoned
   const cancelLoadRef = useRef(() => {});
   const lastLoadFilesRef = useRef(null);
@@ -747,6 +749,8 @@ export function useIfcViewer() {
     );
     camera.position.set(15, 15, 15);
     cameraRef.current = camera;
+    // Test hook: lets automated checks read the camera (only with ?debug in the URL).
+    if (new URLSearchParams(window.location.search).has("debug")) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -2041,6 +2045,9 @@ export function useIfcViewer() {
     const raycaster = new THREE.Raycaster();
     const WORLD_UP = new THREE.Vector3(0, 1, 0);
     const EPS = 0.001;
+    // A full-width drag turns the model 360 degrees with a mouse; a finger
+    // is far less precise, so touch turns it about 125 degrees instead.
+    const ROTATE_GAIN = TOUCH_UI ? 0.35 : 1;
 
     // Orientation of a camera at `eye` looking at `target`. Uses
     // Matrix4.lookAt (the camera convention, looking down -Z);
@@ -2318,13 +2325,13 @@ export function useIfcViewer() {
     renderer.domElement.addEventListener("pointermove", onDimensionHoverMove);
 
     const applyRotation = (ndc) => {
-      const theta = startTheta - Math.PI * (ndc.x - startNdcX);
+      const theta = startTheta - Math.PI * ROTATE_GAIN * (ndc.x - startNdcX);
       // + on the elevation term: ndc.y grows upward, and dragging up
       // should tip the model's top away from you (equivalently, raise
       // the virtual camera), matching OrbitControls' vertical direction.
       const phi = Math.max(
         EPS,
-        Math.min(Math.PI - EPS, startPhi + Math.PI * (ndc.y - startNdcY)),
+        Math.min(Math.PI - EPS, startPhi + Math.PI * ROTATE_GAIN * (ndc.y - startNdcY)),
       );
 
       const modelQuat = cameraQuatStart
@@ -3008,7 +3015,7 @@ export function useIfcViewer() {
     // Returns true if a drag was started (caller should not also start a
     // rotate gesture, or the measure tool's click-to-place, for this
     // same pointerdown).
-    const tryStartMeasureMarkerDrag = (event) => {
+    const tryStartMeasureMarkerDrag = (event, fuzzy = false) => {
       if (event.button !== 0 || measurementsRuntime.length === 0) return false;
       const owner = new Map();
       const hittable = [];
@@ -3021,8 +3028,20 @@ export function useIfcViewer() {
       const ndc = getNdc(event);
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObjects(hittable, false);
-      if (hits.length === 0) return false;
-      const hit = owner.get(hits[0].object);
+      let hit = hits.length > 0 ? owner.get(hits[0].object) : null;
+      // A fingertip is far wider than the marker dot: on touch also accept
+      // the nearest marker within a thumb-sized radius on screen.
+      if (!hit && fuzzy && event.pointerType === "touch") {
+        let best = null;
+        for (const marker of hittable) {
+          if (!marker.visible) continue;
+          const wp = marker.getWorldPosition(new THREE.Vector3());
+          const c = worldToClient(wp);
+          const dist = Math.hypot(c.x - event.clientX, c.y - event.clientY);
+          if (dist <= 24 && (!best || dist < best.dist)) best = { dist, marker };
+        }
+        if (best) hit = owner.get(best.marker);
+      }
       if (!hit) return false;
 
       event.preventDefault();
@@ -3158,6 +3177,9 @@ export function useIfcViewer() {
     const tryStartClipPlaneDrag = (event) => {
       // Shift+drag with a mouse; a plain one-finger drag on touch, which has no Shift key.
       if ((!event.shiftKey && event.pointerType !== "touch") || event.button !== 0) return false;
+      // A finger over the section plane is ambiguous (orbit or slide?), so
+      // on touch the plane only moves while "Move section" is switched on.
+      if (event.pointerType === "touch" && !clipMoveModeRef.current) return false;
       const hittable = clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh);
       if (hittable.length === 0) return false;
       const ndc = getNdc(event);
@@ -3258,6 +3280,7 @@ export function useIfcViewer() {
     const onRotateStart = (event) => {
       if (tryStartMeasureMarkerDrag(event)) return;
       if (tryClickMeasureLegLabel(event)) return;
+      if (tryStartMeasureMarkerDrag(event, true)) return;
       if (tryStartClipPlaneDrag(event)) return;
       // A second touch point landing mid-drag means the gesture just
       // became a pinch/two-finger pan — hand off to OrbitControls' own
@@ -4058,6 +4081,11 @@ export function useIfcViewer() {
     if (!entry) return;
     await hideHit({ fragments: entry.model, localId: sel.localId });
   }, [hideHit]);
+
+  const setClipMoveMode = useCallback((on) => {
+    clipMoveModeRef.current = on;
+    setClipMoveModeState(on);
+  }, []);
 
   const showToast = useCallback((text, ms = 2800) => {
     clearTimeout(toastTimerRef.current);
@@ -4966,6 +4994,8 @@ export function useIfcViewer() {
     hideSelectedElement,
     setViewInsets,
     focusSelection,
+    clipMoveMode,
+    setClipMoveMode,
     toast,
     dismissToast,
     showToast,

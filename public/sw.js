@@ -41,15 +41,25 @@ async function precacheAll() {
   await Promise.all([worker(), worker()])
 }
 
+// On a first visit the precache must not compete with the page's own critical
+// downloads (they share one link), so the page asks for it with a 'precache'
+// message once those are done. An update of a returning visitor, whose page
+// already has everything it needs, starts it right away.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('ifc-viewer-') && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-      .then(() => precacheAll())
+      .then((keys) => {
+        const old = keys.filter((k) => k.startsWith('ifc-viewer-') && k !== CACHE)
+        return Promise.all(old.map((k) => caches.delete(k))).then(() => old.length > 0)
+      })
+      .then((isUpdate) => self.clients.claim().then(() => isUpdate && precacheAll()))
       .catch(() => {}),
   )
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'precache') event.waitUntil(precacheAll().catch(() => {}))
 })
 
 const cacheable = (response) => response && response.status === 200 && response.type === 'basic'

@@ -1,6 +1,7 @@
 import { FragmentsModels, IfcImporter } from "@thatopen/fragments";
 // Local worker asset so the app never depends on a CDN at runtime.
 import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
+import { loadSchema, loadSchemaFor } from "./ifcSchemas";
 
 /**
  * Creates the (non-visual) IFC parsing pipeline, returned in the shape the
@@ -25,6 +26,7 @@ export async function createIfcPipeline() {
     // Same steps as OBC.IfcLoader.load: convert in the importer, then load
     // the converted bytes into the fragments engine under `name`.
     async load(data, coordinate, name, config) {
+      await loadSchemaFor(data);
       core.settings.autoCoordinate = coordinate;
       const importer = new IfcImporter();
       importer.wasm.path = wasm.path;
@@ -43,6 +45,12 @@ export async function createIfcPipeline() {
   };
 
   return { components, fragments, ifcLoader };
+}
+
+// Starts downloading the schema code for IFC4 (the sample's schema) ahead of
+// the first file, so opening it does not wait for that chunk.
+export function warmIfc4Schema() {
+  return loadSchema(2).catch(() => {});
 }
 
 // main.jsx calls startIfcPipeline() before React renders so the heavy

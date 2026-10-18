@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import CameraClipControl from "./CameraClipControl";
 import Tooltip from "./Tooltip";
 import SearchBar from "./SearchBar";
@@ -76,8 +77,23 @@ export default function Toolbar({
   onToggleIsolate,
   onClearIsolation,
 }) {
+  const rootRef = useRef(null);
+
+  // On narrow screens the toolbar wraps to two or three rows, so its height
+  // isn't a constant; publish it so anything anchored beneath it (status
+  // banners) can follow.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const publish = () => document.documentElement.style.setProperty("--toolbar-h", `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="toolbar">
+    <div className="toolbar" ref={rootRef}>
       <Tooltip description="Reset to the default view">
         <button
           type="button"

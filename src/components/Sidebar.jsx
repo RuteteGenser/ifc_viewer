@@ -1,6 +1,12 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 
+// iOS/Android file pickers grey out files with extensions they can't map
+// to a known type (.ifc/.ifcZIP), making them unselectable — so on touch
+// devices the filter is dropped; loadFiles reports unparseable files.
+const COARSE_POINTER =
+  typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   return (
     <li className="model-row">
@@ -117,7 +123,7 @@ export default function Sidebar({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifczip"
+        accept={COARSE_POINTER ? undefined : ".ifc,.ifczip"}
         multiple
         hidden
         onChange={(e) => {
@@ -152,7 +158,7 @@ export default function Sidebar({
         className="sidebar__reset-visibility-button"
         onClick={onResetVisibility}
         disabled={models.length === 0}
-        title="Show any elements hidden via right-click"
+        title="Show any elements you have hidden"
       >
         Reset visibility
       </button>

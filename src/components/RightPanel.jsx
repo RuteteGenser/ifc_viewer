@@ -19,8 +19,11 @@ function TabUnderline() {
 
 export default function RightPanel({
   activeTab,
+  open,
   onTabChange,
+  onToggleOpen,
   onClose,
+  onHideElement,
   element,
   loading,
   measurements,
@@ -30,7 +33,16 @@ export default function RightPanel({
   onClearAllDimensionPins,
 }) {
   return (
-    <aside className="element-panel">
+    <aside className={`element-panel${open ? " element-panel--open" : ""}`}>
+      <button
+        type="button"
+        className="element-panel__grabber"
+        onClick={onToggleOpen}
+        aria-label={open ? "Collapse details panel" : "Expand details panel"}
+        aria-expanded={open}
+      >
+        <span />
+      </button>
       <div className="element-panel__tabbar">
         <button
           type="button"
@@ -68,7 +80,7 @@ export default function RightPanel({
 
       <div className="element-panel__body">
         {activeTab === "info" ? (
-          <ElementInfoPanel element={element} loading={loading} />
+          <ElementInfoPanel element={element} loading={loading} onHide={onHideElement} />
         ) : activeTab === "measurements" ? (
           <MeasureControl
             measurements={measurements}

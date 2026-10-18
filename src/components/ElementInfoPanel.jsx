@@ -65,7 +65,7 @@ function CopyableValue({ value, className }) {
 // Renders only the Info tab's own content — the surrounding
 // aside/tab-bar/close-button chrome lives in RightPanel, shared with the
 // Measurements tab.
-export default function ElementInfoPanel({ element, loading }) {
+export default function ElementInfoPanel({ element, loading, onHide }) {
   const showIfcInfoSection = element && IFC_INFO_CATEGORIES.has(element.category?.toUpperCase());
 
   return (
@@ -77,6 +77,11 @@ export default function ElementInfoPanel({ element, loading }) {
         {element?.name && (
           <div className="element-panel__name">{element.name}</div>
         )}
+        {element && onHide && (
+          <button type="button" className="element-panel__hide-button" onClick={onHide}>
+            Hide this element
+          </button>
+        )}
       </div>
 
       {loading && !element && (
@@ -85,7 +90,7 @@ export default function ElementInfoPanel({ element, loading }) {
 
       {!loading && !element && (
         <p className="element-panel__hint">
-          No element selected — click an element to see its properties.
+          No element selected — tap or click an element to see its properties.
         </p>
       )}
 

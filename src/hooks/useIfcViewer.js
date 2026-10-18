@@ -298,26 +298,38 @@ export function useIfcViewer() {
   const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
   const [categoryHideModeActive, setCategoryHideModeActiveState] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState([]); // string[] — categories currently hidden via the hide-category tool
+  // Mirrors the lengths of the undo/redo stacks so toolbar buttons (the
+  // only way to undo/redo on a touch device, which has no Ctrl+Z) can
+  // enable/disable themselves; the stacks themselves stay in refs.
+  const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
 
   // A new action always invalidates the redo history — the standard
   // undo/redo convention (you can't "redo" something that's no longer
   // where it would have applied).
+  const syncHistoryCounts = useCallback(() => {
+    setHistoryCounts({ undo: undoStackRef.current.length, redo: redoStackRef.current.length });
+  }, []);
   const pushUndo = useCallback((entry) => {
     undoStackRef.current.push(entry);
     redoStackRef.current = [];
-  }, []);
+    syncHistoryCounts();
+  }, [syncHistoryCounts]);
   const undo = useCallback(async () => {
     const entry = undoStackRef.current.pop();
     if (!entry) return;
+    syncHistoryCounts();
     await entry.undo();
     redoStackRef.current.push(entry);
-  }, []);
+    syncHistoryCounts();
+  }, [syncHistoryCounts]);
   const redo = useCallback(async () => {
     const entry = redoStackRef.current.pop();
     if (!entry) return;
+    syncHistoryCounts();
     await entry.redo();
     undoStackRef.current.push(entry);
-  }, []);
+    syncHistoryCounts();
+  }, [syncHistoryCounts]);
 
   // Shared by the hide-category tool's in-view click (armed via
   // categoryHideModeActiveRef, dispatched from inside the imperative
@@ -4300,5 +4312,10 @@ export function useIfcViewer() {
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,
+    undo,
+    redo,
+    canUndo: historyCounts.undo > 0,
+    canRedo: historyCounts.redo > 0,
+    hideSelectedElement,
   };
 }

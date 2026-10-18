@@ -6,6 +6,7 @@ import Tooltip from "./Tooltip";
 // there's no single registry of {key, description} in the hook to read
 // from.
 const SHORTCUTS = [
+  { keys: "Long-press", description: "Touch: open the clip plane / hide menu (same as right-click)" },
   { keys: "H", description: "Hide the selected element" },
   { keys: "C", description: "Create a clip plane under the cursor" },
   { keys: "M", description: "Toggle measure mode" },

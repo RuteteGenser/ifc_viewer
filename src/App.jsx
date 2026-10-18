@@ -87,11 +87,19 @@ function App() {
     pinnedDimensionTags,
     unpinDimensionTag,
     clearAllDimensionPins,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    hideSelectedElement,
   } = useIfcViewer();
 
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeRightTab, setActiveRightTab] = useState("info");
+  // Only meaningful on narrow screens, where the right panel is a bottom
+  // sheet that starts collapsed to a peek bar; on desktop it's always shown.
+  const [panelOpen, setPanelOpen] = useState(false);
   const dragDepthRef = useRef(0);
   const lastAutoSwitchGuidRef = useRef(null);
 
@@ -103,9 +111,24 @@ function App() {
     const guid = selectedElement?.guid ?? null;
     if (guid && guid !== lastAutoSwitchGuidRef.current) {
       setActiveRightTab("info");
+      setPanelOpen(true);
     }
     lastAutoSwitchGuidRef.current = guid;
   }, [selectedElement?.guid]);
+
+  const handleTabChange = useCallback(
+    (tab) => {
+      // Tapping the already-open tab folds the sheet back down.
+      setPanelOpen((open) => !(open && tab === activeRightTab));
+      setActiveRightTab(tab);
+    },
+    [activeRightTab],
+  );
+
+  const handleClosePanel = useCallback(() => {
+    clearSelection();
+    setPanelOpen(false);
+  }, [clearSelection]);
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -142,7 +165,7 @@ function App() {
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
       />
 
-      <div className="app-body">
+      <div className="app-body" data-sheet={panelOpen ? "open" : "peek"}>
         {sidebarOpen && (
           <button
             type="button"
@@ -210,6 +233,32 @@ function App() {
             onToggleIsolate={toggleIsolate}
             onClearIsolation={clearIsolation}
           />
+          <div className="history-buttons">
+            <button
+              type="button"
+              className="history-buttons__button"
+              onClick={undo}
+              disabled={!canUndo}
+              aria-label="Undo"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="history-buttons__button"
+              onClick={redo}
+              disabled={!canRedo}
+              aria-label="Redo"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H10a6 6 0 0 0 0 12h3" />
+              </svg>
+            </button>
+          </div>
           <Compass
             angleDeg={compassAngleDeg}
             offsetDeg={northOffsetDeg}
@@ -231,8 +280,11 @@ function App() {
 
         <RightPanel
           activeTab={activeRightTab}
-          onTabChange={setActiveRightTab}
-          onClose={clearSelection}
+          open={panelOpen}
+          onTabChange={handleTabChange}
+          onToggleOpen={() => setPanelOpen((open) => !open)}
+          onClose={handleClosePanel}
+          onHideElement={hideSelectedElement}
           element={selectedElement}
           loading={selectedElementLoading}
           measurements={measurements}

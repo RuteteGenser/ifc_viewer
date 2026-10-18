@@ -5025,14 +5025,22 @@ export function useIfcViewer() {
     if (abandoned()) return;
     await Promise.race([pipeline.fragments.core.update(true), new Promise((resolve) => setTimeout(resolve, 15000))]);
     await new Promise((resolve) => setTimeout(resolve, 150));
-    for (const entry of modelsRef.current.values()) {
+    const geometryless = [];
+    for (const [id, entry] of modelsRef.current.entries()) {
       if (entry.localBox !== undefined) continue;
       try {
         entry.localBox = await computeModelLocalBox(entry.model, modelsGroup);
+        if (entry.localBox === null) geometryless.push([id, entry.fileName]);
       } catch (err) {
         console.error("Could not measure model bounds", err);
         entry.localBox = null;
       }
+    }
+    // A valid IFC that carries no 3D geometry would otherwise sit in the list
+    // as an invisible model: say so and take it out again.
+    for (const [id, name] of geometryless) {
+      await removeModel(id);
+      appendError(`"${name}" has no 3D geometry to show.`);
     }
     if (cameraRef.current && controlsRef.current) {
       autoFramedRef.current = true;

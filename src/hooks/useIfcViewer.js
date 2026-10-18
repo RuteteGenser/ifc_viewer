@@ -4512,6 +4512,7 @@ export function useIfcViewer() {
       requestRenderRef.current();
     };
     pushUndo({
+      modelId: hit.fragments.modelId,
       undo: () => setHidden(false),
       redo: () => setHidden(true),
     });
@@ -5076,6 +5077,10 @@ export function useIfcViewer() {
     if (entry && modelsGroup) modelsGroup.remove(entry.object);
     if (entry?.onViewUpdatedHandler) entry.model.onViewUpdated.remove(entry.onViewUpdatedHandler);
     modelsRef.current.delete(modelId);
+    // Undo steps that act on the removed model's elements can no longer run.
+    undoStackRef.current = undoStackRef.current.filter((e) => e.modelId !== modelId);
+    redoStackRef.current = redoStackRef.current.filter((e) => e.modelId !== modelId);
+    syncHistoryCounts();
     clearDimensionTagsForModelRef.current?.(modelId);
     const rawHandle = rawIfcHandlesRef.current.get(modelId);
     if (rawHandle) {
@@ -5096,7 +5101,7 @@ export function useIfcViewer() {
     } catch (err) {
       console.error(`Failed to dispose model ${modelId}`, err);
     }
-  }, []);
+  }, [syncHistoryCounts]);
 
   // Shows the "replace existing file?" modal and resolves to the user's
   // choice; ConfirmDialog (rendered from the `confirmReplace` state)

@@ -200,7 +200,7 @@ export default function useModelBrowser({
       await apply(show);
       const sel = selectedHitRef.current;
       if (!show && sel && sel.modelId === node.modelId && ids.includes(sel.localId)) clearSelection();
-      pushUndo({ undo: () => apply(!show), redo: () => apply(show) });
+      pushUndo({ modelId: node.modelId, undo: () => apply(!show), redo: () => apply(show) });
     },
     [modelsRef, pipelineRef, requestRenderRef, invalidateGroupSphereRef, selectedHitRef, clearSelection, pushUndo, renderForAWhile, refreshHidden],
   );

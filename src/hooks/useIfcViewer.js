@@ -640,7 +640,10 @@ export function useIfcViewer() {
     // on so two-finger touch pinch-zoom — which OrbitControls handles
     // via an entirely separate (non-'wheel') code path gated on these
     // same flags — keeps working on mobile exactly as before.
-    controls.zoomToCursor = true;
+    // Off on touch: zooming toward the midpoint between two fingers drifts
+    // the model sideways and the zoom rate varies with where the target
+    // sits; pinching toward the (model-centred) target stays predictable.
+    controls.zoomToCursor = !TOUCH_UI;
     controls.mouseButtons = {
       LEFT: null, // handled by the arcball model-rotation below
       MIDDLE: THREE.MOUSE.PAN,
@@ -1012,7 +1015,7 @@ export function useIfcViewer() {
         ctx.fillText(line.text, textX, paddingY + lineHeight * (i + 0.5));
       });
     };
-    const createMeasureLabel = (lines, align = "center") => {
+    const createMeasureLabel = (lines, align = "center", anchorY = 0.5) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       drawMeasureLabelCanvas(canvas, ctx, lines, align);
@@ -1021,6 +1024,11 @@ export function useIfcViewer() {
       texture.minFilter = THREE.LinearFilter;
       const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
       const sprite = new THREE.Sprite(material);
+      // `center` is where the sprite sits relative to its anchor point;
+      // measurement labels are nudged off their line midpoints (the total
+      // above, the legs below) so they don't stack when the legs run
+      // nearly parallel to the total.
+      sprite.center.set(0.5, anchorY);
       sprite.renderOrder = 1000;
       sprite.userData = { canvas, ctx, aspect: canvas.width / canvas.height };
       modelsGroup.add(sprite);
@@ -1060,10 +1068,10 @@ export function useIfcViewer() {
         const legDepth = createMeasureLeg(a, a, 0xef4444);
         const legRight = createMeasureLeg(a, a, 0x3b82f6);
         const legUp = createMeasureLeg(a, a, 0x22c55e);
-        const label = createMeasureLabel(measureLabelLines(0));
-        const legDepthLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }]);
-        const legRightLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }]);
-        const legUpLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }]);
+        const label = createMeasureLabel(measureLabelLines(0), "center", -0.1);
+        const legDepthLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }], "center", 1.1);
+        const legRightLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }], "center", 1.1);
+        const legUpLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }], "center", 1.1);
         measurePreviewEntry = { markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel };
       }
       const entry = measurePreviewEntry;
@@ -1247,10 +1255,10 @@ export function useIfcViewer() {
       const legRight = createMeasureLeg(a, a, 0x3b82f6);
       const legUp = createMeasureLeg(a, a, 0x22c55e);
       const legDepth = createMeasureLeg(a, a, 0xef4444);
-      const label = createMeasureLabel(measureLabelLines(0));
-      const legRightLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }]);
-      const legUpLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }]);
-      const legDepthLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }]);
+      const label = createMeasureLabel(measureLabelLines(0), "center", -0.1);
+      const legRightLabel = createMeasureLabel([{ text: "0.000 m", color: "#3b82f6" }], "center", 1.1);
+      const legUpLabel = createMeasureLabel([{ text: "0.000 m", color: "#22c55e" }], "center", 1.1);
+      const legDepthLabel = createMeasureLabel([{ text: "0.000 m", color: "#ef4444" }], "center", 1.1);
       const entry = {
         id: `measure-${++measureUid}`,
         markerA,

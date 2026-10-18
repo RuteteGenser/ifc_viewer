@@ -5067,6 +5067,12 @@ export function useIfcViewer() {
     const modelsGroup = modelsGroupRef.current;
     const entry = modelsRef.current.get(modelId);
 
+    // The selection (highlight box and Info panel) may belong to this model.
+    if (selectedHitRef.current?.modelId === modelId) {
+      clearHighlightRef.current?.();
+      selectedHitRef.current = null;
+      setSelectedElement(null);
+    }
     if (entry && modelsGroup) modelsGroup.remove(entry.object);
     if (entry?.onViewUpdatedHandler) entry.model.onViewUpdated.remove(entry.onViewUpdatedHandler);
     modelsRef.current.delete(modelId);

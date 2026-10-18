@@ -83,6 +83,21 @@ export async function assetIsGone(url) {
   }
 }
 
+// This tab is older than the deployed build (a newer index.html, or its own entry script is gone).
+export async function isStaleBuild() {
+  const entry = typeof document === "undefined" ? null : document.querySelector("script[type=module][src]")?.src;
+  return !!((await fetchNewerBuildId()) || (entry && (await assetIsGone(entry))));
+}
+
+// Before the import starts over: ask the network (not the HTTP cache) for the
+// files the failure names, so a bad cached copy cannot repeat it. Best effort, 5 s at most.
+export async function refreshFailedAssets(message) {
+  const urls = [...new Set(String(message ?? "").match(/https?:\/\/[^\s"')]+\.(?:js|wasm)/g) ?? [])].slice(0, 3);
+  if (urls.length === 0) return;
+  const refresh = Promise.all(urls.map((u) => fetch(u, { cache: "reload" }).then((r) => r.arrayBuffer()).catch(() => {})));
+  await Promise.race([refresh, new Promise((resolve) => setTimeout(resolve, 5000))]);
+}
+
 // ---- browser actions ----
 export async function purgeStaleCaches() {
   try {
@@ -117,6 +132,8 @@ export async function reloadNow(intent) {
 // The engine (or any lazily loaded chunk) failed while the page booted. If this
 // tab is older than the deployed build, reload once; otherwise leave it be.
 export async function recoverFromBootFailure() {
-  const entry = document.querySelector("script[type=module][src]")?.src;
-  if ((await fetchNewerBuildId()) || (entry && (await assetIsGone(entry)))) await reloadResuming(null);
+  // A newer build, or just a chunk that did not arrive: a fresh page fixes both
+  // (a failed import() is not retried for the same URL until the page reloads).
+  // The loop guard allows one such reload a minute.
+  await reloadResuming(null);
 }

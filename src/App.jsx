@@ -7,6 +7,7 @@ import DropOverlay from "./components/DropOverlay";
 import LoadingOverlay from "./components/LoadingOverlay";
 import StatusBanner from "./components/StatusBanner";
 import { startupIntent } from "./reliability/recovery";
+import { attemptText, withBackoff } from "./reliability/retry";
 import ContextMenu from "./components/ContextMenu";
 import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
@@ -316,17 +317,25 @@ function App() {
       // file, such as a page saved under its address; check the bytes, and
       // if they are wrong ask again past every cache.
       const isIfc = async (blob) => (await blob.slice(0, 16).text()).startsWith("ISO-10303-21");
-      let blob = await read(early ?? fetch(url));
-      if (!(await isIfc(blob))) blob = await read(fetch(`${url}?fresh=${Date.now()}`, { cache: "reload" }));
-      if (!(await isIfc(blob))) throw new Error("the server did not return an IFC file");
+      // A failed download starts over by itself (0 s, 1 s, 3 s), past every cache.
+      const fresh = () => read(fetch(`${url}?fresh=${Date.now()}`, { cache: "reload" }));
+      const blob = await withBackoff(
+        async (attempt) => {
+          let b = attempt === 1 ? await read(early ?? fetch(url)) : await fresh();
+          if (!(await isIfc(b)) && attempt === 1) b = await fresh();
+          if (!(await isIfc(b))) throw new Error("the server did not return an IFC file");
+          return b;
+        },
+        { onRetry: (e, next, total) => showToast(attemptText("Loading the sample", next, total)) },
+      );
       const file = new File([blob], "demo-building.ifc");
       file.displayName = SAMPLE_NAME;
       file.argusIntent = { type: "sample" }; // reopened by itself if Argus reloads to update (see reliability/recovery.js)
       loadFiles([file]);
     } catch (err) {
-      setError(`Could not load the sample building (${err.message}). Check your connection and try again.`);
+      setError(`Could not load the sample building (${err.message}) after trying again. Check your connection and open it once more.`);
     }
-  }, [loadFiles, setError]);
+  }, [loadFiles, setError, showToast]);
 
   const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false), onRenamed: renameLoadedModel });
 
@@ -568,7 +577,7 @@ function App() {
             onOffsetChange={setNorthOffset}
             disabled={models.length === 0}
           />
-          <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} idle={!isLoading && !armedTool} />
+          <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} onChooseFile={openFilePicker} idle={!isLoading && !armedTool} />
           <Toast toast={toast} />
           {!panelOpen && detailsCount > 0 && (
             <button type="button" className="details-fab" aria-label={`Show details, ${detailsCount} item${detailsCount === 1 ? "" : "s"}`} onClick={openDetails}>

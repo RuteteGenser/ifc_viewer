@@ -50,7 +50,7 @@ export default function TransferBar() {
     <div className="lib-transfer" ref={ref}>
       {download && (
         <Progress
-          label={`Downloading ${short(download.name)}`}
+          label={download.note ? `${download.note}: ${short(download.name)}` : `Downloading ${short(download.name)}`}
           percent={download.percent}
           cancelLabel={`Cancel download of ${download.name}`}
           onCancel={library.cancelDownload}

@@ -20,6 +20,18 @@ test("memory exhaustion is out of memory at every stage", () => {
   assert.equal(classifyFailure(err("Array buffer allocation failed", "RangeError"), "parse"), KIND.OUT_OF_MEMORY);
   assert.equal(classifyFailure(err("Out of memory"), "build"), KIND.OUT_OF_MEMORY);
   assert.equal(classifyFailure(err("Cannot enlarge memory arrays"), "parse"), KIND.OUT_OF_MEMORY);
+  // wordings of Chrome, Firefox and Safari/WebKit
+  for (const m of [
+    "RangeError: Array buffer allocation failed",
+    "WebAssembly.Memory(): could not allocate memory",
+    "Failed to allocate memory for the module",
+    "RangeError: Out of memory",
+    "Aborted(OOM). Build with -sASSERTIONS for more info.",
+    "Invalid array length",
+    "WebAssembly.Memory.grow(): Maximum memory size exceeded",
+    "Unable to allocate 1073741824 bytes",
+    "not enough memory",
+  ]) assert.equal(classifyFailure(err(m), "parse"), KIND.OUT_OF_MEMORY, m);
 });
 
 test("only a failure after the importer started on the content is an invalid file", () => {
@@ -39,8 +51,8 @@ test("toImportError keeps kinds and recognises the page's own sentinels", () => 
   assert.equal(toImportError(new Error("Failed to fetch dynamically imported module: x")).kind, KIND.APP_ASSET_FAILED);
 });
 
-test("only asset failures and crashes are retried automatically", () => {
-  for (const k of Object.values(KIND)) assert.equal(isRetryable(k), k === KIND.APP_ASSET_FAILED || k === KIND.WORKER_CRASHED, k);
+test("asset failures, crashes and stalls are retried automatically; a rejected file never is", () => {
+  for (const k of Object.values(KIND)) assert.equal(isRetryable(k), [KIND.APP_ASSET_FAILED, KIND.WORKER_CRASHED, KIND.TIMEOUT].includes(k), k);
 });
 
 test("'valid IFC' is only ever said for INVALID_FILE", () => {
@@ -55,12 +67,17 @@ test("'valid IFC' is only ever said for INVALID_FILE", () => {
 
 test("messages are accurate and actionable", () => {
   const d = (kind, ctx) => describeFailure({ kind, message: "m" }, { name: "a.ifc", ...ctx });
-  assert.match(d(KIND.APP_ASSET_FAILED, { reloading: true }), /new version was released\)\. Reloading/);
+  assert.match(d(KIND.APP_ASSET_FAILED, { reloading: true }), /^Updating Argus/);
   assert.match(d(KIND.APP_ASSET_FAILED, { staleBuild: true }), /Reload to continue/);
   assert.match(d(KIND.WORKER_CRASHED), /stopped unexpectedly\. Trying again/);
   assert.match(d(KIND.OUT_OF_MEMORY), /Not enough memory to open "a\.ifc"/);
-  assert.match(d(KIND.DOWNLOAD_INCOMPLETE), /download was incomplete/);
+  assert.match(d(KIND.DOWNLOAD_INCOMPLETE), /download keeps arriving incomplete/);
   assert.match(describeFailure({ kind: KIND.INVALID_FILE, message: "line 1: bad\nentity" }, { name: "a.ifc" }), /^"a\.ifc" is not a valid IFC file: line 1: bad entity\.$/);
+});
+
+test("no message tells the user to press Retry before every automatic attempt is spent", () => {
+  // describeFailure is only shown after the attempts; it must still not promise buttons that are absent
+  for (const kind of Object.values(KIND)) assert.ok(!/\bRetry\b/.test(describeFailure({ kind, message: "x" }, { name: "a.ifc" })), kind);
 });
 
 test("details carry kind, message, build and agent", () => {

@@ -29,7 +29,9 @@ export class ImportError extends Error {
 // Texts the browser and emscripten produce when a file Argus ships did not arrive.
 const ASSET_FAILURE =
   /dynamically imported module|Failed to fetch|importScripts|NetworkError|Load failed|error loading dynamically|MIME type|expected magic word|WebAssembly\.(instantiate|compile|instantiateStreaming)|CompileError|LinkError|wasm streaming|fetching of the wasm failed|prepare wasm|Unexpected token '<'|Unexpected end of (input|JSON)/i;
-const MEMORY_FAILURE = /out of memory|allocation failed|Array buffer allocation|Invalid array length|Cannot enlarge memory|WebAssembly\.Memory|\bOOM\b/i;
+// Chrome, Firefox and Safari/WebKit word memory exhaustion differently.
+const MEMORY_FAILURE =
+  /out of memory|memory allocation|allocation failed|failed to allocate|could not allocate|cannot allocate|unable to allocate|not enough memory|insufficient memory|Array buffer allocation|Invalid array length|Cannot enlarge memory|WebAssembly\.Memory|memory.{0,20}(exceed|limit|grow)|\bOOM\b/i;
 
 /**
  * @param {unknown} err
@@ -55,8 +57,8 @@ export function toImportError(err) {
   return new ImportError(classifyFailure(err, "build"), message, { stage: "build", cause: err });
 }
 
-// Worth one automatic retry with a fresh worker.
-export const isRetryable = (kind) => kind === KIND.APP_ASSET_FAILED || kind === KIND.WORKER_CRASHED;
+// Worth automatic retries with a fresh worker (a stall is a TIMEOUT from the progress watchdog).
+export const isRetryable = (kind) => kind === KIND.APP_ASSET_FAILED || kind === KIND.WORKER_CRASHED || kind === KIND.TIMEOUT;
 
 const oneLine = (text, max = 140) => {
   const t = String(text ?? "").replace(/\s+/g, " ").trim();
@@ -73,24 +75,24 @@ export function describeFailure(error, { name, reloading = false, retried = fals
     case KIND.INVALID_FILE:
       return `"${name}" is not a valid IFC file: ${oneLine(error.message) || "the importer rejected it"}.`.replace(/\.\.$/, ".");
     case KIND.APP_ASSET_FAILED:
-      if (reloading) return "Argus could not load part of itself (probably a new version was released). Reloading…";
+      if (reloading) return "Updating Argus…";
       return staleBuild
         ? "A new version of Argus was released and this page is out of date. Reload to continue."
-        : "Argus could not load part of itself. Check your connection, then retry or reload the page.";
+        : "Argus could not load part of itself, even after trying again. Check your connection, then try once more or reload the page.";
     case KIND.WORKER_CRASHED:
       return retried
-        ? "The importer stopped unexpectedly again. Retry, or reload the page."
+        ? "The importer stopped unexpectedly, even after restarting. Try once more, or reload the page."
         : "The importer stopped unexpectedly. Trying again…";
     case KIND.OUT_OF_MEMORY:
-      return `Not enough memory to open "${name}" on this device. Close other tabs or try a smaller model.`;
+      return `Not enough memory to open "${name}" on this device, even after freeing what Argus could. Close other tabs or try a smaller model.`;
     case KIND.TIMEOUT:
-      return `"${name}" is taking too long to open. It may be too large for this device. You can retry or pick a smaller file.`;
+      return `"${name}" keeps stalling, even after Argus restarted the import. It may be too large for this device. You can try once more or pick a smaller file.`;
     case KIND.DOWNLOAD_INCOMPLETE:
-      return "The download was incomplete. Try again.";
+      return "The download keeps arriving incomplete. Check your connection and try once more.";
     case KIND.FILE_UNREADABLE:
       return `Could not read "${name}" from this device. Is the file still there?`;
     default:
-      return `Something went wrong opening "${name}". Retry, or open Details for the technical message.`;
+      return `Something went wrong opening "${name}". Open Details for the technical message.`;
   }
 }
 

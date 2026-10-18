@@ -8,7 +8,19 @@ import { classifyFailure } from "../reliability/importErrors";
 
 // Static imports above have loaded: the page tells a worker that never got
 // here (a file of Argus's own failed to load) from one that died later.
-self.postMessage({ type: "alive" });
+// The worker also holds a Web Lock for as long as it lives. A killed worker
+// (terminate, the OS reclaiming memory) sends nothing, but its lock is
+// released at once, which is how the page notices (see ifcImportClient.js).
+// A busy worker cannot run timers, so a heartbeat would not work; a lock does.
+const lockName = `argus-import-${Math.random().toString(36).slice(2)}`;
+if (self.navigator?.locks) {
+  self.navigator.locks.request(lockName, () => {
+    self.postMessage({ type: "alive", lock: lockName });
+    return new Promise(() => {}); // held until the worker is gone
+  });
+} else {
+  self.postMessage({ type: "alive" });
+}
 
 self.onmessage = async (event) => {
   // Prewarm: the page has started this worker ahead of the first file; fetch

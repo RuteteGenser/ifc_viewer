@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { copyText } from "../components/copyText";
 import { startupIntent } from "../reliability/recovery";
+import { attemptText } from "../reliability/retry";
 import {
   ALLOWED,
   MAX_BYTES,
@@ -116,7 +117,12 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
             const pct = fraction == null ? null : Math.floor(fraction * 100);
             if (pct === lastPct) return;
             lastPct = pct;
-            setDownload({ name: record.name, percent: pct });
+            setDownload((d) => ({ name: record.name, percent: pct, note: d?.note }));
+          },
+          // A failed download starts over by itself: say so instead of showing an error.
+          onAttempt: (attempt, total) => {
+            lastPct = -1;
+            setDownload({ name: record.name, percent: 0, note: attemptText("Downloading", attempt, total) });
           },
         });
         loadFilesRef.current([file]);

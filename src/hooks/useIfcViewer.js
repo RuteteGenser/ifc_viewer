@@ -16,9 +16,10 @@ import {
   openRawIfcModel,
 } from "../ifc/rawIfcQuery";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
-import { importIfcInWorker } from "../ifc/ifcImportClient";
-import { KIND, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
-import { assetIsGone, fetchNewerBuildId, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
+import { importIfcInWorker, releaseImporterMemory } from "../ifc/ifcImportClient";
+import { KIND, ImportError, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
+import { isStaleBuild, refreshFailedAssets, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
+import { BACKOFF_MS, attemptText, sleep, stallLimitMs } from "../reliability/retry";
 import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
@@ -4114,14 +4115,21 @@ export function useIfcViewer() {
       })
       .catch((err) => {
         console.error("Failed to initialize IFC pipeline", err);
-        if (!disposed) {
+        if (disposed) return;
+        // A chunk that did not arrive cannot be fetched again by this page (a
+        // failed import() is remembered until reload), so Argus reloads itself
+        // once and carries on with what the user asked for (loop guard: once a minute).
+        const first = pendingFilesRef.current?.[0];
+        const intent = first ? (first.argusIntent ?? { type: "local", name: first.name }) : null;
+        setLoadingLabel("Updating Argus…");
+        reloadResuming(intent).then((reloading) => {
+          if (reloading || disposed) return;
           pendingFilesRef.current = null;
           setIsLoading(false);
           setLoadingLabel("");
-          setError(
-            "Failed to initialize the IFC parsing engine. Try reloading the page.",
-          );
-        }
+          setErrorInfo({ reload: true, intent, details: failureDetails({ kind: KIND.APP_ASSET_FAILED, stage: "boot", message: String(err?.message ?? err) }, { name: "viewer engine", buildId: runningBuildId(), userAgent: navigator.userAgent }) });
+          setError("Argus could not start its viewer engine, even after reloading. Check your connection, then try once more.");
+        });
       });
 
     return () => {
@@ -5193,11 +5201,10 @@ export function useIfcViewer() {
       }
       const modelId = nextId();
       try {
-        // A worker that dies or hangs never settles on its own, so the parse
-        // is raced against a timeout (scaled with file size) and Cancel.
-        const sizeMb = (source.size ?? source.byteLength) / 1048576;
-        const timeoutMs = Math.min(60000 + sizeMb * 4000, 20 * 60000);
-        let timer = 0;
+        // A worker that hangs is restarted by the client's progress watchdog
+        // (stallMs below), one that dies is noticed through its Web Lock; the
+        // import is raced against Cancel only.
+        const stallMs = stallLimitMs(source.size ?? source.byteLength);
         const shortName = displayName.length > 28 ? `${displayName.slice(0, 25)}…` : displayName;
         // The wasm conversion runs in a worker (see ifc/ifcImportClient.js) so
         // the page stays responsive; the finished fragments are then handed
@@ -5211,9 +5218,6 @@ export function useIfcViewer() {
         // One attempt: a worker converts the file, the result goes to the
         // fragments worker. `fresh` skips the prewarmed worker.
         const runImport = async (fresh) => {
-          const timedOut = new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
-          });
           // The worker takes ownership of the bytes of an .ifcZIP entry, so each attempt gets its own copy.
           const input = source instanceof Blob ? { file: source } : { bytes: source.slice() };
           const importJob = importIfcInWorker(input, {
@@ -5221,6 +5225,7 @@ export function useIfcViewer() {
             webIfcSettings: { ...webIfc },
             doubleSidedMaterials: true,
             fresh,
+            stallMs,
             onProgress: (fraction, process) => {
               const stage = { geometries: "geometry", attributes: "properties", relations: "relations", conversion: "finishing" }[process];
               if (stage) setLoadingLabel(`Reading ${shortName}: ${stage} ${Math.min(99, Math.floor(fraction * 100))}%`);
@@ -5235,24 +5240,43 @@ export function useIfcViewer() {
           });
           loadPromise.catch(() => {});
           try {
-            return await Promise.race([loadPromise, timedOut, cancelled]);
+            return await Promise.race([loadPromise, cancelled]);
           } finally {
-            clearTimeout(timer);
-            importJob.cancel(); // no-op once finished; stops a timed-out import
+            importJob.cancel(); // no-op once finished; stops an import that lost the race
           }
         };
         let model;
         let sourceBytes;
-        // A missing file of Argus's own or a dead worker is usually momentary
-        // (or a deploy in between): one automatic retry with a fresh worker.
-        try {
-          model = await runImport(false);
-        } catch (err) {
-          const failure = toImportError(err);
-          if (!isRetryable(failure.kind) || abandoned()) throw failure;
-          console.warn(`Import of ${displayName} failed (${failure.kind}), retrying`, err);
-          setLoadingLabel(`Trying again: ${shortName}…`);
-          model = await runImport(true);
+        // A missing file of Argus's own, a dead or stalled worker and a memory
+        // squeeze are usually momentary: the import starts over by itself in a
+        // fresh worker (0 s, 1 s, 3 s) and the user only sees progress text.
+        let freedMemory = false;
+        for (let attempt = 1; ; attempt++) {
+          try {
+            model = await runImport(attempt > 1);
+            break;
+          } catch (err) {
+            const failure = toImportError(err);
+            const memory = failure.kind === KIND.OUT_OF_MEMORY;
+            if (failure.kind === KIND.CANCELLED || abandoned()) throw failure;
+            if (!(memory ? !freedMemory : isRetryable(failure.kind) && attempt < BACKOFF_MS.length)) throw failure;
+            console.warn(`Import of ${displayName} failed (${failure.kind}), starting over`, err);
+            // This tab may simply be older than the deployed build: then a reload, not a retry, is the cure.
+            if (failure.kind === KIND.APP_ASSET_FAILED && attempt === 1 && (await isStaleBuild())) {
+              failure.stale = true;
+              throw failure;
+            }
+            if (memory) {
+              freedMemory = true;
+              releaseImporterMemory();
+              setLoadingLabel(`Freeing memory and loading again: ${shortName}`);
+              await Promise.race([sleep(1000), cancelled]);
+            } else {
+              setLoadingLabel(`${attemptText("Loading", attempt + 1, BACKOFF_MS.length)}: ${shortName}`);
+              await Promise.all([refreshFailedAssets(/wasm/i.test(failure.message) ? `${failure.message} ${location.origin}${import.meta.env.BASE_URL}wasm/web-ifc.wasm` : failure.message), Promise.race([sleep(BACKOFF_MS[attempt]), cancelled])]);
+            }
+            if (abandoned()) throw new ImportError(KIND.CANCELLED, "cancelled");
+          }
         }
         if (abandoned()) return;
 
@@ -5288,21 +5312,23 @@ export function useIfcViewer() {
         let reloading = false;
         let staleBuild = false;
         if (failure.kind === KIND.APP_ASSET_FAILED && !abandoned()) {
-          const entry = document.querySelector("script[type=module][src]")?.src;
-          const stale = (await fetchNewerBuildId()) || (entry && (await assetIsGone(entry)));
-          if (stale) {
+          if (failure.stale || (await isStaleBuild())) {
             staleBuild = true;
             reloading = await reloadResuming(currentIntent, () => setError(describeFailure(failure, { name: displayName, reloading: true })));
           }
         }
         if (reloading) return;
+        // Every automatic attempt has failed: only now are buttons offered.
+        // A file the importer rejected gets no Retry (it would fail again), only "Choose another file".
+        const invalid = failure.kind === KIND.INVALID_FILE;
         const info = {
           details: failureDetails(failure, { name: displayName, buildId: runningBuildId(), userAgent: navigator.userAgent }),
           // A failure that a fresh page may cure gets a Reload button.
           intent: isRetryable(failure.kind) ? currentIntent : undefined,
           reload: isRetryable(failure.kind),
+          chooseAnother: invalid,
         };
-        appendError(describeFailure(failure, { name: displayName, retried: true, staleBuild }), true, info);
+        appendError(describeFailure(failure, { name: displayName, retried: true, staleBuild }), !invalid, info);
       }
     };
 
@@ -5351,7 +5377,7 @@ export function useIfcViewer() {
       // else can be rejected immediately instead of after a long parse.
       const head = await file.slice(0, 4096).text().catch(() => "");
       if (!/ISO-10303-21/i.test(head)) {
-        appendError(`"${name}" is not a valid IFC file (no ISO-10303-21 header).`);
+        appendError(`"${name}" is not a valid IFC file (no ISO-10303-21 header).`, false, { chooseAnother: true });
         continue;
       }
       if (file.size > 150 * 1048576) setToast({ id: Date.now(), text: `Large file (${Math.round(file.size / 1048576)} MB). This can take a few minutes.` });

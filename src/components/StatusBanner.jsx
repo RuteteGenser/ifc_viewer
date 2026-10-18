@@ -2,11 +2,12 @@ import { reloadNow } from "../reliability/recovery";
 import { useUpdateNotice } from "../reliability/useUpdateNotice";
 import { copyText } from "./copyText";
 
-// `errorInfo` ({ details, intent, reload }) comes with load failures: Details is
+// Buttons appear only after Argus's own automatic attempts have all failed.
+// `errorInfo` ({ details, intent, reload, chooseAnother }) comes with load failures: Details is
 // text for a bug report, Reload reopens the page and then the same model.
 // `idle` is true when nothing is loading and no tool is armed: only then is the
 // "new version" notice shown (it never reloads by itself while the user works).
-export default function StatusBanner({ error, errorInfo, onDismissError, onRetry, idle = true }) {
+export default function StatusBanner({ error, errorInfo, onDismissError, onRetry, onChooseFile, idle = true }) {
   const updateAvailable = useUpdateNotice();
   const showUpdate = updateAvailable && idle && !error;
   if (!error && !showUpdate) return null;
@@ -40,6 +41,11 @@ export default function StatusBanner({ error, errorInfo, onDismissError, onRetry
         {onRetry && (
           <button type="button" className="status-banner__retry" onClick={onRetry}>
             Retry
+          </button>
+        )}
+        {errorInfo?.chooseAnother && onChooseFile && (
+          <button type="button" className="status-banner__retry" onClick={() => { onDismissError(); onChooseFile(); }}>
+            Choose another file
           </button>
         )}
         {errorInfo?.reload && (

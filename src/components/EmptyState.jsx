@@ -1,9 +1,13 @@
 import LibrarySection from "../library/LibrarySection";
+import { useLibraryContext } from "../library/LibraryContext";
 import { SaveToggle } from "../library/SaveControls";
 
 // The one screen shown before any model is open: a single primary action
 // (also a drop zone with a mouse) and a quiet link to a sample building.
 export default function EmptyState({ onOpenFiles, onLoadSample }) {
+  const library = useLibraryContext();
+  // When "My models" lists the sample as its first row, phones drop the extra link.
+  const sampleListed = !!library && library.available && library.status === "ready";
   return (
     <div className="empty-state">
       <div className="empty-state__card" onClick={onOpenFiles}>
@@ -18,7 +22,7 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
         </button>
         <SaveToggle />
         <p className="empty-state__drop">Drop an IFC file here or click to browse</p>
-        <button type="button" className="empty-state__link" onClick={(e) => { e.stopPropagation(); onLoadSample(); }}>
+        <button type="button" className={`empty-state__link${sampleListed ? " empty-state__link--listed" : ""}`} onClick={(e) => { e.stopPropagation(); onLoadSample(); }}>
           or try a sample building
         </button>
         <LibrarySection variant="empty" />

@@ -105,8 +105,8 @@ function ModelItem({ item }) {
         >
           <ModelName name={item.name} className="lib-row__name" />
           <span className="lib-row__meta">
-            {meta}
             {item.schema && <span className="lib-badge">{item.schema}</span>}
+            {meta}
             {loaded && <span className="lib-badge lib-badge--open">Open</span>}
           </span>
         </button>

@@ -1587,7 +1587,7 @@
   }
 
   .header__title {
-    display: none;
+    font-size: 16px;
   }
 
   .toolbar {
@@ -3530,5 +3530,26 @@
   .element-panel__tabbar .element-panel__close {
     min-width: 36px;
     width: 36px;
+  }
+}
+
+/* ---------- Start screen on phones ---------- */
+
+/* No drop zone on a touch screen, so no dashed border; the sample building is
+   the first row of "My models", so the separate link goes. */
+@media (pointer: coarse) {
+  .empty-state__card {
+    border: 1px solid var(--border);
+  }
+
+  .empty-state__card .lib-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .empty-state__link--listed {
+    display: none;
   }
 }

@@ -19,6 +19,10 @@ import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
 import ToolHint from "./components/ToolHint";
 import FirstRunHint from "./components/FirstRunHint";
+import { useLibrary } from "./library/useLibrary";
+import { LibraryContext } from "./library/LibraryContext";
+import TransferBar from "./library/TransferBar";
+import "./components/Library.css";
 
 // iOS/Android file pickers grey out files with extensions they can't map
 // to a known type (.ifc/.ifcZIP), making them unselectable, so on touch
@@ -290,6 +294,8 @@ function App() {
     }
   }, [loadFiles, setError]);
 
+  const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false) });
+
   const autoSampleRef = useRef(false);
   useEffect(() => {
     if (autoSampleRef.current) return;
@@ -346,14 +352,15 @@ function App() {
       dragDepthRef.current = 0;
       setIsDragging(false);
       if (e.dataTransfer.files?.length) {
-        loadFiles(e.dataTransfer.files);
+        library.openLocal(e.dataTransfer.files);
       }
     },
-    [loadFiles],
+    [library.openLocal],
   );
 
   return (
     <BrowserContext.Provider value={browser}>
+    <LibraryContext.Provider value={library}>
     <div className="app">
       <input
         ref={fileInputRef}
@@ -363,7 +370,7 @@ function App() {
         hidden
         onChange={(e) => {
           if (e.target.files?.length) {
-            loadFiles(e.target.files);
+            library.openLocal(e.target.files);
             setSidebarOpen(false);
           }
           e.target.value = "";
@@ -582,6 +589,8 @@ function App() {
         )}
       </div>
     </div>
+    <TransferBar />
+    </LibraryContext.Provider>
     </BrowserContext.Provider>
   );
 }

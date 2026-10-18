@@ -1,7 +1,7 @@
 {
-  "name": "Martins IFC viewer",
-  "short_name": "IFC viewer",
-  "description": "View IFC building models on your phone or computer.",
+  "name": "Argus",
+  "short_name": "Argus",
+  "description": "Argus, an IFC viewer: view, section and measure IFC building models on your phone or computer.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

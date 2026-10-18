@@ -1,4 +1,5 @@
 import LogoMark from "./LogoMark";
+import { NAME } from "../brand";
 
 export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed, onToggleCollapsed }) {
   return (
@@ -28,7 +29,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
 
       <div className="header__brand">
         <LogoMark />
-        <span className="header__title">Martins IFC viewer</span>
+        <span className="header__title">{NAME}</span>
       </div>
     </header>
   );

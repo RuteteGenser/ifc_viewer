@@ -259,7 +259,7 @@ export function useViewFeatures(ctx) {
       showToast("Could not save the image");
       return;
     }
-    const name = screenshotFileName(ctxRef.current.models[0]?.name);
+    const name = screenshotFileName();
     const file = new File([blob], name, { type: "image/png" });
     const touch = window.matchMedia?.("(pointer: coarse)").matches;
     if (touch && navigator.canShare?.({ files: [file] })) {

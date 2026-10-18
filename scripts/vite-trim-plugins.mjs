@@ -34,6 +34,24 @@ export function dropUnminifiedFragmentsWorker() {
   }
 }
 
+// The import worker (src/ifc/ifcImportWorker.js) bundles @thatopen/fragments
+// for its IfcImporter only and never makes a FragmentsModels, but it contains
+// the same dead `new URL("./Worker/worker.mjs", ...)` fallback, which the
+// worker build would emit as its own 3.3 MB asset. There the reference is cut
+// out at the source, which fails the build if the text moves.
+export function cutFragmentsWorkerFallback() {
+  const FALLBACK = 'workerURL ?? new URL("./Worker/worker.mjs", import.meta.url).href'
+  return {
+    name: 'cut-fragments-worker-fallback',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/node_modules[\\/]@thatopen[\\/]fragments[\\/]dist[\\/]index\.mjs$/.test(id)) return null
+      if (!code.includes(FALLBACK)) this.error('cut-fragments-worker-fallback: fallback not found, update scripts/vite-trim-plugins.mjs')
+      return { code: code.replace(FALLBACK, 'workerURL'), map: null }
+    },
+  }
+}
+
 // web-ifc ships one 5.9 MB file (about 3.4 MB after minifying) holding, besides
 // the parser glue, a generated class and lookup tables for each of three IFC
 // schemas (IFC2X3, IFC4, IFC4X3). A model uses exactly one of them, so this

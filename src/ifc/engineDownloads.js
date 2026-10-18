@@ -4,22 +4,23 @@
 // worker) to run only after the last byte. In this order each file's CPU work
 // hides behind the next file's download instead:
 //
-//   engine code        -> parsed while the rest downloads
-//   IFC schema code    -> (if the first file's schema is known) likewise
-//   wasm               -> the IFC conversion starts the moment it lands, and
-//                         needs only the three files above
+//   engine code        -> parsed while the rest downloads (the page needs it)
+//   import worker      -> the IFC conversion runs in this worker, not on the
+//                         page; it boots (parses web-ifc and the importer) and,
+//                         if the first file's schema is known, fetches that
+//                         schema's tables, while the wasm downloads
+//   wasm               -> the conversion starts the moment it lands, and needs
+//                         only the files above
 //   fragments worker   -> needed only once the conversion has produced
 //                         something, so it downloads during the conversion
 //
 // `engineImport` is the dynamic import that fetches the engine chunk;
-// `startSchema`, if given, starts the import of the schema chunk. Returns a
-// promise that resolves once all of it has been downloaded.
-export function startEngineDownloads({ engineImport, startSchema, wasmUrl, workerUrl }) {
+// `startImporter` starts the import worker and returns a promise for the end
+// of its boot. Returns a promise that resolves once all of it has been downloaded.
+export function startEngineDownloads({ engineImport, startImporter, wasmUrl, workerUrl }) {
   return (async () => {
     await Promise.race([downloaded(/\/ifc-engine-[^/]*\.js(\?|$)/), settled(engineImport)]);
-    if (startSchema) {
-      await Promise.race([downloaded(/\/_virtual_web-ifc-schema-[^/]*\.js(\?|$)/), settled(startSchema())]);
-    }
+    await settled(startImporter());
     await preload(wasmUrl);
     await preload(workerUrl);
   })();

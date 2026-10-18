@@ -39,6 +39,10 @@ export function isEligibleCategoryName(category) {
 // path already configured for the app's main IfcLoader (setupComponents.js).
 export async function openRawIfcModel(sourceBytes) {
   WEBIFC = await import("web-ifc");
+  // Production builds keep web-ifc's per-schema tables in separate chunks
+  // (see ifcSchemas.js); this thread loads the one this file needs.
+  const { loadSchemaFor } = await import("./ifcSchemas");
+  await loadSchemaFor(sourceBytes);
   const api = new WEBIFC.IfcAPI();
   api.SetWasmPath(`${import.meta.env.BASE_URL}wasm/`, true);
   await api.Init();

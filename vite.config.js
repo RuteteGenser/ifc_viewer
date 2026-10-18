@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
-import { dropUnminifiedFragmentsWorker, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
+import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
 import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
@@ -23,6 +23,20 @@ export default defineConfig(({ command }) => ({
     ],
   },
   plugins: [dropUnminifiedFragmentsWorker(), slimWebIfc(), react(), serviceWorkerManifest(), precompress()],
+  // The IFC import worker is a separate bundle: it needs the same web-ifc
+  // trimming (one slim parser, lazy per-schema chunks) as the page.
+  worker: {
+    format: 'es',
+    plugins: () => [slimWebIfc(), cutFragmentsWorkerFallback()],
+    rollupOptions: {
+      output: {
+        // Own prefix so the import worker's copy of the per-schema chunks
+        // (the page keeps another, for raw property lookups) is told apart.
+        chunkFileNames: 'assets/iw-[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

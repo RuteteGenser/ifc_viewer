@@ -1748,6 +1748,78 @@ export function useIfcViewer() {
       }
     };
 
+    // Decides, per frame, which leg labels have room. The total label is
+    // always shown; a leg label appears only when its leg is long enough on
+    // screen to carry it and it would not touch the total, a marker or a
+    // leg label already placed. So a tiny measurement reads as one clear
+    // number, and a large one shows the full breakdown.
+    const layoutScratch = new THREE.Vector3();
+    const layoutMeasureLabels = () => {
+      const w = renderer.domElement.clientWidth;
+      const h = renderer.domElement.clientHeight;
+      const toPx = (obj, out) => {
+        obj.getWorldPosition(layoutScratch).project(camera);
+        out.x = (layoutScratch.x * 0.5 + 0.5) * w;
+        out.y = (-layoutScratch.y * 0.5 + 0.5) * h;
+        out.z = layoutScratch.z;
+      };
+      const rectOf = (label, pixels, pad) => {
+        const p = { x: 0, y: 0, z: 0 };
+        toPx(label, p);
+        const lw = pixels * label.userData.aspect;
+        const cy = label.center.y;
+        return { l: p.x - lw / 2 - pad, r: p.x + lw / 2 + pad, t: p.y - (1 - cy) * pixels - pad, b: p.y + cy * pixels + pad, w: lw };
+      };
+      const hit = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+      const pa = { x: 0, y: 0, z: 0 };
+      const pb = { x: 0, y: 0, z: 0 };
+      for (const entry of measurementsRuntime) {
+        if (!tagsVisibleRef.current) continue;
+        const placed = [rectOf(entry.label, MEASURE_LEG_LABEL_PIXEL_HEIGHT, 2)];
+        for (const m of [entry.markerA, entry.markerB]) {
+          toPx(m, pa);
+          const r = MEASURE_MARKER_PIXELS + 3;
+          placed.push({ l: pa.x - r, r: pa.x + r, t: pa.y - r, b: pa.y + r });
+        }
+        const legs = [
+          [entry.legRightLabel, entry.legRight, entry.horizontal],
+          [entry.legUpLabel, entry.legUp, entry.vertical],
+          [entry.legDepthLabel, entry.legDepth, entry.depth],
+        ].sort((x, y) => (y[2] ?? 0) - (x[2] ?? 0));
+        for (const [label, leg, value] of legs) {
+          if ((value ?? 1) <= 0.005) {
+            label.visible = false;
+            continue;
+          }
+          // Try below the leg first, then above it.
+          let rect = null;
+          let ok = false;
+          let legPx = 0;
+          const pos = leg.geometry.attributes.instanceStart;
+          if (pos && pos.count > 0) {
+            const e = leg.geometry.attributes.instanceEnd;
+            layoutScratch.set(pos.getX(0), pos.getY(0), pos.getZ(0));
+            leg.localToWorld(layoutScratch).project(camera);
+            pa.x = (layoutScratch.x * 0.5 + 0.5) * w;
+            pa.y = (-layoutScratch.y * 0.5 + 0.5) * h;
+            layoutScratch.set(e.getX(0), e.getY(0), e.getZ(0));
+            leg.localToWorld(layoutScratch).project(camera);
+            pb.x = (layoutScratch.x * 0.5 + 0.5) * w;
+            pb.y = (-layoutScratch.y * 0.5 + 0.5) * h;
+            legPx = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+          }
+          for (const cy of [1.1, -0.1]) {
+            label.center.y = cy;
+            rect = rectOf(label, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT, 2);
+            ok = legPx >= rect.w * 0.9 && !placed.some((q) => hit(rect, q));
+            if (ok) break;
+          }
+          label.visible = ok;
+          if (ok) placed.push(rect);
+        }
+      }
+    };
+
     // Constant on-screen size for dimension tags (same technique as
     // scaleMeasureMarkers above) — but scaled by a constant *canvas-
     // pixel-to-world* ratio rather than a constant total sprite height,
@@ -3594,6 +3666,7 @@ export function useIfcViewer() {
       needsRender = false;
       scalePivotMarker();
       scaleMeasureMarkers();
+      layoutMeasureLabels();
       scaleDimensionTags();
       if (clipPlanesRuntime.length > 0) {
         // Each plane is authored in modelsGroup's local frame so it

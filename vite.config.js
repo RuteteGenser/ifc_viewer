@@ -1,15 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { precompress, preloadHints } from './scripts/vite-perf-plugins.mjs'
+import { precompress, preloadHints, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   // GitHub Pages serves this repo at https://<user>.github.io/ifc_viewer/,
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
-  plugins: [react(), preloadHints(), precompress()],
-  // Names the service worker's cache, so each build replaces the last.
-  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
+  plugins: [react(), preloadHints(), serviceWorkerManifest(), precompress()],
   build: {
     rollupOptions: {
       output: {

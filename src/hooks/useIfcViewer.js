@@ -5128,14 +5128,27 @@ export function useIfcViewer() {
     requestRenderRef.current();
   }, []);
   applyViewInsetRef.current = applyViewInset;
+  // True while the whole model is on screen at a sensible size (not zoomed in
+  // on a detail, not a speck): then a change in the free area, like the info
+  // sheet folding away, should re-fit it to the new area.
+  const wholeModelInView = useCallback(() => {
+    const camera = cameraRef.current;
+    if (!camera || modelsRef.current.size === 0) return false;
+    const box = getSceneBox(modelsRef.current.values());
+    if (!box) return false;
+    const b = withoutViewOffset(camera, () => ndcBounds(camera, boxCorners(box)));
+    const w = b.maxX - b.minX;
+    const h = b.maxY - b.minY;
+    return w <= 2.05 && h <= 2.05 && Math.max(w, h) >= 0.7;
+  }, []);
   const setViewInsets = useCallback(
     ({ bottom = 0, right = 0 }) => {
       viewInsetBottomRef.current = Math.max(0, bottom || 0);
       viewInsetRightRef.current = Math.max(0, right || 0);
       applyViewInset();
-      if (autoFramedRef.current || fitByFocusRef.current) refitModel(true);
+      if (autoFramedRef.current || fitByFocusRef.current || wholeModelInView()) refitModel(true);
     },
-    [applyViewInset, refitModel],
+    [applyViewInset, refitModel, wholeModelInView],
   );
 
   const clearError = useCallback(() => {

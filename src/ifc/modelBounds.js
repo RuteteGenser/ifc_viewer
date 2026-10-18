@@ -54,3 +54,32 @@ export function robustUnion(boxes) {
   if (kept.isEmpty()) return { box: all, dropped: 0 };
   return { box: kept, dropped };
 }
+
+/**
+ * Where to draw the section-plane sheet: centred on the model (the model
+ * centre projected onto the plane) and 1.1x the model's longest extent
+ * within the plane. `plane` is in the model group's local frame, like the
+ * entries' localBox. Returns { centre: Vector3, side } or null when no model
+ * has measured bounds yet.
+ */
+export function planeSheetFor(plane, entries) {
+  const box = new THREE.Box3();
+  for (const e of entries) if (e.localBox) box.union(e.localBox);
+  if (box.isEmpty()) return null;
+  const c = box.getCenter(new THREE.Vector3());
+  const d = box.getSize(new THREE.Vector3());
+  const n = plane.normal;
+  const centre = c.clone().addScaledVector(n, -(n.dot(c) + plane.constant));
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  let extent;
+  // Axis-aligned cut (all the preset sections): the sheet stays axis-aligned,
+  // so the longer of the two in-plane sides is enough. A tilted plane can be
+  // turned any way, so use the in-plane diagonal.
+  if (ay > 0.999) extent = Math.max(d.x, d.z);
+  else if (ax > 0.999) extent = Math.max(d.y, d.z);
+  else if (az > 0.999) extent = Math.max(d.x, d.y);
+  else extent = Math.sqrt(Math.max(d.lengthSq() - (ax * d.x + ay * d.y + az * d.z) ** 2, 0));
+  return { centre, side: Math.max(extent * 1.1, 0.1) };
+}

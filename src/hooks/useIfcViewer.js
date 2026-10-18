@@ -18,7 +18,7 @@ import {
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { importIfcInWorker } from "../ifc/ifcImportClient";
 import { useViewFeatures } from "./useViewFeatures";
-import { robustUnion } from "../ifc/modelBounds";
+import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -872,6 +872,8 @@ export function useIfcViewer() {
     const GIZMO_THICKNESS = 0.08; // fraction of the gizmo's own unit width
     const gizmoGeometry = new THREE.BoxGeometry(1, 1, GIZMO_THICKNESS);
     const GIZMO_UP = new THREE.Vector3(0, 0, 1); // faces +Z before orienting to the plane's normal
+    // A thin outline keeps the sheet readable now that its fill is faint.
+    const gizmoOutlineGeometry = new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1));
 
     const refreshClippingPlanes = () => {
       const planes = clipPlanesRuntime.filter((p) => p.enabled).map((p) => p.worldPlane);
@@ -887,11 +889,15 @@ export function useIfcViewer() {
     // under modelsGroup and inherits its rotation automatically.
     const syncGizmoMesh = (entry) => {
       const { localPlane, mesh } = entry;
+      // Sized to the model (see planeSheetFor), centred on the model rather
+      // than on the world origin; falls back to the bounding sphere while a
+      // model's own bounds are not measured yet.
+      const sheet = planeSheetFor(localPlane, [...modelsRef.current.values()]);
       const sphere = getGroupSphere();
       // A finger-sized screen can't spare a sheet 2.6x the model's radius
       // (it would cover everything), so on touch the gizmo is smaller.
-      const scale = sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
-      const pointOnPlaneLocal = localPlane.normal.clone().multiplyScalar(-localPlane.constant);
+      const scale = sheet ? sheet.side : sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
+      const pointOnPlaneLocal = sheet ? sheet.centre : localPlane.normal.clone().multiplyScalar(-localPlane.constant);
       // The gizmo sits exactly at the clip plane's own boundary — which
       // this very plane also clips against — so at that exact distance,
       // GPU floating-point clip-distance evaluation is right at the
@@ -921,6 +927,11 @@ export function useIfcViewer() {
       // just keeps the raycast hit-target a constant fraction of the
       // gizmo's own (now scale-dependent) visual size.
       mesh.scale.setScalar(scale);
+      if (entry.outline) {
+        entry.outline.position.copy(mesh.position);
+        entry.outline.quaternion.copy(mesh.quaternion);
+        entry.outline.scale.setScalar(scale);
+      }
     };
 
     const clipPlaneManager = {
@@ -932,7 +943,7 @@ export function useIfcViewer() {
         const material = new THREE.MeshBasicMaterial({
           color: 0x3b82f6,
           transparent: true,
-          opacity: TOUCH_UI ? 0.12 : 0.25,
+          opacity: TOUCH_UI ? 0.1 : 0.16,
           side: THREE.DoubleSide,
           depthWrite: false,
           // The gizmo sits exactly on the clip plane — which is also
@@ -949,7 +960,14 @@ export function useIfcViewer() {
         const mesh = new THREE.Mesh(gizmoGeometry, material);
         mesh.renderOrder = 1;
         modelsGroup.add(mesh);
+        const outline = new THREE.LineSegments(
+          gizmoOutlineGeometry,
+          new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.7, depthWrite: false }),
+        );
+        outline.renderOrder = 1;
+        modelsGroup.add(outline);
         const entry = {
+          outline,
           id,
           localPlane,
           worldPlane: new THREE.Plane(),
@@ -968,6 +986,8 @@ export function useIfcViewer() {
         const [entry] = clipPlanesRuntime.splice(index, 1);
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();
+        modelsGroup.remove(entry.outline);
+        entry.outline.material.dispose();
         refreshClippingPlanes();
       },
       flip: (id) => {
@@ -1006,6 +1026,7 @@ export function useIfcViewer() {
         // the `gizmoVisible` filters at those call sites, not by this
         // visibility mechanism itself.)
         entry.mesh.material.visible = visible;
+        entry.outline.material.visible = visible;
         requestRender();
       },
       list: () =>
@@ -3974,8 +3995,11 @@ export function useIfcViewer() {
       for (const entry of clipPlanesRuntime) {
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();
+        modelsGroup.remove(entry.outline);
+        entry.outline.material.dispose();
       }
       gizmoGeometry.dispose();
+      gizmoOutlineGeometry.dispose();
       controls.removeEventListener("change", requestRender);
       controls.dispose();
       renderer.dispose();

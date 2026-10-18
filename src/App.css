@@ -2486,3 +2486,44 @@
     margin-bottom: 4px;
   }
 }
+
+/* Landscape phone: every pixel of height counts, so the menu button moves
+   into the tool row and the title bar disappears (3D view +44px). */
+@media (max-height: 500px) and (pointer: coarse) {
+  :root {
+    --header-height: 0px;
+  }
+
+  .header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 56px;
+    width: auto;
+    padding: 0 0 0 8px;
+    background: none;
+    border: none;
+    z-index: 46;
+  }
+
+  .header__brand {
+    display: none;
+  }
+
+  .toolbar {
+    padding-left: calc(56px + var(--safe-left));
+  }
+
+  .sidebar {
+    padding-top: 60px;
+  }
+}
+
+@media (max-height: 500px) {
+  .first-run__row:nth-child(n + 3) {
+    display: none;
+  }
+  .first-run {
+    padding: 10px 14px;
+  }
+}

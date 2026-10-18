@@ -4172,7 +4172,9 @@ export function useIfcViewer() {
     const group = modelsGroupRef.current;
     const anchor = selectionAnchorRef.current;
     if (!camera || !controls || !group || !anchor) return;
-    if (viewInsetBottomRef.current <= 0) return; // side panel layouts keep the view where the user put it
+    // A docked side panel on a mouse layout never covers the view unexpectedly,
+    // so only sheets and touch drawers re-centre.
+    if (viewInsetBottomRef.current <= 0 && !(TOUCH_UI && viewInsetRightRef.current > 0)) return;
     group.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
     const pose = withoutViewOffset(camera, () => {

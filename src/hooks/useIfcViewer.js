@@ -4311,6 +4311,11 @@ export function useIfcViewer() {
       const controls = controlsRef.current;
       if (!camera || !controls) return;
       cancelCameraAnim();
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        applyPose(camera, controls, pose);
+        requestRenderRef.current();
+        return;
+      }
       const fromPos = camera.position.clone();
       const fromTarget = controls.target.clone();
       const t0 = performance.now();

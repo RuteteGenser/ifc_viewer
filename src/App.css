@@ -7,7 +7,7 @@
   /* Ink */
   --ink: #2a2622;
   --ink-muted: #6b6155;
-  --ink-faint: #8a8172;
+  --ink-faint: #72685a; /* 4.7:1 on the paper surfaces */
 
   /* Lines */
   --line: #ddd6c7;
@@ -2694,5 +2694,16 @@
   .element-panel__close {
     min-width: 44px;
     flex-shrink: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

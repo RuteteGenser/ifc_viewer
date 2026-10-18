@@ -90,7 +90,7 @@ export default function ElementInfoPanel({ element, loading, onHide }) {
 
       {!loading && !element && (
         <p className="element-panel__hint">
-          No element selected — tap or click an element to see its properties.
+          No element selected, tap or click an element to see its properties.
         </p>
       )}
 
@@ -188,7 +188,7 @@ export default function ElementInfoPanel({ element, loading, onHide }) {
                 <dt>Systems</dt>
                 <dd>{element.ifcInfo.systems.length > 0 ? element.ifcInfo.systems.join(", ") : "None"}</dd>
                 <dt>Material</dt>
-                <dd>{element.ifcInfo.material ?? "—"}</dd>
+                <dd>{element.ifcInfo.material ?? "-"}</dd>
               </dl>
             </div>
           )}
@@ -203,7 +203,7 @@ export default function ElementInfoPanel({ element, loading, onHide }) {
                   {pset.properties.map((prop, j) => (
                     <div className="element-panel__prop-row" key={`${prop.name}-${j}`}>
                       <dt>{prop.name}</dt>
-                      <dd>{String(prop.value ?? "—")}</dd>
+                      <dd>{String(prop.value ?? "-")}</dd>
                     </div>
                   ))}
                 </dl>

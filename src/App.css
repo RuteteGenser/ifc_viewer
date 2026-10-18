@@ -2305,36 +2305,19 @@
 .first-run {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--sheet-inset, 0px) + 16px);
+  top: calc(var(--toolbar-h, var(--header-height)) + 10px);
   transform: translateX(-50%);
   z-index: 18;
-  width: min(340px, calc(100% - 24px));
-  padding: 14px 16px 12px;
-  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  padding: 2px 2px 2px 14px;
+  border-radius: 999px;
   background: var(--bg);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-lg);
   color: var(--text);
-}
-
-@media (min-width: 769px) {
-  .first-run {
-    left: calc(50% - 160px);
-  }
-}
-
-.first-run__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.first-run__title {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: 16px;
 }
 
 .first-run__list {
@@ -2342,9 +2325,11 @@
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
-  font-size: 13px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: 0 8px;
+  font-size: 12.5px;
+  line-height: 1.35;
   color: var(--text-muted);
 }
 
@@ -2352,26 +2337,21 @@
   color: var(--text);
 }
 
-.first-run__button {
-  min-height: 34px;
-  padding: 0 16px;
-  border-radius: 8px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
+.first-run__close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.first-run__button:hover {
-  background: var(--accent-hover);
-}
-
-@media (pointer: coarse) {
-  .first-run__button {
-    min-height: 44px;
-  }
+.first-run__close:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
 }
 
 .loading-overlay__cancel,
@@ -2516,14 +2496,5 @@
 
   .sidebar {
     padding-top: 60px;
-  }
-}
-
-@media (max-height: 500px) {
-  .first-run__row:nth-child(n + 3) {
-    display: none;
-  }
-  .first-run {
-    padding: 10px 14px;
   }
 }

@@ -12,19 +12,14 @@ function seen() {
 }
 
 const TOUCH_ROWS = [
-  ["Drag", "turn the model"],
-  ["Pinch", "zoom"],
-  ["Two fingers", "move the view"],
-  ["Tap", "select an element"],
-  ["Press and hold", "cut a section or hide"],
+  ["Drag", "turns"],
+  ["Pinch", "zooms"],
+  ["Tap", "selects"],
 ];
 const MOUSE_ROWS = [
-  ["Drag", "turn the model"],
-  ["Scroll", "zoom"],
-  ["Middle drag", "move the view"],
-  ["Click", "select an element"],
-  ["Double-click", "zoom to an element"],
-  ["Right-click", "cut a section or hide"],
+  ["Drag", "turns"],
+  ["Scroll", "zooms"],
+  ["Click", "selects"],
 ];
 
 // One dismissible card, shown the first time a model opens.
@@ -37,11 +32,15 @@ export default function FirstRunHint({ visible }) {
     if (!active) return undefined;
     const onDown = (e) => {
       if (cardRef.current?.contains(e.target)) return;
-      if (e.target.closest?.(".toolbar, .element-panel, .sidebar")) return;
       close();
     };
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
+  });
+  useEffect(() => {
+    if (!active) return undefined;
+    const t = setTimeout(close, 9000);
+    return () => clearTimeout(t);
   });
   if (!active) return null;
   function close() {
@@ -54,13 +53,7 @@ export default function FirstRunHint({ visible }) {
   }
   const rows = COARSE ? TOUCH_ROWS : MOUSE_ROWS;
   return (
-    <div className="first-run" ref={cardRef} role="dialog" aria-label="How to move around">
-      <div className="first-run__head">
-        <div className="first-run__title">Getting around</div>
-        <button type="button" className="first-run__button" onClick={close}>
-          Got it
-        </button>
-      </div>
+    <div className="first-run" ref={cardRef} role="status" aria-label="How to move around">
       <ul className="first-run__list">
         {rows.map(([gesture, action]) => (
           <li key={gesture} className="first-run__row">
@@ -68,6 +61,9 @@ export default function FirstRunHint({ visible }) {
           </li>
         ))}
       </ul>
+      <button type="button" className="first-run__close" onClick={close} aria-label="Dismiss tips">
+        <span aria-hidden="true">&times;</span>
+      </button>
     </div>
   );
 }

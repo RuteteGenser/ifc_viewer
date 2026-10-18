@@ -20,7 +20,7 @@ function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
           value={model.color ?? "#ffffff"}
           onChange={(e) => onSetColor(model.id, e.target.value)}
           aria-label={`Override ${model.name}'s color`}
-          title="Override this model's color (visual only) — toggle with V"
+          title="Override this model's color (visual only). toggle with V"
         />
         {model.color && (
           <button

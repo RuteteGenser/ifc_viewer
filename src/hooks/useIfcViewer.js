@@ -262,7 +262,9 @@ function withoutViewOffset(camera, fn) {
   }
 }
 
-function computeFit(camera, box, frac, dir, margin = 0.92) {
+const FIT_MARGIN = 0.82; // the model fills about 82% of the free area, leaving ~9% each side
+
+function computeFit(camera, box, frac, dir, margin = FIT_MARGIN) {
   return withoutViewOffset(camera, () => computeFitRaw(camera, box, frac, dir, margin));
 }
 
@@ -749,8 +751,8 @@ export function useIfcViewer() {
     );
     camera.position.set(15, 15, 15);
     cameraRef.current = camera;
-    // Test hook: lets automated checks read the camera (only with ?debug in the URL).
-    if (new URLSearchParams(window.location.search).has("debug")) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
+    // Test hook, only compiled into builds made with VITE_TEST_HOOK=1 (never the deployed build).
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -4193,7 +4195,7 @@ export function useIfcViewer() {
     if (box) {
       const corners = boxCorners(box);
       const b = ndcBounds(camera, corners);
-      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.96 && (b.maxY - b.minY) <= 2 * frac.y * 0.96;
+      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.98 && (b.maxY - b.minY) <= 2 * frac.y * 0.98;
       // Whole model currently framed (not zoomed into a detail) but too big
       // for the space the sheet left: ease it back to fit instead of
       // leaving parts of it hidden behind the sheet.
@@ -4201,7 +4203,7 @@ export function useIfcViewer() {
       if (!fits && framedWhole) {
         const dir = camera.position.clone().sub(controls.target).normalize();
         fitByFocusRef.current = true;
-        return computeFitRaw(camera, box, frac, dir, 0.92);
+        return computeFitRaw(camera, box, frac, dir, FIT_MARGIN);
       }
       if (fits) {
         // After the pan, keep the model's bounds inside the visible rectangle.
@@ -4641,7 +4643,7 @@ export function useIfcViewer() {
       if (existingId) {
         const replace = await confirmReplaceFile(displayName);
         if (!replace) {
-          appendError(`Skipped "${displayName}" — a model with that name is already loaded.`);
+          appendError(`Skipped "${displayName}": a model with that name is already loaded.`);
           return;
         }
         await removeModel(existingId);
@@ -4741,7 +4743,7 @@ export function useIfcViewer() {
           }
         } catch (err) {
           console.error(`Failed to unpack ${file.name}`, err);
-          appendError(`Could not unpack "${file.name}" — it doesn't look like a valid .ifcZIP file.`);
+          appendError(`Could not unpack "${file.name}": it doesn't look like a valid .ifcZIP file.`);
         }
         continue;
       }

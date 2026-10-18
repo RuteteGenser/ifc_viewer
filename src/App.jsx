@@ -282,10 +282,21 @@ function App() {
     setSidebarOpen(false);
     try {
       // index.html starts this request at page load when the URL has ?demo=1.
-      const response = await (window.__demoIfc ?? fetch(`${import.meta.env.BASE_URL}demo/demo-building.ifc`));
+      const url = `${import.meta.env.BASE_URL}demo/demo-building.ifc`;
+      const early = window.__demoIfc;
       window.__demoIfc = null;
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
+      const read = async (request) => {
+        const response = await request;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.blob();
+      };
+      // A cache (browser or service worker) can hold something that is not the
+      // file, such as a page saved under its address; check the bytes, and
+      // if they are wrong ask again past every cache.
+      const isIfc = async (blob) => (await blob.slice(0, 16).text()).startsWith("ISO-10303-21");
+      let blob = await read(early ?? fetch(url));
+      if (!(await isIfc(blob))) blob = await read(fetch(`${url}?fresh=${Date.now()}`, { cache: "reload" }));
+      if (!(await isIfc(blob))) throw new Error("the server did not return an IFC file");
       const file = new File([blob], "demo-building.ifc");
       file.displayName = SAMPLE_NAME;
       loadFiles([file]);

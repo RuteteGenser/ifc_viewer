@@ -32,7 +32,7 @@ async function precacheAll() {
         const url = new URL(path, SCOPE).href
         if (await cache.match(url)) continue
         const response = await fetch(url, { priority: 'low' })
-        if (response.ok) await cache.put(url, response)
+        if (cacheableFile(response)) await cache.put(url, response)
       } catch {
         // offline or flaky: try again on the next activation
       }
@@ -63,13 +63,16 @@ self.addEventListener('message', (event) => {
 })
 
 const cacheable = (response) => response && response.status === 200 && response.type === 'basic'
+// A page (the index, or a server's error page) saved under a file's address
+// would be served in place of that file for good, so only navigations may store HTML.
+const cacheableFile = (response) => cacheable(response) && !/text\/html/i.test(response.headers.get('content-type') || '')
 
 // Serve the cached copy at once and refresh it in the background.
-function staleWhileRevalidate(event, cacheKey) {
+function staleWhileRevalidate(event, cacheKey, store = cacheable) {
   const { request } = event
   const refresh = fetch(request)
     .then(async (response) => {
-      if (cacheable(response)) await (await caches.open(CACHE)).put(cacheKey, response.clone())
+      if (store(response)) await (await caches.open(CACHE)).put(cacheKey, response.clone())
       return response
     })
     .catch(() => null)
@@ -83,7 +86,7 @@ function cacheFirst(request) {
     (hit) =>
       hit ||
       fetch(request).then((response) => {
-        if (cacheable(response)) {
+        if (cacheableFile(response)) {
           const copy = response.clone()
           caches.open(CACHE).then((cache) => cache.put(request, copy))
         }
@@ -105,7 +108,8 @@ self.addEventListener('fetch', (event) => {
   const path = url.href.slice(SCOPE.length)
   // The sample is a plain file that may change: show the cached one, refresh it.
   if (path.startsWith('demo/')) {
-    event.respondWith(staleWhileRevalidate(event, request.url))
+    if (url.search) return // a cache-busting request goes straight to the network
+    event.respondWith(staleWhileRevalidate(event, request.url, cacheableFile))
     return
   }
   // Everything else under the scope is content-hashed or effectively static.

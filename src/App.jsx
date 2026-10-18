@@ -416,7 +416,7 @@ function App() {
           <Viewport containerRef={containerRef} />
           <DropOverlay visible={isDragging} />
           {models.length === 0 && !isLoading && <EmptyState onOpenFiles={openFilePicker} onLoadSample={handleLoadSample} />}
-          <LoadingOverlay visible={isLoading} label={loadingLabel} onCancel={cancelLoad} />
+          <LoadingOverlay visible={isLoading && !confirmReplace} label={loadingLabel} onCancel={cancelLoad} />
           <Toolbar
             hasModels={models.length > 0}
             onResetView={resetView}

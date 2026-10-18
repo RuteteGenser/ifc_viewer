@@ -3553,3 +3553,21 @@
     display: none;
   }
 }
+
+.compass__button {
+  display: block;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: default;
+}
+
+@media (max-width: 479px) {
+  .compass__button {
+    cursor: pointer;
+  }
+  .compass:not(.compass--open) .compass__offset {
+    display: none;
+  }
+}

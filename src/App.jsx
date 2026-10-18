@@ -145,6 +145,7 @@ function App() {
     retryLoad,
     cancelLoad,
     viewFeatures,
+    spaceControl,
   } = useIfcViewer();
 
   const hasNoModels = models.length === 0;
@@ -421,6 +422,7 @@ function App() {
           onRemove={removeModel}
           onSaveIfcZip={saveAsIfcZip}
           onResetVisibility={resetVisibility}
+          spaceControl={spaceControl}
           isLoading={isLoading}
           loadingLabel={loadingLabel}
           clipPlanes={clipPlanes}
@@ -474,7 +476,7 @@ function App() {
             onClearIsolation={clearIsolation}
             onBlocked={notifyBlocked}
           />
-          <ViewTools views={viewFeatures} />
+          <ViewTools views={viewFeatures} spaceControl={spaceControl} />
           <ToolHint tool={armedTool} onDone={exitArmedTool} />
           <div className="history-buttons">
             <button

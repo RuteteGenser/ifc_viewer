@@ -2,25 +2,14 @@
 // element that sits on each one, so the viewer can isolate a floor through
 // its ordinary isolate logic.
 
-// Storey elevations are plain numbers in the file's length unit. The unit
-// declaration sits near the top of an IFC file, so a quick scan of the first
-// few KB is enough (metres is the fallback).
-export function lengthUnitToMetres(bytes) {
-  if (!bytes) return 1;
-  const head = new TextDecoder().decode(bytes.subarray(0, 200000));
-  const si = /IFCSIUNIT\(\s*\*\s*,\s*\.LENGTHUNIT\.\s*,\s*(\$|\.[A-Z]+\.)\s*,\s*\.METRE\.\s*\)/i.exec(head);
-  if (si) {
-    const prefix = si[1].toUpperCase();
-    if (prefix === ".MILLI.") return 0.001;
-    if (prefix === ".CENTI.") return 0.01;
-    if (prefix === ".DECI.") return 0.1;
-    if (prefix === ".KILO.") return 1000;
-    return 1;
-  }
-  if (/IFCCONVERSIONBASEDUNIT\([^;]*LENGTHUNIT[^;]*'(FOOT|FEET)'/i.test(head)) return 0.3048;
-  if (/IFCCONVERSIONBASEDUNIT\([^;]*LENGTHUNIT[^;]*'(INCH)'/i.test(head)) return 0.0254;
-  return 1;
-}
+import { readProjectUnits } from "./projectUnits";
+
+// Storey elevations are IfcBuildingStorey.Elevation exactly as written in the
+// IFC (the importer is told not to replace it with a placement-derived value,
+// see ifcImportWorker.js), a plain number in the file's length unit. They are
+// converted to metres with the project's declared length unit and are
+// relative to the IFC project origin: a storey at 8060 mm in a file whose
+// site sits at 131.2 m reads +8.06 m, not +139.26 m.
 
 function collectLocalIds(node, out) {
   for (const child of node.children ?? []) {
@@ -54,7 +43,7 @@ export async function readLevels(entries) {
     const storeys = [];
     findStoreys(tree, storeys);
     if (storeys.length === 0) continue;
-    const unit = lengthUnitToMetres(sourceBytes);
+    const unit = readProjectUnits(sourceBytes).factorToMetre;
     let data = [];
     try {
       data = await model.getItemsData(

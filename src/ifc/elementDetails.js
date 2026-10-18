@@ -3,6 +3,8 @@
 // small, display-ready structure the info panel renders. No React, no
 // web-ifc: everything here can be tested in plain node.
 
+import { readProjectUnits } from "./projectUnits";
+
 const QUANTITY_VALUE_KEYS = [
   "LengthValue",
   "AreaValue",
@@ -32,11 +34,6 @@ const MEASURE_KIND = {
   IFCPLANEANGLEMEASURE: "angle",
   IFCTHERMODYNAMICTEMPERATUREMEASURE: "temperature",
   IFCTHERMALTRANSMITTANCEMEASURE: "uvalue",
-};
-
-const SI_PREFIX = {
-  EXA: "E", PETA: "P", TERA: "T", GIGA: "G", MEGA: "M", KILO: "k", HECTO: "h", DECA: "da",
-  DECI: "d", CENTI: "c", MILLI: "m", MICRO: "µ", NANO: "n", PICO: "p", FEMTO: "f", ATTO: "a",
 };
 
 // "Pset_WallCommon" -> "Wall Common", "Qto_SlabBaseQuantities" -> "Slab Base Quantities",
@@ -83,56 +80,14 @@ export function prettyCategory(raw) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Reads the project length unit out of the start of the IFC text. Returns
-// { length: "m", area: "m²", volume: "m³", factorToMetre, known }. IFC files
-// may use mm or feet; geometry is normalised by the loader but property and
-// quantity numbers keep the file's own unit, so the panel needs this to label
-// them. Falls back to metres (known: false) when nothing is found.
-const unitCache = new WeakMap();
-export function readProjectUnits(bytes) {
-  if (!bytes) return metreUnits(false);
-  if (unitCache.has(bytes)) return unitCache.get(bytes);
-  let text = "";
-  try {
-    text = new TextDecoder("latin1").decode(bytes.subarray ? bytes.subarray(0, 4 * 1024 * 1024) : bytes);
-  } catch {
-    text = "";
-  }
-  const units = parseUnits(text);
-  unitCache.set(bytes, units);
-  return units;
-}
+// Unit handling lives in projectUnits.js (it finds the unit assignment
+// wherever it sits in the file and resolves prefixes and conversion units).
+export { readProjectUnits };
+const metreUnits = () => readProjectUnits(null);
 
-function metreUnits(known) {
-  return { length: "m", area: "m²", volume: "m³", factorToMetre: 1, known };
-}
-
-export function parseUnits(text) {
-  const si = /IFCSIUNIT\(\*,\.LENGTHUNIT\.,(\$|\.[A-Z]+\.),\.METRE\.\)/.exec(text);
-  if (si) {
-    const prefix = si[1] === "$" ? "" : SI_PREFIX[si[1].slice(1, -1)] ?? "";
-    const length = `${prefix}m`;
-    return {
-      length,
-      area: `${length}²`,
-      volume: `${length}³`,
-      factorToMetre: { m: 1, mm: 0.001, cm: 0.01, dm: 0.1, km: 1000 }[length] ?? 1,
-      known: true,
-    };
-  }
-  const conv = /IFCCONVERSIONBASEDUNIT\([^;]*\.LENGTHUNIT\.,'([A-Za-z ]+)'/.exec(text);
-  if (conv) {
-    const name = conv[1].toLowerCase();
-    const length = name.includes("foot") || name.includes("feet") ? "ft" : name.includes("inch") ? "in" : conv[1];
-    return {
-      length,
-      area: `${length}²`,
-      volume: `${length}³`,
-      factorToMetre: length === "ft" ? 0.3048 : length === "in" ? 0.0254 : 1,
-      known: true,
-    };
-  }
-  return metreUnits(false);
+function signedMetres(m) {
+  const t = trimNumber(m, 2);
+  return Number(t) > 0 ? `+${t}` : t;
 }
 
 function trimNumber(n, decimals) {
@@ -141,17 +96,34 @@ function trimNumber(n, decimals) {
   return fixed.includes(".") ? fixed.replace(/0+$/, "").replace(/\.$/, "") : fixed;
 }
 
+export const UNIT_UNKNOWN = "(unit unknown)";
+
+// Converts a value in the file's unit to SI for kinds the project declares a
+// unit for; area, volume and mass are shown in m², m³ and kg. null factor =
+// the file did not declare that unit, so the number is shown but flagged.
+function toSI(value, kind, units) {
+  const factor = units.toSI?.[kind];
+  if (factor === null) return { value, unit: UNIT_UNKNOWN };
+  return { value: value * (factor ?? 1), unit: { area: "m²", volume: "m³", mass: "kg" }[kind] };
+}
+
 // Display string and unit for one number of a given kind.
 function formatNumber(value, kind, units) {
   switch (kind) {
     case "length":
       return { text: trimNumber(value, 3), unit: units.length };
-    case "area":
-      return { text: trimNumber(value, 2), unit: units.area };
-    case "volume":
-      return { text: trimNumber(value, 3), unit: units.volume };
-    case "mass":
-      return { text: trimNumber(value, 2), unit: "kg" };
+    case "area": {
+      const c = toSI(value, kind, units);
+      return { text: trimNumber(c.value, 2), unit: c.unit };
+    }
+    case "volume": {
+      const c = toSI(value, kind, units);
+      return { text: trimNumber(c.value, 3), unit: c.unit };
+    }
+    case "mass": {
+      const c = toSI(value, kind, units);
+      return { text: trimNumber(c.value, 2), unit: c.unit };
+    }
     case "angle":
       return { text: trimNumber((value * 180) / Math.PI, 1), unit: "°" };
     case "temperature":
@@ -253,7 +225,7 @@ function classificationEntry(item) {
 }
 
 // Builds the structure the info panel shows from one getItemsData row.
-export function buildElementDetails(data, units = metreUnits(false)) {
+export function buildElementDetails(data, units = metreUnits()) {
   const definitions = Array.isArray(data.IsDefinedBy) ? data.IsDefinedBy : [];
   const groups = [];
   for (const def of definitions) {
@@ -291,7 +263,9 @@ export function buildElementDetails(data, units = metreUnits(false)) {
     materials,
     classifications,
     storey: storey ? String(storey) : null,
-    storeyElevation: storeyElevation === null ? null : formatNumber(storeyElevation, "length", units),
+    // IfcBuildingStorey.Elevation as written in the IFC (the importer keeps
+    // the attribute as-is, in the file's unit), shown in metres.
+    storeyElevation: storeyElevation === null ? null : { text: signedMetres(storeyElevation * units.factorToMetre), unit: "m" },
     units,
   };
 }

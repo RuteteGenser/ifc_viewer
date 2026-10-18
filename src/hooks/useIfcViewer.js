@@ -18,6 +18,8 @@ import {
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { importIfcInWorker } from "../ifc/ifcImportClient";
 import { useViewFeatures } from "./useViewFeatures";
+import useSpaceVisibility from "./useSpaceVisibility";
+import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -219,15 +221,17 @@ function getSceneBox(entries) {
 
 // Union of every drawn element's real bounding box, expressed in the model
 // group's local frame (call while the group is still in its load pose).
+// Stray far-away elements are ignored (see ifc/modelBounds.js).
 async function computeModelLocalBox(model, group) {
   const ids = await model.getItemsIdsWithGeometry();
-  const world = new THREE.Box3();
+  const all = [];
   const CHUNK = 500;
   for (let i = 0; i < ids.length; i += CHUNK) {
     const boxes = await model.getBoxes(ids.slice(i, i + CHUNK));
-    for (const b of boxes) if (b && !b.isEmpty()) world.union(b);
+    for (const b of boxes) if (b && !b.isEmpty()) all.push(b);
   }
-  if (world.isEmpty()) return null;
+  const { box: world } = robustUnion(all);
+  if (!world) return null;
   group.updateMatrixWorld(true);
   return world.applyMatrix4(group.matrixWorld.clone().invert());
 }
@@ -467,6 +471,7 @@ export function useIfcViewer() {
   const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
   const [categoryHideModeActive, setCategoryHideModeActiveState] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState([]); // string[] — categories currently hidden via the hide-category tool
+  const spaces = useSpaceVisibility({ models, modelsRef, pipelineRef, requestRenderRef, invalidateGroupSphereRef, renderForAWhile });
   // Mirrors the lengths of the undo/redo stacks so toolbar buttons (the
   // only way to undo/redo on a touch device, which has no Ctrl+Z) can
   // enable/disable themselves; the stacks themselves stay in refs.
@@ -777,7 +782,7 @@ export function useIfcViewer() {
     camera.position.set(15, 15, 15);
     cameraRef.current = camera;
     // Test hook, only compiled into builds made with VITE_TEST_HOOK=1 (never the deployed build).
-    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; }, get models() { return modelsRef.current; }, THREE };
 
     // Phones render at devicePixelRatio 2 (capped below), where multisampling
     // adds little to edge quality but costs fill-rate and memory every frame.
@@ -884,6 +889,8 @@ export function useIfcViewer() {
     const GIZMO_THICKNESS = 0.08; // fraction of the gizmo's own unit width
     const gizmoGeometry = new THREE.BoxGeometry(1, 1, GIZMO_THICKNESS);
     const GIZMO_UP = new THREE.Vector3(0, 0, 1); // faces +Z before orienting to the plane's normal
+    // A thin outline keeps the sheet readable now that its fill is faint.
+    const gizmoOutlineGeometry = new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1));
 
     const refreshClippingPlanes = () => {
       const planes = clipPlanesRuntime.filter((p) => p.enabled).map((p) => p.worldPlane);
@@ -899,11 +906,15 @@ export function useIfcViewer() {
     // under modelsGroup and inherits its rotation automatically.
     const syncGizmoMesh = (entry) => {
       const { localPlane, mesh } = entry;
+      // Sized to the model (see planeSheetFor), centred on the model rather
+      // than on the world origin; falls back to the bounding sphere while a
+      // model's own bounds are not measured yet.
+      const sheet = planeSheetFor(localPlane, [...modelsRef.current.values()]);
       const sphere = getGroupSphere();
       // A finger-sized screen can't spare a sheet 2.6x the model's radius
       // (it would cover everything), so on touch the gizmo is smaller.
-      const scale = sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
-      const pointOnPlaneLocal = localPlane.normal.clone().multiplyScalar(-localPlane.constant);
+      const scale = sheet ? sheet.side : sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
+      const pointOnPlaneLocal = sheet ? sheet.centre : localPlane.normal.clone().multiplyScalar(-localPlane.constant);
       // The gizmo sits exactly at the clip plane's own boundary — which
       // this very plane also clips against — so at that exact distance,
       // GPU floating-point clip-distance evaluation is right at the
@@ -933,6 +944,11 @@ export function useIfcViewer() {
       // just keeps the raycast hit-target a constant fraction of the
       // gizmo's own (now scale-dependent) visual size.
       mesh.scale.setScalar(scale);
+      if (entry.outline) {
+        entry.outline.position.copy(mesh.position);
+        entry.outline.quaternion.copy(mesh.quaternion);
+        entry.outline.scale.setScalar(scale);
+      }
     };
 
     const clipPlaneManager = {
@@ -944,7 +960,7 @@ export function useIfcViewer() {
         const material = new THREE.MeshBasicMaterial({
           color: 0x3b82f6,
           transparent: true,
-          opacity: TOUCH_UI ? 0.12 : 0.25,
+          opacity: TOUCH_UI ? 0.1 : 0.16,
           side: THREE.DoubleSide,
           depthWrite: false,
           // The gizmo sits exactly on the clip plane — which is also
@@ -961,7 +977,14 @@ export function useIfcViewer() {
         const mesh = new THREE.Mesh(gizmoGeometry, material);
         mesh.renderOrder = 1;
         modelsGroup.add(mesh);
+        const outline = new THREE.LineSegments(
+          gizmoOutlineGeometry,
+          new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.7, depthWrite: false }),
+        );
+        outline.renderOrder = 1;
+        modelsGroup.add(outline);
         const entry = {
+          outline,
           id,
           localPlane,
           worldPlane: new THREE.Plane(),
@@ -980,6 +1003,8 @@ export function useIfcViewer() {
         const [entry] = clipPlanesRuntime.splice(index, 1);
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();
+        modelsGroup.remove(entry.outline);
+        entry.outline.material.dispose();
         refreshClippingPlanes();
       },
       flip: (id) => {
@@ -1018,6 +1043,7 @@ export function useIfcViewer() {
         // the `gizmoVisible` filters at those call sites, not by this
         // visibility mechanism itself.)
         entry.mesh.material.visible = visible;
+        entry.outline.material.visible = visible;
         requestRender();
       },
       list: () =>
@@ -4140,8 +4166,11 @@ export function useIfcViewer() {
       for (const entry of clipPlanesRuntime) {
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();
+        modelsGroup.remove(entry.outline);
+        entry.outline.material.dispose();
       }
       gizmoGeometry.dispose();
+      gizmoOutlineGeometry.dispose();
       controls.removeEventListener("change", requestRender);
       controls.dispose();
       renderer.dispose();
@@ -4720,10 +4749,11 @@ export function useIfcViewer() {
     const entries = [...modelsRef.current.values()];
     renderForAWhile(() => requestRenderRef.current());
     await Promise.all(entries.map(({ model }) => model.resetVisible()));
+    await spaces.keepHidden(); // spaces stay off unless "Show spaces" is on
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
-  }, []);
+  }, [spaces.keepHidden]);
 
   // Recomputes every loaded model's visibility from scratch based on the
   // given isolated-keys set: hide everything, then re-show just the
@@ -4743,8 +4773,9 @@ export function useIfcViewer() {
           const sep = key.lastIndexOf("::");
           if (key.slice(0, sep) === modelId) idsToShow.push(Number(key.slice(sep + 2)));
         }
+        const visibleIds = spaces.filterIds(modelId, idsToShow);
         await model.setVisible(undefined, false);
-        if (idsToShow.length > 0) await model.setVisible(idsToShow, true);
+        if (visibleIds.length > 0) await model.setVisible(visibleIds, true);
         // Isolating a set that excludes the currently selected/highlighted
         // element leaves the same stale highlight/panel as hiding just that
         // one element does (see hideHit/setVisible above) — the highlight
@@ -4752,7 +4783,7 @@ export function useIfcViewer() {
         // system, so it doesn't disappear on its own just because the
         // underlying element got hidden.
         const sel = selectedHitRef.current;
-        if (sel && sel.modelId === modelId && !idsToShow.includes(sel.localId)) {
+        if (sel && sel.modelId === modelId && !visibleIds.includes(sel.localId)) {
           clearHighlightRef.current?.();
           selectedHitRef.current = null;
           setSelectedElement(null);
@@ -4762,7 +4793,7 @@ export function useIfcViewer() {
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
-  }, [resetVisibility]);
+  }, [resetVisibility, spaces.filterIds]);
 
   // Accepts either a single key or an array of keys (e.g. every element in
   // a search result category toggled together as one group): if every key
@@ -4786,6 +4817,15 @@ export function useIfcViewer() {
     },
     [applyIsolation],
   );
+
+  const isolatedKeysRef = useRef(isolatedKeys);
+  isolatedKeysRef.current = isolatedKeys;
+  const spaceControl = {
+    shown: spaces.shown,
+    available: spaces.hasSpaces,
+    setShown: (on) =>
+      spaces.setSpacesShown(on, isolatedKeysRef.current.size > 0 ? () => applyIsolation(isolatedKeysRef.current) : null),
+  };
 
   const clearIsolation = useCallback(() => {
     setIsolatedKeys(new Set());
@@ -5173,6 +5213,7 @@ export function useIfcViewer() {
         modelsGroup.add(model.object);
         const entry = { model, object: model.object, sourceBytes, fileName: displayName };
         modelsRef.current.set(modelId, entry);
+        await spaces.hideOnLoad(modelId); // rooms start hidden; not an undo step
         // Tiles regenerate in the background (LOD/visibility changes),
         // which would otherwise silently drop a manual color override on
         // whatever tile gets rebuilt — reapply it every time using
@@ -5290,7 +5331,7 @@ export function useIfcViewer() {
     performance.mark("model-shown");
     setIsLoading(false);
     setLoadingLabel("");
-  }, [confirmReplaceFile, removeModel, getVisibleFrac]);
+  }, [confirmReplaceFile, removeModel, getVisibleFrac, spaces.hideOnLoad]);
 
   useEffect(() => {
     if (!ready || !pendingFilesRef.current) return;
@@ -5527,6 +5568,7 @@ export function useIfcViewer() {
 
   return {
     viewFeatures,
+    spaceControl,
     browser,
     containerRef,
     models,

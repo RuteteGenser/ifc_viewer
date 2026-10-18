@@ -27,6 +27,10 @@ self.onmessage = async (event) => {
     importer.wasm = wasm;
     if (webIfcSettings) importer.webIfcSettings = webIfcSettings;
     importer.doubleSidedMaterials = !!doubleSidedMaterials;
+    // Keep IfcBuildingStorey.Elevation as the file states it (project-relative,
+    // in the file's unit). The default replaces it with a world-space value in
+    // metres that includes the site placement (131 m on skolebygg).
+    importer.replaceStoreyElevation = false;
     const fragments = await importer.process({
       bytes: source,
       progressCallback: (progress, info) => self.postMessage({ type: "progress", progress, process: info?.process }),

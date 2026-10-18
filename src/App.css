@@ -3112,7 +3112,8 @@
     left: calc(8px + var(--safe-left));
     transform: none;
     top: calc(var(--toolbar-h, 56px) + 6px);
-    max-width: min(46%, 360px);
+    max-width: min(60%, 360px);
+    white-space: nowrap;
     font-size: 12px;
     padding: 2px 2px 2px 10px;
     gap: 6px;

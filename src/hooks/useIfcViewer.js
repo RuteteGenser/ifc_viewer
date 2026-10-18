@@ -887,7 +887,7 @@ export function useIfcViewer() {
       const sphere = getGroupSphere();
       // A finger-sized screen can't spare a sheet 2.6x the model's radius
       // (it would cover everything), so on touch the gizmo is smaller.
-      const scale = sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 1) : 10;
+      const scale = sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
       const pointOnPlaneLocal = localPlane.normal.clone().multiplyScalar(-localPlane.constant);
       // The gizmo sits exactly at the clip plane's own boundary — which
       // this very plane also clips against — so at that exact distance,

@@ -2,15 +2,15 @@ const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer:
 
 const HINTS = {
   measure: {
-    touch: "Tap two points on the model to measure between them.",
+    touch: "Tap two points to measure.",
     mouse: "Click two points on the model to measure between them.",
   },
   tag: {
-    touch: "Tap an element to pin its dimension tag.",
+    touch: "Tap an element to pin its tag.",
     mouse: "Hover an element, then click to pin its dimension tag.",
   },
   category: {
-    touch: "Tap an element to hide its whole category.",
+    touch: "Tap an element to hide its category.",
     mouse: "Click an element to hide its whole category.",
   },
   sectionIdle: {

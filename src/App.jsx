@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useIfcViewer } from "./hooks/useIfcViewer";
 import Viewport from "./components/Viewport";
 import Sidebar from "./components/Sidebar";
+import { BrowserContext } from "./hooks/BrowserContext";
 import DropOverlay from "./components/DropOverlay";
 import LoadingOverlay from "./components/LoadingOverlay";
 import StatusBanner from "./components/StatusBanner";
@@ -340,6 +341,7 @@ function App() {
   );
 
   return (
+    <BrowserContext.Provider value={browser}>
     <div className="app">
       <input
         ref={fileInputRef}
@@ -566,6 +568,7 @@ function App() {
         )}
       </div>
     </div>
+    </BrowserContext.Provider>
   );
 }
 

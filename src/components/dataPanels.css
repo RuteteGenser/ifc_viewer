@@ -633,3 +633,172 @@
     min-height: 44px;
   }
 }
+
+/* ---------- Search results ---------- */
+
+.search-bar__results {
+  /* Keep the dropdown on the same paper as the toolbar; don't let a mouse
+     press steal focus from the input (which would close the list). */
+  overflow: hidden;
+}
+
+.sb-mark {
+  background: rgba(150, 101, 47, 0.28);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-shadow: 0 1px 0 var(--accent);
+}
+
+.sb-chips {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.sb-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 2px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sb-chip:hover {
+  background: var(--bg-subtle);
+}
+
+.sb-chip--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.sb-chip__n {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.sb-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sb-actions__count {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.sb-actions__btn {
+  min-height: 28px;
+  padding: 2px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sb-actions__btn:hover {
+  background: var(--bg-subtle);
+}
+
+.search-bar__result.sb-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.search-bar__result.sb-row > label {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sb-row__meta {
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-row--active > label,
+.search-bar__result.sb-row--active > label {
+  background: var(--accent-soft);
+}
+
+.sb-go {
+  flex: none;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.sb-go:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+
+.sb-go svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sb-hint {
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+@media (pointer: coarse) {
+  .sb-chip,
+  .sb-actions__btn {
+    min-height: 44px;
+  }
+  .sb-go {
+    width: 44px;
+  }
+  .sb-hint {
+    display: none;
+  }
+}
+
+/* The existing :hover rule out-ranks --active and left white text on ivory. */
+.search-bar__mode-toggle-btn--active:hover {
+  background: var(--accent-hover);
+  color: #fff;
+}

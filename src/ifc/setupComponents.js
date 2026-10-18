@@ -1,31 +1,46 @@
-import * as OBC from "@thatopen/components";
+import { FragmentsModels } from "@thatopen/fragments";
 // Local worker asset so the app never depends on a CDN at runtime.
-import { prewarmIfcImporter } from "./ifcImportClient";
 import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
 
 /**
- * Creates the (non-visual) IFC parsing pipeline: a Components container,
- * a FragmentsManager (loads the local worker) and an IfcLoader (loads the
- * local web-ifc wasm binaries copied into /public/wasm).
+ * Creates the (non-visual) viewer pipeline, returned in the shape the viewer
+ * hook uses: `fragments.core` is the fragments engine (its models stream to a
+ * local worker), `ifcLoader.settings` says how to run the web-ifc wasm copied
+ * into /public/wasm, and `components.dispose` tears the engine down.
+ *
+ * The IFC -> fragments conversion itself does not run here: it runs in the
+ * import worker (ifcImportClient.js / ifcImportWorker.js), which is why the
+ * web-ifc parser and its per-schema tables are not needed on this thread.
+ *
+ * This talks to @thatopen/fragments directly instead of going through
+ * @thatopen/components. That package is a 420 kB toolkit (cameras, raycasters,
+ * clipper, ...) of which the viewer used only three thin wrappers, which are
+ * re-created below; leaving it out saves about 120 kB of gzip on every first
+ * visit.
  */
 export async function createIfcPipeline() {
-  const components = new OBC.Components();
+  const core = new FragmentsModels(fragmentsWorkerUrl);
 
-  const fragments = components.get(OBC.FragmentsManager);
-  fragments.init(fragmentsWorkerUrl);
+  const fragments = { core, get list() { return core.models.list; } };
 
-  const ifcLoader = components.get(OBC.IfcLoader);
-  await ifcLoader.setup({
-    autoSetWasm: false,
-    wasm: {
-      path: `${import.meta.env.BASE_URL}wasm/`,
-      absolute: true,
+  const ifcLoader = { settings: ifcImportSettings() };
+
+  const components = {
+    dispose() {
+      core.dispose();
     },
-  });
-
-  components.init();
+  };
 
   return { components, fragments, ifcLoader };
+}
+
+// How the import worker runs web-ifc: the local wasm copy (never a CDN), and
+// the model re-centred on its own origin.
+export function ifcImportSettings() {
+  return {
+    wasm: { path: `${import.meta.env.BASE_URL}wasm/`, absolute: true },
+    webIfc: { COORDINATE_TO_ORIGIN: true },
+  };
 }
 
 // main.jsx calls startIfcPipeline() before React renders so the heavy
@@ -36,9 +51,6 @@ let early = null;
 
 export function startIfcPipeline() {
   early = createIfcPipeline();
-  // Once the engine is up, not before, so the importer's own download does
-  // not compete with it on a slow link.
-  early.then(prewarmIfcImporter, () => {});
 }
 
 export function takeIfcPipeline() {

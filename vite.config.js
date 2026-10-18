@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
+import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, emptyWebIfcForFragments, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
 import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
@@ -7,7 +9,34 @@ export default defineConfig(({ command }) => ({
   // GitHub Pages serves this repo at https://<user>.github.io/ifc_viewer/,
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
-  plugins: [react(), serviceWorkerManifest(), precompress()],
+  resolve: {
+    // Build only: the dev server pre-bundles dependencies and would trip over these.
+    alias: command !== 'build' ? [] : [
+      // The package's "./worker" export is the 3.3 MB unminified build; the
+      // minified build of the same worker ships next to it (1.4 MB).
+      {
+        find: /^@thatopen\/fragments\/worker(\?.*)?$/,
+        replacement: fileURLToPath(
+          new URL('./node_modules/@thatopen/fragments/dist/Worker/worker.min.mjs', import.meta.url),
+        ) + '$1',
+      },
+    ],
+  },
+  plugins: [dropUnminifiedFragmentsWorker(), emptyWebIfcForFragments(), slimWebIfc(), react(), serviceWorkerManifest(), precompress()],
+  // The IFC import worker is a separate bundle: it needs the same web-ifc
+  // trimming (one slim parser, lazy per-schema chunks) as the page.
+  worker: {
+    format: 'es',
+    plugins: () => [slimWebIfc(), cutFragmentsWorkerFallback()],
+    rollupOptions: {
+      output: {
+        // Own prefix so the import worker's copy of the per-schema chunks
+        // (the page keeps another, for raw property lookups) is told apart.
+        chunkFileNames: 'assets/iw-[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {
@@ -27,11 +56,14 @@ export default defineConfig(({ command }) => ({
         codeSplitting: {
           groups: [
             { name: 'three', test: /node_modules[\\/]three[\\/]/, priority: 20 },
+            // The parser itself is only used on the page for raw property
+            // lookups (rawIfcQuery.js), so it is its own lazily loaded chunk.
+            { name: 'web-ifc', test: /node_modules[\\/]web-ifc[\\/]/, priority: 15 },
             {
               name: 'ifc-engine',
               // Not the fragments worker's ?url module: main.jsx imports only
               // that URL, which must not drag the engine chunk into the entry.
-              test: (id) => /node_modules[\\/](@thatopen|web-ifc|camera-controls)/.test(id) && !/[\\/]Worker[\\/]worker/.test(id),
+              test: (id) => /node_modules[\\/](@thatopen|camera-controls)/.test(id) && !/[\\/]Worker[\\/]worker/.test(id),
               priority: 10,
             },
           ],

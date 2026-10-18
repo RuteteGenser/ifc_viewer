@@ -4962,7 +4962,7 @@ export function useIfcViewer() {
         // normal), which front-face-only rendering shows as missing or
         // "inside-out" surfaces. Render both faces so those surfaces
         // are never invisible, at the cost of some fill-rate.
-        const { wasm, webIfc } = pipeline.ifcLoader.settings;
+        const { wasm, webIfc } = pipeline.ifcLoader.settings; // see setupComponents.js
         const importJob = importIfcInWorker(source instanceof Blob ? { file: source } : { bytes: source }, {
           wasm: { path: wasm.path, absolute: wasm.absolute },
           webIfcSettings: { ...webIfc },

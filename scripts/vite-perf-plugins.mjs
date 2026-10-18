@@ -22,9 +22,14 @@ export function serviceWorkerManifest() {
         const files = walkFiles(outDir)
           .map((f) => f.slice(outDir.length + 1).split('\\').join('/'))
           .sort()
+        // web-ifc's per-schema tables (the page's and the import worker's copy
+        // of each) are fetched on demand, except IFC4's, which the sample needs:
+        // a first visit should not download schemas its files may never use.
+        // Any other schema is cached the first time a file of it is opened.
+        const lazySchema = /web-ifc-schema-[13]-/
         const precache = files.filter(
           (f) =>
-            /^assets\/.*\.(js|css)$/.test(f) ||
+            (/^assets\/.*\.(js|css)$/.test(f) && !lazySchema.test(f)) ||
             f === 'wasm/web-ifc.wasm' ||
             f.startsWith('fonts/') ||
             f.startsWith('demo/'),

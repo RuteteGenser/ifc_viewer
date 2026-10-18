@@ -55,18 +55,19 @@ export default function FirstRunHint({ visible }) {
   const rows = COARSE ? TOUCH_ROWS : MOUSE_ROWS;
   return (
     <div className="first-run" ref={cardRef} role="dialog" aria-label="How to move around">
-      <div className="first-run__title">Getting around</div>
-      <dl className="first-run__list">
+      <div className="first-run__head">
+        <div className="first-run__title">Getting around</div>
+        <button type="button" className="first-run__button" onClick={close}>
+          Got it
+        </button>
+      </div>
+      <ul className="first-run__list">
         {rows.map(([gesture, action]) => (
-          <div key={gesture} className="first-run__row">
-            <dt>{gesture}</dt>
-            <dd>{action}</dd>
-          </div>
+          <li key={gesture} className="first-run__row">
+            <b>{gesture}</b> {action}
+          </li>
         ))}
-      </dl>
-      <button type="button" className="first-run__button" onClick={close}>
-        Got it
-      </button>
+      </ul>
     </div>
   );
 }

@@ -126,6 +126,7 @@ function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const dragDepthRef = useRef(0);
   const lastAutoSwitchGuidRef = useRef(null);
+  const hadSelectionRef = useRef(false);
 
   // Jump to the Info tab whenever a genuinely new element is selected
   // (not on the later async ifcInfo merge, which keeps the same guid) so
@@ -137,7 +138,12 @@ function App() {
       setActiveRightTab("info");
       setPanelOpen(true);
     }
+    // Selection cleared (tap on empty space, Escape): drop the sheet back to
+    // its peek bar so it stops covering the model, unless another tab is in use.
+    if (!guid && hadSelectionRef.current && activeRightTab === "info") setPanelOpen(false);
+    hadSelectionRef.current = !!guid;
     lastAutoSwitchGuidRef.current = guid;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedElement?.guid]);
 
   // Tell the 3D view how much of its edges the info panel covers (the

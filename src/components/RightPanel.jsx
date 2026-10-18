@@ -26,6 +26,7 @@ export default function RightPanel({
   onModeChange,
   onClose,
   onHideElement,
+  onToast,
   element,
   loading,
   measurements,
@@ -215,7 +216,7 @@ export default function RightPanel({
 
       <div className="element-panel__body">
         {activeTab === "info" ? (
-          <ElementInfoPanel element={element} loading={loading} onHide={onHideElement} />
+          <ElementInfoPanel element={element} loading={loading} onHide={onHideElement} onToast={onToast} />
         ) : activeTab === "measurements" ? (
           <MeasureControl
             measurements={measurements}

@@ -1,4 +1,6 @@
 import ClipPlaneControl from "./ClipPlaneControl";
+import ModelInfo from "./ModelInfo";
+import ModelTree from "./ModelTree";
 
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   return (
@@ -89,6 +91,9 @@ export default function Sidebar({
   onRemoveClipPlane,
   hiddenCategories,
   onShowCategory,
+  browser,
+  selectedId,
+  onPickElement,
 }) {
   return (
     <aside className={`sidebar ${className}`.trim()}>
@@ -130,6 +135,8 @@ export default function Sidebar({
         </ul>
       )}
 
+      {browser && models.length > 0 && <ModelInfo models={models} trees={browser.trees} />}
+
       <button
         type="button"
         className="sidebar__reset-visibility-button"
@@ -139,6 +146,13 @@ export default function Sidebar({
       >
         Reset visibility
       </button>
+
+      {browser && models.length > 0 && (
+        <>
+          <div className="sidebar__section-title">Structure</div>
+          <ModelTree browser={browser} selectedId={selectedId} onPick={onPickElement} />
+        </>
+      )}
 
       {hiddenCategories.length > 0 && (
         <>

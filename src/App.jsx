@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useIfcViewer } from "./hooks/useIfcViewer";
 import Viewport from "./components/Viewport";
 import Sidebar from "./components/Sidebar";
+import { BrowserContext } from "./hooks/BrowserContext";
 import DropOverlay from "./components/DropOverlay";
 import LoadingOverlay from "./components/LoadingOverlay";
 import StatusBanner from "./components/StatusBanner";
@@ -87,6 +88,7 @@ function App() {
     cameraClipMax,
     setCameraClipDistance,
     selectedElement,
+    browser,
     selectedElementLoading,
     clearSelection,
     measurements,
@@ -342,6 +344,7 @@ function App() {
   );
 
   return (
+    <BrowserContext.Provider value={browser}>
     <div className="app">
       <input
         ref={fileInputRef}
@@ -398,6 +401,9 @@ function App() {
           onRemoveClipPlane={removeClipPlane}
           hiddenCategories={hiddenCategories}
           onShowCategory={(category) => setCategoryHidden(category, false)}
+          browser={browser}
+          selectedId={browser.selectedId}
+          onPickElement={() => setSidebarOpen(false)}
         />
 
         <div
@@ -517,6 +523,7 @@ function App() {
           onResize={changePanelWidth}
           onClose={handleClosePanel}
           onHideElement={hideSelectedElement}
+          onToast={showToast}
           element={selectedElement}
           loading={selectedElementLoading}
           measurements={measurements}
@@ -565,6 +572,7 @@ function App() {
         )}
       </div>
     </div>
+    </BrowserContext.Provider>
   );
 }
 

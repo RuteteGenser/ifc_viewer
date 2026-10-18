@@ -173,9 +173,18 @@ function applyModelColorOverride(object, color) {
 function getSceneBox(entries) {
   const box = new THREE.Box3();
   let hasContent = false;
-  for (const { object } of entries) {
+  for (const entry of entries) {
+    const { object } = entry;
     if (!object.visible) continue;
-    const objectBox = new THREE.Box3().setFromObject(object);
+    // Prefer the exact union of the elements' own boxes (see
+    // computeModelLocalBox): the raw object box is inflated by tile bounds.
+    let objectBox;
+    if (entry.localBox && object.parent) {
+      object.parent.updateMatrixWorld(true);
+      objectBox = entry.localBox.clone().applyMatrix4(object.parent.matrixWorld);
+    } else {
+      objectBox = new THREE.Box3().setFromObject(object);
+    }
     if (!objectBox.isEmpty()) {
       box.union(objectBox);
       hasContent = true;
@@ -184,27 +193,135 @@ function getSceneBox(entries) {
   return hasContent ? box : null;
 }
 
+// Union of every drawn element's real bounding box, expressed in the model
+// group's local frame (call while the group is still in its load pose).
+async function computeModelLocalBox(model, group) {
+  const ids = await model.getItemsIdsWithGeometry();
+  const world = new THREE.Box3();
+  const CHUNK = 500;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const boxes = await model.getBoxes(ids.slice(i, i + CHUNK));
+    for (const b of boxes) if (b && !b.isEmpty()) world.union(b);
+  }
+  if (world.isEmpty()) return null;
+  group.updateMatrixWorld(true);
+  return world.applyMatrix4(group.matrixWorld.clone().invert());
+}
+
 const TOUCH_UI = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
-function frameCameraOnScene(camera, controls, entries) {
-  const box = getSceneBox(entries);
-  if (!box) return;
+const DEFAULT_VIEW_DIR = new THREE.Vector3(1, 0.8, 1).normalize();
 
-  const size = box.getSize(new THREE.Vector3());
+function boxCorners(box) {
+  const out = [];
+  for (const x of [box.min.x, box.max.x])
+    for (const y of [box.min.y, box.max.y])
+      for (const z of [box.min.z, box.max.z]) out.push(new THREE.Vector3(x, y, z));
+  return out;
+}
+
+// Normalised-device bounds of points as the camera currently sees them.
+function ndcBounds(camera, points) {
+  const b = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+  const v = new THREE.Vector3();
+  for (const p of points) {
+    v.copy(p).project(camera);
+    b.minX = Math.min(b.minX, v.x);
+    b.maxX = Math.max(b.maxX, v.x);
+    b.minY = Math.min(b.minY, v.y);
+    b.maxY = Math.max(b.maxY, v.y);
+  }
+  return b;
+}
+
+function placeCamera(camera, target, dir, distance) {
+  camera.position.copy(target).addScaledVector(dir, distance);
+  camera.lookAt(target);
+  camera.updateMatrixWorld(true);
+}
+
+// Computes (without applying) the camera pose that fits `box` into the part
+// of the canvas that is not covered by UI. `frac` is the visible rectangle
+// as a fraction of the canvas ({x, y}); with the camera's view offset set to
+// centre that rectangle, it spans [-frac.x, frac.x] x [-frac.y, frac.y] in
+// normalised device coordinates, so the fit is done in those units.
+function withoutViewOffset(camera, fn) {
+  const saved = camera.view ? { ...camera.view } : null;
+  if (saved?.enabled) {
+    camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+  }
+  try {
+    return fn();
+  } finally {
+    if (saved?.enabled) {
+      camera.setViewOffset(saved.fullWidth, saved.fullHeight, saved.offsetX, saved.offsetY, saved.width, saved.height);
+      camera.updateProjectionMatrix();
+    }
+  }
+}
+
+function computeFit(camera, box, frac, dir, margin = 0.92) {
+  return withoutViewOffset(camera, () => computeFitRaw(camera, box, frac, dir, margin));
+}
+
+function computeFitRaw(camera, box, frac, dir, margin) {
   const center = box.getCenter(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z, 1);
-  const distance = maxDim * 1.5;
+  const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.5);
+  const corners = boxCorners(box);
+  const saved = camera.position.clone();
+  const savedQ = camera.quaternion.clone();
+  const target = center.clone();
+  let distance = radius * 3;
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  for (let iter = 0; iter < 4; iter++) {
+    let lo = radius * 1.05;
+    let hi = radius * 80;
+    for (let i = 0; i < 28; i++) {
+      const mid = (lo + hi) / 2;
+      placeCamera(camera, target, dir, mid);
+      const b = ndcBounds(camera, corners);
+      const ext = Math.max(
+        Math.max(Math.abs(b.minX), Math.abs(b.maxX)) / frac.x,
+        Math.max(Math.abs(b.minY), Math.abs(b.maxY)) / frac.y,
+      );
+      if (ext > margin) lo = mid;
+      else hi = mid;
+    }
+    distance = hi;
+    placeCamera(camera, target, dir, distance);
+    const b = ndcBounds(camera, corners);
+    const mx = (b.minX + b.maxX) / 2;
+    const my = (b.minY + b.maxY) / 2;
+    if (Math.abs(mx) < 0.002 && Math.abs(my) < 0.002) break;
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    target.addScaledVector(right, mx * tanHalf * camera.aspect * distance);
+    target.addScaledVector(up, my * tanHalf * distance);
+  }
+  const pose = { target, position: target.clone().addScaledVector(dir, distance), distance, radius };
+  camera.position.copy(saved);
+  camera.quaternion.copy(savedQ);
+  camera.updateMatrixWorld(true);
+  return pose;
+}
 
-  controls.target.copy(center);
-  camera.position.set(
-    center.x + distance,
-    center.y + distance * 0.8,
-    center.z + distance,
-  );
-  camera.near = Math.max(distance / 1000, 0.01);
-  camera.far = distance * 100;
+function applyPose(camera, controls, pose) {
+  controls.target.copy(pose.target);
+  camera.position.copy(pose.position);
+  const d = pose.distance ?? camera.position.distanceTo(pose.target);
+  camera.near = Math.max(d / 1000, 0.01);
+  camera.far = d * 100;
   camera.updateProjectionMatrix();
   controls.update();
+}
+
+function frameCameraOnScene(camera, controls, entries, frac = { x: 1, y: 1 }, dir = DEFAULT_VIEW_DIR) {
+  const box = getSceneBox(entries);
+  if (!box) return null;
+  const pose = computeFit(camera, box, frac, dir);
+  applyPose(camera, controls, pose);
+  return pose;
 }
 
 /**
@@ -247,6 +364,10 @@ export function useIfcViewer() {
   // load/remove, camera/view changes, visibility checkboxes, and
   // selection are intentionally not tracked here.
   const viewInsetBottomRef = useRef(0);
+  const autoFramedRef = useRef(false); // true until the user moves the camera themselves; insets then re-fit the model
+  const cameraAnimRef = useRef(0);
+  const fitByFocusRef = useRef(false); // the last focus re-fitted the whole model; re-fit again when the sheet size changes
+  const selectionAnchorRef = useRef(null); // selected point in modelsGroup-local coordinates
   const viewInsetRightRef = useRef(0);
   const applyViewInsetRef = useRef(() => {});
   const undoStackRef = useRef([]);
@@ -2550,6 +2671,8 @@ export function useIfcViewer() {
           return;
         }
         clearHighlight();
+        modelsGroup.updateMatrixWorld(true);
+        selectionAnchorRef.current = modelsGroup.worldToLocal(hit.point.clone());
         showHighlightFill(hit).catch((err) => console.error("Highlight fill failed", err));
         selectedHitRef.current = { modelId: hit.fragments.modelId, localId: hit.localId };
         const [data] = await hit.fragments.getItemsData([hit.localId], {
@@ -3155,6 +3278,18 @@ export function useIfcViewer() {
         .catch((err) => console.error("Pivot raycast failed", err));
     };
     renderer.domElement.addEventListener("pointerdown", onRotateStart);
+    // Any direct camera interaction ends automatic re-framing and any
+    // in-flight ease, so the camera never fights the user's hands.
+    const onUserCamera = () => {
+      autoFramedRef.current = false;
+      fitByFocusRef.current = false;
+      if (cameraAnimRef.current) {
+        cancelAnimationFrame(cameraAnimRef.current);
+        cameraAnimRef.current = 0;
+      }
+    };
+    renderer.domElement.addEventListener("pointerdown", onUserCamera);
+    renderer.domElement.addEventListener("wheel", onUserCamera, { passive: true });
 
     // Touch has no right-click: a still finger held on the canvas opens
     // the same context menu (create clip plane / hide element). The
@@ -4137,6 +4272,134 @@ export function useIfcViewer() {
   // Shows the "replace existing file?" modal and resolves to the user's
   // choice; ConfirmDialog (rendered from the `confirmReplace` state)
   // calls back into `resolve` via confirmReplaceAnswer below.
+  // The part of the canvas not covered by the info sheet / side panel, as a
+  // fraction of the canvas size (see computeFit).
+  const getVisibleFrac = useCallback(() => {
+    const container = containerRef.current;
+    const w = container?.clientWidth || 1;
+    const h = container?.clientHeight || 1;
+    const insetB = Math.min(viewInsetBottomRef.current, h * 0.8);
+    const insetR = Math.min(viewInsetRightRef.current, w * 0.6);
+    return { x: Math.max(0.2, 1 - insetR / w), y: Math.max(0.2, 1 - insetB / h) };
+  }, []);
+
+  const cancelCameraAnim = useCallback(() => {
+    if (cameraAnimRef.current) cancelAnimationFrame(cameraAnimRef.current);
+    cameraAnimRef.current = 0;
+  }, []);
+
+  // Smoothly moves the camera to `pose` (position + target) instead of
+  // snapping, so a re-fit never reads as a jump.
+  const easeToPose = useCallback(
+    (pose, ms = 280) => {
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls) return;
+      cancelCameraAnim();
+      const fromPos = camera.position.clone();
+      const fromTarget = controls.target.clone();
+      const t0 = performance.now();
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / ms);
+        const e = k * k * (3 - 2 * k);
+        applyPose(camera, controls, {
+          position: fromPos.clone().lerp(pose.position, e),
+          target: fromTarget.clone().lerp(pose.target, e),
+          distance: undefined,
+        });
+        requestRenderRef.current();
+        cameraAnimRef.current = k < 1 ? requestAnimationFrame(step) : 0;
+      };
+      cameraAnimRef.current = requestAnimationFrame(step);
+    },
+    [cancelCameraAnim],
+  );
+
+  // Re-fits the whole model into the visible area, keeping the current
+  // viewing direction. Used when the sheet changes size before the user has
+  // touched the camera.
+  const refitModel = useCallback(
+    (animate) => {
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls || modelsRef.current.size === 0) return;
+      const box = getSceneBox(modelsRef.current.values());
+      if (!box) return;
+      const dir = camera.position.clone().sub(controls.target);
+      if (dir.lengthSq() < 1e-9) return;
+      dir.normalize();
+      const pose = computeFit(camera, box, getVisibleFrac(), dir);
+      if (animate) easeToPose(pose);
+      else applyPose(camera, controls, pose);
+      requestRenderRef.current();
+    },
+    [easeToPose, getVisibleFrac],
+  );
+
+  // Pans (no zoom) so the selected point sits in the middle of the visible
+  // area, then nudges the whole model back inside that area if it fits.
+  const focusSelection = useCallback(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const group = modelsGroupRef.current;
+    const anchor = selectionAnchorRef.current;
+    if (!camera || !controls || !group || !anchor) return;
+    if (viewInsetBottomRef.current <= 0 && viewInsetRightRef.current <= 0) return;
+    group.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+    const pose = withoutViewOffset(camera, () => {
+    const frac = getVisibleFrac();
+    const world = anchor.clone().applyMatrix4(group.matrixWorld);
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    const fwd = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).negate();
+    const depthOf = (pt) => Math.max(pt.clone().sub(camera.position).dot(fwd), 0.01);
+    const p = world.clone().project(camera);
+    // Offset needed, in NDC; pan the camera by the same world amount.
+    let dx = p.x;
+    let dy = p.y;
+    const box = getSceneBox(modelsRef.current.values());
+    if (box) {
+      const corners = boxCorners(box);
+      const b = ndcBounds(camera, corners);
+      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.96 && (b.maxY - b.minY) <= 2 * frac.y * 0.96;
+      // Whole model currently framed (not zoomed into a detail) but too big
+      // for the space the sheet left: ease it back to fit instead of
+      // leaving parts of it hidden behind the sheet.
+      const framedWhole = (b.maxX - b.minX) <= 2.05 && (b.maxY - b.minY) <= 2.05;
+      if (!fits && framedWhole) {
+        const dir = camera.position.clone().sub(controls.target).normalize();
+        fitByFocusRef.current = true;
+        return computeFitRaw(camera, box, frac, dir, 0.92);
+      }
+      if (fits) {
+        // After the pan, keep the model's bounds inside the visible rectangle.
+        const lim = 0.98;
+        const clampD = (d, lo, hi, flo, fhi) => {
+          // moving content by -d: bounds become lo-d..hi-d
+          const maxD = lo + fhi * lim; // d must be <= lo + lim*f (keep lo-d >= -lim*f)
+          const minD = hi - fhi * lim; // d must be >= hi - lim*f
+          return Math.min(Math.max(d, minD), maxD);
+        };
+        dx = clampD(dx, b.minX, b.maxX, 0, frac.x);
+        dy = clampD(dy, b.minY, b.maxY, 0, frac.y);
+      }
+    }
+    const depth = depthOf(world);
+    const delta = new THREE.Vector3()
+      .addScaledVector(right, dx * tanHalf * camera.aspect * depth)
+      .addScaledVector(up, dy * tanHalf * depth);
+    if (delta.length() < 1e-4) return null;
+    const pose = {
+      position: camera.position.clone().add(delta),
+      target: controls.target.clone().add(delta),
+    };
+    return pose;
+    });
+    if (pose) easeToPose(pose);
+  }, [easeToPose, getVisibleFrac]);
+
   const confirmReplaceFile = useCallback((name) => {
     return new Promise((resolve) => {
       setConfirmReplace({ name, resolve });
@@ -4269,17 +4532,28 @@ export function useIfcViewer() {
     // Let a few frames of streamed geometry land before measuring bounds.
     await pipeline.fragments.core.update(true);
     await new Promise((resolve) => setTimeout(resolve, 150));
+    for (const entry of modelsRef.current.values()) {
+      if (entry.localBox !== undefined) continue;
+      try {
+        entry.localBox = await computeModelLocalBox(entry.model, modelsGroup);
+      } catch (err) {
+        console.error("Could not measure model bounds", err);
+        entry.localBox = null;
+      }
+    }
     if (cameraRef.current && controlsRef.current) {
+      autoFramedRef.current = true;
       frameCameraOnScene(
         cameraRef.current,
         controlsRef.current,
         modelsRef.current.values(),
+        getVisibleFrac(),
       );
     }
 
     setIsLoading(false);
     setLoadingLabel("");
-  }, [confirmReplaceFile, removeModel]);
+  }, [confirmReplaceFile, removeModel, getVisibleFrac]);
 
   // Bundles every currently-loaded model's original bytes back into a
   // single buildingSMART-style .ifcZIP (a plain ZIP of the .ifc files —
@@ -4336,9 +4610,11 @@ export function useIfcViewer() {
       modelsGroup.position.set(0, 0, 0);
       modelsGroup.updateMatrixWorld(true);
     }
-    frameCameraOnScene(camera, controls, modelsRef.current.values());
+    cancelCameraAnim();
+    autoFramedRef.current = true;
+    frameCameraOnScene(camera, controls, modelsRef.current.values(), getVisibleFrac());
     requestRenderRef.current();
-  }, []);
+  }, [cancelCameraAnim, getVisibleFrac]);
 
   // Part of the viewport can be covered by UI that sits over it (on a phone,
   // the info bottom sheet). Rather than shrinking the canvas — which would
@@ -4364,8 +4640,9 @@ export function useIfcViewer() {
       viewInsetBottomRef.current = Math.max(0, bottom || 0);
       viewInsetRightRef.current = Math.max(0, right || 0);
       applyViewInset();
+      if (autoFramedRef.current || fitByFocusRef.current) refitModel(true);
     },
-    [applyViewInset],
+    [applyViewInset, refitModel],
   );
 
   const clearError = useCallback(() => setError(null), []);
@@ -4445,5 +4722,6 @@ export function useIfcViewer() {
     canRedo: historyCounts.redo > 0,
     hideSelectedElement,
     setViewInsets,
+    focusSelection,
   };
 }

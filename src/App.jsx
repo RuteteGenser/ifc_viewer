@@ -31,6 +31,7 @@ function App() {
     models,
     isLoading,
     loadingLabel,
+    ready,
     error,
     loadFiles,
     saveAsIfcZip,
@@ -158,6 +159,15 @@ function App() {
       setError(`Could not load the demo model (${err.message}).`);
     }
   }, [loadFiles, setError]);
+
+  // The landing page's "Try the demo model" link opens the app at ?demo=1.
+  const autoDemoRef = useRef(false);
+  useEffect(() => {
+    if (autoDemoRef.current || !ready) return;
+    if (new URLSearchParams(window.location.search).get("demo") !== "1") return;
+    autoDemoRef.current = true;
+    handleLoadDemo();
+  }, [ready, handleLoadDemo]);
 
   const handleClosePanel = useCallback(() => {
     clearSelection();

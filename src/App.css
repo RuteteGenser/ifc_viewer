@@ -2417,11 +2417,6 @@
 }
 
 .first-run {
-  position: absolute;
-  left: 50%;
-  top: calc(var(--toolbar-h, var(--header-height)) + 10px);
-  transform: translateX(-50%);
-  z-index: 18;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3092,13 +3087,11 @@
 /* Floating notes centre on the 3D area that is left of the details column,
    so they never sit over its tabs. */
 @media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
-  .first-run,
   .hud,
   .status-stack {
     left: calc((100% - var(--panel-w, 320px)) / 2);
     max-width: calc(100% - var(--panel-w, 320px) - 24px);
   }
-  .app-body--no-panel .first-run,
   .app-body--no-panel .hud,
   .app-body--no-panel .status-stack {
     left: 50%;
@@ -3153,5 +3146,44 @@
   }
   .tool-hint__done {
     min-height: 36px;
+  }
+}
+
+/* ---------- Toolbar captions (touch screens) ---------- */
+
+.top-bar__caption {
+  display: none;
+}
+
+/* Icons alone are hard to read on a phone, so each tool says its name in
+   10px type under the icon. The buttons stay 44px square. */
+@media (pointer: coarse) {
+  .toolbar .top-bar__icon-button,
+  .toolbar .top-bar__home-button {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 0;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    overflow: hidden;
+  }
+
+  .toolbar .top-bar__icon-button svg,
+  .toolbar .top-bar__home-button svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+  }
+
+  .toolbar .top-bar__caption,
+  .toolbar .top-bar__home-text {
+    display: block;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
   }
 }

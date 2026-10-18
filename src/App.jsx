@@ -503,6 +503,7 @@ function App() {
           />
           <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} />
           <Hud>
+            <FirstRunHint visible={models.length > 0 && !isLoading} />
             <ToolHint tool={armedTool} onDone={exitArmedTool} />
             <CameraClipPanel
               enabled={cameraClipEnabled}
@@ -560,7 +561,6 @@ function App() {
               <span aria-hidden="true">&lsaquo;</span>
             </button>
           )}
-          <FirstRunHint visible={models.length > 0 && !isLoading} />
         </div>
 
         {contextMenu && (

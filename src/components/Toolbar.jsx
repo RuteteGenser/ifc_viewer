@@ -113,8 +113,8 @@ export default function Toolbar({
           aria-disabled={!hasModels}
           aria-label="Home: fit the whole model in view"
         >
-          <span className="top-bar__home-text">Home</span>
           <HomeIcon />
+          <span className="top-bar__home-text">Home</span>
         </button>
       </Tooltip>
       <Tooltip description={locked("Measure: click two points")} hotkey="M">
@@ -126,6 +126,7 @@ export default function Toolbar({
           aria-label="Toggle measure mode"
         >
           <MeasureIcon />
+          <span className="top-bar__caption" aria-hidden="true">Measure</span>
         </button>
       </Tooltip>
       <CameraClipControl
@@ -143,6 +144,7 @@ export default function Toolbar({
           aria-label="Toggle tag tool"
         >
           <TagIcon />
+          <span className="top-bar__caption" aria-hidden="true">Tag</span>
         </button>
       </Tooltip>
       <Tooltip description={locked("Hide a whole category of elements")} hotkey="G">
@@ -154,19 +156,23 @@ export default function Toolbar({
           aria-label="Toggle hide-category tool"
         >
           <HideCategoryIcon />
+          <span className="top-bar__caption" aria-hidden="true">Hide</span>
         </button>
       </Tooltip>
-      <Tooltip description={eyeUsable ? "Show or hide tags, measurements and colours" : locked("Nothing to show or hide yet")} hotkey="V">
-        <button
-          type="button"
-          className={`top-bar__icon-button${tagsVisible ? "" : " top-bar__icon-button--active"}${eyeUsable ? "" : " is-blocked"}`}
-          onClick={eyeUsable ? onToggleTagsVisibility : () => onBlocked(hasModels ? "Nothing to show or hide yet. Add a measurement, tag or colour first." : undefined)}
-          aria-disabled={!eyeUsable}
-          aria-label="Toggle tag & measurement visibility"
-        >
-          {tagsVisible ? <EyeIcon /> : <EyeOffIcon />}
-        </button>
-      </Tooltip>
+      {eyeUsable && (
+        <Tooltip description="Show or hide tags and measurements" hotkey="V">
+          <button
+            type="button"
+            className={`top-bar__icon-button${tagsVisible ? "" : " top-bar__icon-button--active"}`}
+            onClick={onToggleTagsVisibility}
+            aria-pressed={!tagsVisible}
+            aria-label="Notes"
+          >
+            {tagsVisible ? <EyeIcon /> : <EyeOffIcon />}
+            <span className="top-bar__caption" aria-hidden="true">Notes</span>
+          </button>
+        </Tooltip>
+      )}
       <SearchBar
         query={searchQuery}
         onQueryChange={onQueryChange}

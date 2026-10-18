@@ -43,6 +43,7 @@ export default function CameraClipControl({
           aria-label="Toggle camera clip"
         >
           <ClipIcon />
+          <span className="top-bar__caption" aria-hidden="true">Clip</span>
         </button>
       </Tooltip>
     </div>

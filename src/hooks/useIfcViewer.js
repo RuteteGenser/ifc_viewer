@@ -18,6 +18,7 @@ import {
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { importIfcInWorker } from "../ifc/ifcImportClient";
 import { useViewFeatures } from "./useViewFeatures";
+import { robustUnion } from "../ifc/modelBounds";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format: a plain ZIP archive containing one or
@@ -203,15 +204,17 @@ function getSceneBox(entries) {
 
 // Union of every drawn element's real bounding box, expressed in the model
 // group's local frame (call while the group is still in its load pose).
+// Stray far-away elements are ignored (see ifc/modelBounds.js).
 async function computeModelLocalBox(model, group) {
   const ids = await model.getItemsIdsWithGeometry();
-  const world = new THREE.Box3();
+  const all = [];
   const CHUNK = 500;
   for (let i = 0; i < ids.length; i += CHUNK) {
     const boxes = await model.getBoxes(ids.slice(i, i + CHUNK));
-    for (const b of boxes) if (b && !b.isEmpty()) world.union(b);
+    for (const b of boxes) if (b && !b.isEmpty()) all.push(b);
   }
-  if (world.isEmpty()) return null;
+  const { box: world } = robustUnion(all);
+  if (!world) return null;
   group.updateMatrixWorld(true);
   return world.applyMatrix4(group.matrixWorld.clone().invert());
 }
@@ -762,7 +765,7 @@ export function useIfcViewer() {
     camera.position.set(15, 15, 15);
     cameraRef.current = camera;
     // Test hook, only compiled into builds made with VITE_TEST_HOOK=1 (never the deployed build).
-    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; } };
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug = { camera, get controls() { return controlsRef.current; }, get group() { return modelsGroupRef.current; }, get models() { return modelsRef.current; }, THREE };
 
     // Phones render at devicePixelRatio 2 (capped below), where multisampling
     // adds little to edge quality but costs fill-rate and memory every frame.

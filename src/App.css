@@ -486,6 +486,22 @@
   cursor: not-allowed;
 }
 
+.sidebar__show-spaces {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  min-height: 32px;
+}
+
+@media (pointer: coarse) {
+  .sidebar__show-spaces {
+    min-height: 44px;
+  }
+}
+
 .sidebar__section-title {
   font-size: 12px;
   text-transform: uppercase;

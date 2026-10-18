@@ -86,6 +86,7 @@ export default function Sidebar({
   onSetModelColor,
   onSaveIfcZip,
   onResetVisibility,
+  spaceControl,
   isLoading,
   loadingLabel,
   clipPlanes,
@@ -177,6 +178,12 @@ export default function Sidebar({
       >
         Reset visibility
       </button>
+      {spaceControl?.available && (
+        <label className="sidebar__show-spaces">
+          <input type="checkbox" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />
+          <span>Show spaces</span>
+        </label>
+      )}
 
       {browser && models.length > 0 && (
         <>

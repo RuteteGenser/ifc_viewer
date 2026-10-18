@@ -52,7 +52,7 @@ const SECTION_KINDS = [
 
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
-function ViewsPanel({ views, onClose }) {
+function ViewsPanel({ views, spaceControl, onClose }) {
   const { flat, setFlatProjection, goToView, levels, levelSel, showLevels, showAllLevels } = views;
   // On a touch screen the panel covers much of the model, so it gets out of
   // the way once a choice is made. With a mouse it stays for quick flipping.
@@ -81,6 +81,15 @@ function ViewsPanel({ views, onClose }) {
           <small>Parallel lines, no perspective</small>
         </span>
       </label>
+      {spaceControl?.available && (
+        <label className="view-tools__switch">
+          <input type="checkbox" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />
+          <span>
+            Show spaces
+            <small>Room volumes, hidden by default</small>
+          </span>
+        </label>
+      )}
 
       <div className="view-tools__heading">Section</div>
       <div className="view-tools__grid">
@@ -207,7 +216,7 @@ function SharePanel({ views, onClose }) {
 // Floating controls at the top right of the 3D view: the views/levels
 // panel and the save/share menu. Kept out of the toolbar, which is already
 // full on a phone.
-export default function ViewTools({ views }) {
+export default function ViewTools({ views, spaceControl }) {
   const [open, setOpen] = useState(null); // "views" | "share" | null
   const rootRef = useRef(null);
   useDismiss(open !== null, () => setOpen(null), rootRef);
@@ -244,7 +253,7 @@ export default function ViewTools({ views }) {
           </button>
         </Tooltip>
       </div>
-      {open === "views" && <ViewsPanel views={views} onClose={() => setOpen(null)} />}
+      {open === "views" && <ViewsPanel views={views} spaceControl={spaceControl} onClose={() => setOpen(null)} />}
       {open === "share" && <SharePanel views={views} onClose={() => setOpen(null)} />}
     </div>
   );

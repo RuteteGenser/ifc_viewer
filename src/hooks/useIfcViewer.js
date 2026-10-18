@@ -18,6 +18,7 @@ import {
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { importIfcInWorker } from "../ifc/ifcImportClient";
 import { useViewFeatures } from "./useViewFeatures";
+import useSpaceVisibility from "./useSpaceVisibility";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
 
 const IFC_EXTENSION = /\.ifc$/i;
@@ -451,6 +452,7 @@ export function useIfcViewer() {
   const [pinnedDimensionTags, setPinnedDimensionTags] = useState([]); // [{ key, guid, category, name, dimData }]
   const [categoryHideModeActive, setCategoryHideModeActiveState] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState([]); // string[] — categories currently hidden via the hide-category tool
+  const spaces = useSpaceVisibility({ models, modelsRef, pipelineRef, requestRenderRef, invalidateGroupSphereRef, renderForAWhile });
   // Mirrors the lengths of the undo/redo stacks so toolbar buttons (the
   // only way to undo/redo on a touch device, which has no Ctrl+Z) can
   // enable/disable themselves; the stacks themselves stay in refs.
@@ -4565,10 +4567,11 @@ export function useIfcViewer() {
     const entries = [...modelsRef.current.values()];
     renderForAWhile(() => requestRenderRef.current());
     await Promise.all(entries.map(({ model }) => model.resetVisible()));
+    await spaces.keepHidden(); // spaces stay off unless "Show spaces" is on
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
-  }, []);
+  }, [spaces.keepHidden]);
 
   // Recomputes every loaded model's visibility from scratch based on the
   // given isolated-keys set: hide everything, then re-show just the
@@ -4588,8 +4591,9 @@ export function useIfcViewer() {
           const sep = key.lastIndexOf("::");
           if (key.slice(0, sep) === modelId) idsToShow.push(Number(key.slice(sep + 2)));
         }
+        const visibleIds = spaces.filterIds(modelId, idsToShow);
         await model.setVisible(undefined, false);
-        if (idsToShow.length > 0) await model.setVisible(idsToShow, true);
+        if (visibleIds.length > 0) await model.setVisible(visibleIds, true);
         // Isolating a set that excludes the currently selected/highlighted
         // element leaves the same stale highlight/panel as hiding just that
         // one element does (see hideHit/setVisible above) — the highlight
@@ -4597,7 +4601,7 @@ export function useIfcViewer() {
         // system, so it doesn't disappear on its own just because the
         // underlying element got hidden.
         const sel = selectedHitRef.current;
-        if (sel && sel.modelId === modelId && !idsToShow.includes(sel.localId)) {
+        if (sel && sel.modelId === modelId && !visibleIds.includes(sel.localId)) {
           clearHighlightRef.current?.();
           selectedHitRef.current = null;
           setSelectedElement(null);
@@ -4607,7 +4611,7 @@ export function useIfcViewer() {
     await pipelineRef.current?.fragments.core.update(true);
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
-  }, [resetVisibility]);
+  }, [resetVisibility, spaces.filterIds]);
 
   // Accepts either a single key or an array of keys (e.g. every element in
   // a search result category toggled together as one group): if every key
@@ -4631,6 +4635,15 @@ export function useIfcViewer() {
     },
     [applyIsolation],
   );
+
+  const isolatedKeysRef = useRef(isolatedKeys);
+  isolatedKeysRef.current = isolatedKeys;
+  const spaceControl = {
+    shown: spaces.shown,
+    available: spaces.hasSpaces,
+    setShown: (on) =>
+      spaces.setSpacesShown(on, isolatedKeysRef.current.size > 0 ? () => applyIsolation(isolatedKeysRef.current) : null),
+  };
 
   const clearIsolation = useCallback(() => {
     setIsolatedKeys(new Set());
@@ -5018,6 +5031,7 @@ export function useIfcViewer() {
         modelsGroup.add(model.object);
         const entry = { model, object: model.object, sourceBytes, fileName: displayName };
         modelsRef.current.set(modelId, entry);
+        await spaces.hideOnLoad(modelId); // rooms start hidden; not an undo step
         // Tiles regenerate in the background (LOD/visibility changes),
         // which would otherwise silently drop a manual color override on
         // whatever tile gets rebuilt — reapply it every time using
@@ -5135,7 +5149,7 @@ export function useIfcViewer() {
     performance.mark("model-shown");
     setIsLoading(false);
     setLoadingLabel("");
-  }, [confirmReplaceFile, removeModel, getVisibleFrac]);
+  }, [confirmReplaceFile, removeModel, getVisibleFrac, spaces.hideOnLoad]);
 
   useEffect(() => {
     if (!ready || !pendingFilesRef.current) return;
@@ -5350,6 +5364,7 @@ export function useIfcViewer() {
 
   return {
     viewFeatures,
+    spaceControl,
     browser,
     containerRef,
     models,

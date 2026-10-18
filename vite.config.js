@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
+import { dropUnminifiedFragmentsWorker, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
 import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
@@ -7,7 +9,24 @@ export default defineConfig(({ command }) => ({
   // GitHub Pages serves this repo at https://<user>.github.io/ifc_viewer/,
   // so production builds need every asset URL prefixed accordingly.
   base: command === 'build' ? '/ifc_viewer/' : '/',
-  plugins: [react(), serviceWorkerManifest(), precompress()],
+  resolve: {
+    alias: [
+      // The package's "./worker" export is the 3.3 MB unminified build; the
+      // minified build of the same worker ships next to it (1.4 MB).
+      {
+        find: /^@thatopen\/fragments\/worker(\?.*)?$/,
+        replacement: fileURLToPath(
+          new URL('./node_modules/@thatopen/fragments/dist/Worker/worker.min.mjs', import.meta.url),
+        ) + '$1',
+      },
+      // WebGPU code that @thatopen/components bundles but the viewer never runs.
+      {
+        find: /^three\/(webgpu|tsl)$/,
+        replacement: fileURLToPath(new URL('./src/stubs/unused-webgpu.js', import.meta.url)),
+      },
+    ],
+  },
+  plugins: [dropUnminifiedFragmentsWorker(), slimWebIfc(), react(), serviceWorkerManifest(), precompress()],
   build: {
     rollupOptions: {
       output: {

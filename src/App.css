@@ -2021,7 +2021,7 @@
     transition: none;
   }
 
-  .details-fab {
+  .app-body .details-fab {
     bottom: 8px;
     right: calc(12px + var(--safe-right) + 108px);
   }

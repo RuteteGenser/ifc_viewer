@@ -1788,7 +1788,8 @@ export function useIfcViewer() {
           [entry.legDepthLabel, entry.legDepth, entry.depth],
         ].sort((x, y) => (y[2] ?? 0) - (x[2] ?? 0));
         for (const [label, leg, value] of legs) {
-          if ((value ?? 1) <= 0.005) {
+          // A leg as long as the total repeats the same number.
+          if ((value ?? 1) <= 0.005 || Math.abs((value ?? 0) - (entry.length ?? 0)) < 0.01 * (entry.length ?? 1)) {
             label.visible = false;
             continue;
           }

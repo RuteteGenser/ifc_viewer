@@ -33,6 +33,7 @@ import "./components/Library.css";
 // devices the filter is dropped; loadFiles reports unparseable files.
 const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 const SAMPLE_NAME = "Sample building";
+const DRAWER_QUERY = "(max-width: 768px), (max-height: 500px) and (pointer: coarse)";
 import "./App.css";
 
 const PANEL_MIN = 260;
@@ -155,6 +156,16 @@ function App() {
   const hasNoModels = models.length === 0;
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // On narrow screens the model list is a drawer over the view: while it is
+  // open the view behind it takes no taps and no focus.
+  const [drawerLayout, setDrawerLayout] = useState(() => !!window.matchMedia?.(DRAWER_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(DRAWER_QUERY);
+    if (!mq) return undefined;
+    const update = () => setDrawerLayout(mq.matches);
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
   // Wide layouts only: fold the model list / details panel away, and resize the panel.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readPref("ifcViewer.sidebarCollapsed", "0") === "1");
   const [panelCollapsed, setPanelCollapsed] = useState(() => readPref("ifcViewer.panelCollapsed", "0") === "1");
@@ -456,6 +467,7 @@ function App() {
 
         <div
           className="viewport-wrapper"
+          inert={sidebarOpen && drawerLayout ? true : undefined}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}

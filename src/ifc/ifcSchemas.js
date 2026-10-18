@@ -14,7 +14,8 @@ const requested = new Map();
 
 export function loadSchema(id) {
   if (!requested.has(id)) {
-    const promise = chunks[id]();
+    // One more try after a short pause: a dropped connection often recovers at once.
+    const promise = chunks[id]().catch(() => new Promise((resolve) => setTimeout(resolve, 400)).then(() => chunks[id]()));
     // A failed download must not be remembered, so the next file retries.
     promise.catch(() => requested.delete(id));
     requested.set(id, promise);

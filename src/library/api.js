@@ -1,5 +1,7 @@
 // Thin client for the model store at same-origin /api/. Every function
 // throws a LibraryError; `hidden` means "this deployment has no library".
+import { checkDownload, expectedSha } from "../reliability/integrity";
+
 const API = import.meta.env.VITE_LIBRARY_API || "/api";
 export const MAX_BYTES = 250 * 1024 * 1024;
 export const ALLOWED = [".ifc", ".ifczip", ".zip"];
@@ -82,12 +84,13 @@ export async function deleteModel(id) {
   if (!res.ok) throw await problem(res);
 }
 
-// Streams the file so the caller can show real progress. The URL is
-// immutable-cacheable, so a repeat open is served by the HTTP cache.
-export async function downloadModel(item, { signal, onProgress }) {
-  const res = await request(`/models/${encodeURIComponent(item.id)}/file`, { signal });
-  if (!res.ok) throw await problem(res);
-  const total = Number(res.headers.get("content-length")) || item.size || 0;
+// Reads the body of one response, reporting progress. A cut connection
+// throws LibraryError with incomplete = true.
+async function readBody(res, item, signal, onProgress) {
+  // A compressed response reports the compressed length, which the decoded bytes never match.
+  const encoded = !!res.headers.get("content-encoding");
+  const declared = encoded ? 0 : Number(res.headers.get("content-length")) || 0;
+  const total = declared || item.size || 0;
   const chunks = [];
   let received = 0;
   try {
@@ -101,14 +104,41 @@ export async function downloadModel(item, { signal, onProgress }) {
         onProgress?.(total ? Math.min(1, received / total) : null);
       }
     } else {
-      chunks.push(await res.blob());
+      chunks.push(new Uint8Array(await (await res.blob()).arrayBuffer()));
     }
   } catch (err) {
-    if (err?.name === "AbortError") throw new LibraryError("Cancelled", { aborted: true });
-    throw new LibraryError("The download was interrupted. Try again.");
+    if (err?.name === "AbortError" || signal?.aborted) throw new LibraryError("Cancelled", { aborted: true });
+    throw Object.assign(new LibraryError("The download was incomplete. Try again."), { incomplete: true, detail: String(err?.message ?? err) });
   }
-  onProgress?.(1);
-  return new File(chunks, item.name, { type: "application/octet-stream" });
+  return { chunks, declared, encoded, etag: res.headers.get("etag") };
+}
+
+// Streams the file so the caller can show real progress, and checks it before
+// it reaches the importer (size, header, sha256). A bad copy is fetched once
+// more past every cache; if that is bad too the error has `retryable` set.
+// The URL is immutable-cacheable, so a repeat open is normally served by the HTTP cache.
+export async function downloadModel(item, { signal, onProgress }) {
+  let detail = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await request(`/models/${encodeURIComponent(item.id)}/file`, { signal, ...(attempt ? { cache: "reload" } : {}) });
+    if (!res.ok) throw await problem(res);
+    try {
+      const { chunks, declared, etag } = await readBody(res, item, signal, onProgress);
+      const check = await checkDownload({ chunks, contentLength: declared, recordSize: item.size, sha: expectedSha(item, etag) });
+      if (check.ok) {
+        onProgress?.(1);
+        const file = new File(chunks, item.name, { type: "application/octet-stream" });
+        file.argusIntent = { type: "library", id: item.id };
+        return file;
+      }
+      detail = check.reason;
+    } catch (err) {
+      if (!err?.incomplete) throw err;
+      detail = err.detail;
+    }
+    if (signal?.aborted) throw new LibraryError("Cancelled", { aborted: true });
+  }
+  throw Object.assign(new LibraryError("The download was incomplete. Try again."), { retryable: true, detail });
 }
 
 export function extensionOf(name) {

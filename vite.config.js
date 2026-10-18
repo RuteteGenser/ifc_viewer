@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, emptyWebIfcForFragments, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
-import { precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
+import { buildIdMeta, precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => ({
       },
     ],
   },
-  plugins: [dropUnminifiedFragmentsWorker(), emptyWebIfcForFragments(), slimWebIfc(), react(), serviceWorkerManifest(), precompress()],
+  plugins: [dropUnminifiedFragmentsWorker(), emptyWebIfcForFragments(), slimWebIfc(), react(), buildIdMeta(), serviceWorkerManifest(), precompress()],
   // The IFC import worker is a separate bundle: it needs the same web-ifc
   // trimming (one slim parser, lazy per-schema chunks) as the page.
   worker: {

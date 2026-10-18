@@ -82,3 +82,22 @@ export function precompress({ minBytes = 1024 } = {}) {
     },
   }
 }
+
+// Writes <meta name="argus-build"> into index.html: a short hash of every file
+// name in the bundle (they are content-hashed, so it changes whenever anything
+// does). The running page reads its own tag and compares it with a freshly
+// fetched index.html to notice that a newer version has been deployed.
+export function buildIdMeta() {
+  return {
+    name: 'argus-build-id',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const names = Object.keys(ctx.bundle ?? {}).sort().join('\n')
+        const id = createHash('sha1').update(names).digest('hex').slice(0, 10)
+        return html.replace('<head>', `<head>\n    <meta name="argus-build" content="${id}" />`)
+      },
+    },
+  }
+}

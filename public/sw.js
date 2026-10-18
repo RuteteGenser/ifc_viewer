@@ -2,7 +2,9 @@
 // build time (scripts/vite-perf-plugins.mjs): VERSION changes only when the
 // built files change, PRECACHE lists the hashed assets worth keeping offline.
 // A new deploy is a byte-different sw.js, so the browser installs it in the
-// background; its new cache replaces the old one when it activates.
+// background. Its new cache takes over when it activates; the previous
+// version's cache is kept until the one after, so a tab that is still running
+// the previous build keeps finding its (differently hashed) files.
 const VERSION = '__BUILD__'
 const PRECACHE = '__PRECACHE__'
 const CACHE = `ifc-viewer-${VERSION}`
@@ -47,16 +49,27 @@ async function precacheAll() {
 // already has everything it needs, starts it right away.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => {
-        const old = keys.filter((k) => k.startsWith('ifc-viewer-') && k !== CACHE)
-        return Promise.all(old.map((k) => caches.delete(k))).then(() => old.length > 0)
-      })
+    pruneCaches()
       .then((isUpdate) => self.clients.claim().then(() => isUpdate && precacheAll()))
       .catch(() => {}),
   )
 })
+
+// Keeps this version's cache and the previous one's (the list of both is
+// remembered in META). Everything older goes. Resolves true if there was a previous one.
+const META = 'ifc-viewer-meta'
+async function pruneCaches() {
+  const meta = await caches.open(META)
+  const before = await meta
+    .match('versions')
+    .then((r) => (r ? r.json() : []))
+    .catch(() => [])
+  const keep = [CACHE, ...before.filter((k) => k !== CACHE)].slice(0, 2)
+  await meta.put('versions', new Response(JSON.stringify(keep)))
+  const stale = (await caches.keys()).filter((k) => k.startsWith('ifc-viewer-') && k !== META && !keep.includes(k))
+  await Promise.all(stale.map((k) => caches.delete(k)))
+  return keep.length > 1
+}
 
 self.addEventListener('message', (event) => {
   if (event.data === 'precache') event.waitUntil(precacheAll().catch(() => {}))
@@ -77,15 +90,51 @@ function staleWhileRevalidate(event, cacheKey, store = cacheable) {
     })
     .catch(() => null)
   event.waitUntil(refresh)
-  return caches.match(cacheKey, { ignoreSearch: true }).then((hit) => hit || refresh.then((r) => r || Response.error()))
+  return matchOwnFirst(cacheKey, { ignoreSearch: true }).then((hit) => hit || refresh.then((r) => r || Response.error()))
+}
+
+// This version's cache first, then the previous one's (cache.match across
+// caches would return the oldest copy, which for the index is the wrong page).
+async function matchOwnFirst(key, options) {
+  return (await (await caches.open(CACHE)).match(key, options)) || (await caches.match(key, options))
+}
+
+// A script, worker, stylesheet or wasm file must never be answered with a
+// page: nginx falls back to index.html for unknown paths, and the browser
+// would then fail on it with a misleading error.
+const isCode = (request) =>
+  /\.(m?js|css|wasm)$/.test(new URL(request.url).pathname) || ['script', 'worker', 'style'].includes(request.destination)
+const isPage = (response) => /text\/html/i.test(response.headers.get('content-type') || '')
+const notFound = () => new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } })
+
+// Network, and once more past the HTTP cache when it failed in a way that may
+// be momentary (connection error, 5xx, or a page where code was expected).
+async function fetchChecked(request) {
+  const bad = (response) => response.status >= 500 || (isCode(request) && response.ok && isPage(response))
+  let response
+  try {
+    response = await fetch(request)
+    if (!bad(response)) return response
+  } catch {
+    response = null
+  }
+  try {
+    const again = await fetch(new Request(request, { cache: 'reload' }))
+    if (!bad(again)) return again
+    response = again
+  } catch {
+    // keep what the first try gave
+  }
+  if (!response) throw new TypeError('Failed to fetch')
+  return isCode(request) && isPage(response) ? notFound() : response
 }
 
 // Cached copy if there is one, otherwise the network (and remember it).
 function cacheFirst(request) {
-  return caches.match(request).then(
+  return matchOwnFirst(request).then(
     (hit) =>
       hit ||
-      fetch(request).then((response) => {
+      fetchChecked(request).then((response) => {
         if (cacheableFile(response)) {
           const copy = response.clone()
           caches.open(CACHE).then((cache) => cache.put(request, copy))
@@ -100,6 +149,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (request.method !== 'GET' || url.origin !== self.location.origin || !url.href.startsWith(SCOPE)) return
   if (url.pathname.endsWith('/sw.js')) return
+  // The page asked for the network on purpose (a version check, a retry past the caches).
+  if (request.cache === 'no-store' || request.cache === 'reload') return
 
   if (request.mode === 'navigate') {
     event.respondWith(staleWhileRevalidate(event, INDEX))

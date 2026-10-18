@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { copyText } from "../components/copyText";
+import { startupIntent } from "../reliability/recovery";
 import {
   ALLOWED,
   MAX_BYTES,
@@ -50,9 +51,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const onRenamedRef = useRef(onRenamed);
   onRenamedRef.current = onRenamed;
 
-  const say = useCallback((text, tone = "info") => {
+  const say = useCallback((text, tone = "info", retry) => {
     window.clearTimeout(noticeTimerRef.current);
-    setNotice({ id: Date.now() + Math.random(), tone, text });
+    setNotice({ id: Date.now() + Math.random(), tone, text, retry });
     if (tone !== "error") noticeTimerRef.current = window.setTimeout(() => setNotice(null), 4000);
   }, []);
   const dismissNotice = useCallback(() => setNotice(null), []);
@@ -120,7 +121,10 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
         });
         loadFilesRef.current([file]);
       } catch (err) {
-        if (!err?.aborted) say(err?.message || "Could not open that model.", "error");
+        if (!err?.aborted) {
+          if (err?.detail) console.error(`Download of ${record.name} failed: ${err.detail}`);
+          say(err?.message || "Could not open that model.", "error", err?.retryable ? () => openRecord(record) : undefined);
+        }
       } finally {
         abortDownloadRef.current = null;
         setDownload(null);
@@ -146,7 +150,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const deepLinkRef = useRef(false);
   useEffect(() => {
     if (deepLinkRef.current) return;
-    const id = new URLSearchParams(window.location.search).get("model");
+    // ?model=<id>, or the model that was being opened when Argus reloaded itself after an update.
+    const resumed = startupIntent();
+    const id = new URLSearchParams(window.location.search).get("model") || (resumed?.type === "library" ? resumed.id : null);
     if (!id) return;
     deepLinkRef.current = true;
     getModel(id)

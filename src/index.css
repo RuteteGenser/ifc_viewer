@@ -15,8 +15,18 @@ body,
   margin: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior: none;
+  /* No double-tap zoom; taps and pans still reach the page. */
+  touch-action: manipulation;
+}
+
 body {
   background: #fbfaf6;
   color: #2a2622;
   overscroll-behavior: none;
+  /* The app fills the screen; nothing should scroll behind it on iOS. */
+  overflow: hidden;
 }

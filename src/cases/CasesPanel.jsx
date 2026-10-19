@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import usePresence from "../usePresence";
+import useSheetSwipe from "../ui/useSheetSwipe";
 import { useLibraryContext } from "../library/LibraryContext";
 import ConfirmDialog from "../components/ConfirmDialog";
 import CaseView from "./CaseView";
@@ -91,6 +92,7 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
   const controller = cases;
   const modelName = models[0]?.name || "";
   const closed = state === "closed";
+  const swipe = useSheetSwipe(onClose, ref);
 
   useEffect(() => {
     if (closed) return undefined;
@@ -118,8 +120,8 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
   const exists = openId && cases.cases.some((c) => c.id === openId);
 
   return createPortal(
-    <div className="cases" data-state={state} role="dialog" aria-label={COPY.title} ref={ref}>
-      <div className="cases__head">
+    <div className="cases" data-state={state} data-surface-sheet="cases" role="dialog" aria-label={COPY.title} ref={ref}>
+      <div className="cases__head" {...swipe.head}>
         <h2 className="cases__title">{COPY.title}</h2>
         <button type="button" className="cases__btn" onClick={onClose}>{COPY.done}</button>
       </div>

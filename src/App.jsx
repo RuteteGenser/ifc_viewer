@@ -38,6 +38,7 @@ import { LibraryContext } from "./library/LibraryContext";
 import TransferBar from "./library/TransferBar";
 import CasesPanel from "./cases/CasesPanel";
 import { useCases } from "./cases/useCases";
+import { SurfaceProvider, useSurfaces, useSurfaceFlag, useSurfaceMirror, PHONE_QUERY } from "./ui/surfaces";
 import { saveSnapshot } from "./cases/saveSnapshot";
 import "./components/Library.css";
 
@@ -46,7 +47,7 @@ import "./components/Library.css";
 // devices the filter is dropped; loadFiles reports unparseable files.
 const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 const SAMPLE_NAME = "Sample building";
-const DRAWER_QUERY = "(max-width: 768px), (max-height: 500px) and (pointer: coarse)";
+const DRAWER_QUERY = PHONE_QUERY;
 import "./App.css";
 // Test builds only (VITE_TEST_HOOK=1): exposes window.__annotations. Removed from production builds.
 if (import.meta.env.VITE_TEST_HOOK) import("./annotations/mountForTests");
@@ -83,7 +84,11 @@ function App() {
   const access = useAccess();
   const accessRef = useRef(access);
   accessRef.current = access;
-  const leaveGuard = useLeaveGuard();
+  const surfaces = useSurfaces();
+  // Back closes the topmost open surface before it asks about leaving (set below, once the viewer exists).
+  const backRef = useRef(() => false);
+  const leaveGuard = useLeaveGuard(useCallback(() => backRef.current(), []));
+  backRef.current = surfaces.closeTop;
   const {
     containerRef,
     models,
@@ -198,9 +203,10 @@ function App() {
   }, [isLoading, confirmReplace, models.length]);
   const [isDragging, setIsDragging] = useState(false);
   const [dropShift, setDropShift] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [modelsOpen, setModelsOpen] = useState(false);
-  const [casesOpen, setCasesOpen] = useState(false);
+  // Sheets live in the surface manager (src/ui/surfaces.js): on a phone opening one closes the one before.
+  const [sidebarOpen, setSidebarOpen] = useSurfaceFlag("menu");
+  const [modelsOpen, setModelsOpen] = useSurfaceFlag("models");
+  const [casesOpen, setCasesOpen] = useSurfaceFlag("cases");
   const casesState = useCases();
   const casesStateRef = useRef(casesState);
   casesStateRef.current = casesState;
@@ -212,10 +218,10 @@ function App() {
     setSidebarOpen(false);
     setModelsOpen(false);
     setCasesOpen(true);
-  }, []);
+  }, [setSidebarOpen, setModelsOpen, setCasesOpen]);
   const backdrop = usePresence(sidebarOpen, 160);
   const [multiNotice, setMultiNotice] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useSurfaceFlag("help");
   // On narrow screens the model list is a drawer over the view: while it is
   // open the view behind it takes no taps and no focus.
   const [drawerLayout, setDrawerLayout] = useState(() => !!window.matchMedia?.(DRAWER_QUERY).matches);
@@ -251,8 +257,11 @@ function App() {
   const [activeRightTab, setActiveRightTab] = useState("info");
   // Only meaningful on narrow screens, where the right panel is a bottom
   // sheet that starts collapsed to a peek bar; on desktop it's always shown.
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelExpanded, setPanelExpanded] = useState(false);
+  const handleClosePanelRef = useRef(() => {});
+  const [panelOpen, setPanelOpen] = useSurfaceFlag("details", () => handleClosePanelRef.current());
+  const panelExpanded = surfaces.snap.details === "full";
+  const { setSnap, snapOf } = surfaces;
+  const setPanelExpanded = useCallback((v) => setSnap("details", (typeof v === "function" ? v(snapOf("details") === "full") : v) ? "full" : "half"), [setSnap, snapOf]);
   const dragDepthRef = useRef(0);
   const lastAutoSwitchGuidRef = useRef(null);
   const hadSelectionRef = useRef(false);
@@ -265,7 +274,7 @@ function App() {
     const guid = selectedElement?.guid ?? null;
     if (guid && guid !== lastAutoSwitchGuidRef.current) {
       setActiveRightTab("info");
-      setPanelOpen(true);
+      surfaces.open("details", { auto: true });
     }
     // Selection cleared (tap on empty space, Escape): drop the sheet back to
     // its peek bar so it stops covering the model, unless another tab is in use.
@@ -297,8 +306,8 @@ function App() {
   const handleClosePanel = useCallback(() => {
     clearSelection();
     setPanelOpen(false);
-    setPanelExpanded(false);
-  }, [clearSelection]);
+  }, [clearSelection, setPanelOpen]);
+  handleClosePanelRef.current = handleClosePanel;
 
   const handleTabChange = useCallback(
     (tab) => {
@@ -476,14 +485,6 @@ function App() {
   useEffect(() => {
     if (armedTool) announcePopover("tool");
   }, [armedTool]);
-  // On a phone the details sheet drops to its peek bar while the views panel
-  // is open, so the panel has the room.
-  const handleViewToolsOpen = useCallback((open) => {
-    if (open !== "views") return;
-    if (!window.matchMedia?.("(max-width: 768px), (max-height: 500px) and (pointer: coarse)").matches) return;
-    setPanelOpen(false);
-    setPanelExpanded(false);
-  }, []);
   // "Start measuring" / "Start tagging" in the details sheet: arm the tool and
   // drop the sheet away so the model is in view.
   const startMeasuring = useCallback(() => {
@@ -666,7 +667,7 @@ function App() {
             helpOpen={helpOpen}
             onHelpOpenChange={setHelpOpen}
           />
-          <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
+          <ViewTools views={viewFeatures} spaceControl={spaceControl} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
           <Hud>
             <ToolHint tool={armedTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
             <CameraClipPanel
@@ -866,7 +867,9 @@ function App() {
 export default function AccessApp() {
   return (
     <AccessProvider>
-      <App />
+      <SurfaceProvider>
+        <App />
+      </SurfaceProvider>
     </AccessProvider>
   );
 }

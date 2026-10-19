@@ -4,6 +4,7 @@ import { hapticsEnabled, setHapticsEnabled } from "../haptics";
 import { createPortal } from "react-dom";
 import ModelName from "./ModelName";
 import { disciplineOf } from "../ifc/modelLabel";
+import useSheetSwipe from "../ui/useSheetSwipe";
 import "./Models.css";
 
 export const countText = (n) => `${n} model${n === 1 ? "" : "s"}`;
@@ -90,6 +91,7 @@ function SheetRow({ model, onToggleVisible, onSetColor, onRemove }) {
 // a popover under the header on a wide screen.
 function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetColor, onRemove, onRemoveAll, onAdd, onOpenCases }) {
   const ref = useRef(null);
+  const swipe = useSheetSwipe(onClose, ref);
   const [haptics, setHaptics] = useState(hapticsEnabled);
   const closed = state === "closed";
   useEffect(() => {
@@ -112,8 +114,8 @@ function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetCo
   return createPortal(
     <>
       <button type="button" className="models-sheet-backdrop" data-state={state} aria-label="Close models" tabIndex={-1} onClick={onClose} />
-      <div className="models-sheet" data-state={state} role="dialog" aria-label="Models" ref={ref}>
-        <div className="models-sheet__head">
+      <div className="models-sheet" data-state={state} data-surface-sheet="models" role="dialog" aria-label="Models" ref={ref}>
+        <div className="models-sheet__head" {...swipe.head}>
           <h2 className="models-sheet__title">Models <span className="models-sheet__count">{countText(models.length)}</span></h2>
           <button type="button" className="models-sheet__close" onClick={onClose}>
             Done

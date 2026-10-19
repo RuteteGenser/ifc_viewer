@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
 import { useExitGhost } from "../usePresence";
+import { useSurfaces } from "../ui/surfaces";
 import { nextIndex } from "../a11y";
 import { STANDARD_VIEWS } from "../ifc/viewHelpers";
 import { formatElevation } from "../ifc/storeys";
@@ -92,7 +93,7 @@ function ViewsPanel({ views, spaceControl, onClose }) {
     if (levelSel) showLevels(levelSel.id, next);
   };
   return (
-    <div className="view-tools__panel" ref={panelRef} role="dialog" aria-label="Views and levels">
+    <div className="view-tools__panel" ref={panelRef} data-surface-sheet="views" role="dialog" aria-label="Views and levels">
       <div className="view-tools__head">
         <span className="view-tools__heading">Views and levels</span>
         <button type="button" className="view-tools__close" onClick={onClose}>
@@ -219,7 +220,7 @@ function SharePanel({ views, onClose, onSaveSnapshot, onOpenCases }) {
   };
   const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function" && window.matchMedia?.("(pointer: coarse)").matches;
   return (
-    <div className="view-tools__panel view-tools__panel--menu" ref={panelRef} role="menu" aria-label="Save and share" onKeyDown={menuKeys}>
+    <div className="view-tools__panel view-tools__panel--menu" ref={panelRef} data-surface-sheet="share" role="menu" aria-label="Save and share" onKeyDown={menuKeys}>
       <button
         type="button"
         role="menuitem"
@@ -273,22 +274,23 @@ function SharePanel({ views, onClose, onSaveSnapshot, onOpenCases }) {
 // Floating controls at the top right of the 3D view: the views/levels
 // panel and the save/share menu. Kept out of the toolbar, which is already
 // full on a phone.
-export default function ViewTools({ views, spaceControl, onOpenChange, onSaveSnapshot, onOpenCases }) {
-  const [open, setOpen] = useState(null); // "views" | "share" | null
+export default function ViewTools({ views, spaceControl, onSaveSnapshot, onOpenCases }) {
+  // Which panel is open lives in the surface manager (one sheet at a time on a phone).
+  const surfaces = useSurfaces();
+  const { open: openSheet, close: closeSheet } = surfaces;
+  const open = surfaces.sheets.includes("views") ? "views" : surfaces.sheets.includes("share") ? "share" : null;
+  const setOpen = useCallback((name) => (name ? openSheet(name) : (closeSheet("views"), closeSheet("share"))), [openSheet, closeSheet]);
   const rootRef = useRef(null);
   // Closing from inside a panel (Esc, Done, a menu item) hands focus back to the button that opened it.
   const close = useCallback(() => {
     const root = rootRef.current;
     if (root && document.activeElement?.closest?.(".view-tools__panel")) root.querySelector('.view-tools__buttons [aria-expanded="true"]')?.focus();
     setOpen(null);
-  }, []);
+  }, [setOpen]);
   useDismiss(open !== null, close, rootRef);
   usePopoverGroup("view-tools", open !== null, close);
-  useEffect(() => {
-    onOpenChange?.(open);
-  }, [open, onOpenChange]);
   const disabled = !views.hasModels;
-  const toggle = (name) => setOpen((cur) => (cur === name ? null : name));
+  const toggle = (name) => (open === name ? setOpen(null) : setOpen(name));
   const atMin = views.zoomLimit === "min";
   const atMax = views.zoomLimit === "max";
 

@@ -1,0 +1,74 @@
+import { useAccess } from "./AccessProvider";
+import { t } from "./copy";
+import Paywall from "./Paywall";
+import AuthForms from "./AuthForms";
+import AccountPage from "./AccountPage";
+import CodeEntry from "./CodeEntry";
+import Dialog from "./Dialog";
+import "./access.css";
+
+const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
+// Plain English for how long is left; shared with the unit-tested helper in state.js.
+import { timeLeft } from "./state";
+
+function Banner() {
+  const a = useAccess();
+  const b = a?.banner;
+  if (!b || a.dismissed.has(b.kind) || a.expired) return null;
+  const text = t(`banner.${b.kind}`, { timeLeft: b.target ? timeLeft(b.target, a.nowMs) : "", date: fmtDate(b.target) });
+  const kindClass = b.tone === "warning" || b.tone === "urgent" ? "acc-banner--warn" : "";
+  return (
+    <div className={`acc-banner ${kindClass}`} role="status" data-testid="acc-banner" data-kind={b.kind}>
+      <span className="acc-banner__text">{text}</span>
+      <span className="acc-banner__actions">
+        {(b.kind === "trial") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "auth", mode: "signup" })}>{t("action.keepWork")}</button>}
+        {(b.kind === "trial" || b.kind === "grace") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "code" })}>{t("action.haveCode")}</button>}
+        {(b.kind === "grace" || b.kind === "code_trial") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "paywall", sheet: true })}>{t("action.seePlans")}</button>}
+        {b.dismissible && <button type="button" className="acc-link" aria-label={t("banner.dismiss")} onClick={() => a.dismiss(b.kind)}>×</button>}
+      </span>
+    </div>
+  );
+}
+
+// Everything the access system draws, in one place. Renders nothing in legacy mode.
+export default function AccessUI({ hasWork }) {
+  const a = useAccess();
+  if (!a) return null;
+  const d = a.dialog;
+  return (
+    <>
+      <Banner />
+      {a.expired && d?.kind !== "paywall" && <Paywall hasWork={hasWork} />}
+      {d?.kind === "paywall" && <Paywall hasWork={hasWork} />}
+      {d?.kind === "auth" && <AuthForms mode={d.mode} token={d.token} />}
+      {d?.kind === "account" && <AccountPage />}
+      {d?.kind === "code" && (
+        <Dialog title={t("action.haveCode")} onClose={a.close}>
+          <CodeEntry onDone={a.close} initial={a.prefillCode} />
+        </Dialog>
+      )}
+      {a.toast && <div className="acc-toast" role="status">{a.toast}</div>}
+    </>
+  );
+}
+
+// Small entry points other components embed; null in legacy mode.
+export function AccountButton({ className = "" }) {
+  const a = useAccess();
+  if (!a) return null;
+  return (
+    <button type="button" className={`acc-btn acc-account-btn ${className}`.trim()} onClick={() => a.open({ kind: "account" })}>
+      {t("action.account")}
+    </button>
+  );
+}
+
+export function CodeLink() {
+  const a = useAccess();
+  if (!a || a.state === "active") return null;
+  return (
+    <button type="button" className="acc-link acc-codelink" onClick={(e) => { e.stopPropagation(); a.open({ kind: "code" }); }}>
+      {t("action.haveCode")}
+    </button>
+  );
+}

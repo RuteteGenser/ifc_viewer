@@ -4,6 +4,10 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import ModelName from "../components/ModelName";
 import { useLibraryContext } from "./LibraryContext";
 import { formatSize, relativeDate } from "./format";
+import { useAccess } from "../access/AccessProvider";
+import { AccountButton } from "../access/AccessUI";
+import { quotaText } from "../access/AccountPage";
+import { t } from "../access/copy";
 
 function MoreIcon() {
   return (
@@ -84,6 +88,8 @@ function ModelItem({ item }) {
   const [confirming, setConfirming] = useState(false);
   const loaded = library.loadedNames.has(item.name);
   const busy = !!library.download;
+  const sample = item.owner === "samples";
+  const locked = item.readOnly === true;
   const meta = [formatSize(item.size), relativeDate(item.uploadedAt)].filter(Boolean).join(" · ");
 
   if (renaming) {
@@ -105,6 +111,7 @@ function ModelItem({ item }) {
         >
           <ModelName name={item.name} className="lib-row__name" />
           <span className="lib-row__meta">
+            {sample && <span className="lib-badge">{t("lib.sample")}</span>}
             {item.schema && <span className="lib-badge">{item.schema}</span>}
             {meta}
             {loaded && <span className="lib-badge lib-badge--open">Open</span>}
@@ -135,16 +142,18 @@ function ModelItem({ item }) {
               Open
             </button>
           )}
-          <button
-            type="button"
-            className="lib-btn"
-            onClick={() => {
-              setRenaming(true);
-              setExpanded(false);
-            }}
-          >
-            Rename
-          </button>
+          {!locked && (
+            <button
+              type="button"
+              className="lib-btn"
+              onClick={() => {
+                setRenaming(true);
+                setExpanded(false);
+              }}
+            >
+              Rename
+            </button>
+          )}
           {!loaded && library.hasModels && (
             <button
               type="button"
@@ -158,12 +167,16 @@ function ModelItem({ item }) {
               Add to view
             </button>
           )}
-          <button type="button" className="lib-btn" onClick={() => library.copyLink(item)}>
-            Copy link
-          </button>
-          <button type="button" className="lib-btn lib-btn--danger" onClick={() => setConfirming(true)}>
-            Delete
-          </button>
+          {!sample && (
+            <button type="button" className="lib-btn" onClick={() => library.copyLink(item)}>
+              Copy link
+            </button>
+          )}
+          {!sample && item.canDelete !== false && (
+            <button type="button" className="lib-btn lib-btn--danger" onClick={() => setConfirming(true)}>
+              Delete
+            </button>
+          )}
         </div>
       )}
       {confirming &&
@@ -220,8 +233,11 @@ export default function LibrarySection({ variant }) {
   const listId = `lib-list-${variant}`;
   // In the drawer the list is part of the one scrolling column, so it shows a
   // few rows and a button for the rest, instead of scrolling inside the scroll.
-  const rows = isSidebar && !showAll ? library.items.slice(0, SIDEBAR_ROWS) : library.items;
-  const hidden = library.items.length - rows.length;
+  const access = useAccess();
+  const sampleRecords = library.items.filter((i) => i.owner === "samples");
+  const own = library.items.filter((i) => i.owner !== "samples");
+  const rows = isSidebar && !showAll ? own.slice(0, SIDEBAR_ROWS) : own;
+  const hidden = own.length - rows.length;
   const body = (
     <>
       {library.status === "error" ? (
@@ -234,17 +250,28 @@ export default function LibrarySection({ variant }) {
       ) : (
         <>
           <ul className="lib-list" id={listId} aria-labelledby={headingId}>
+            {access && <li className="lib__group" aria-hidden="true">{t("lib.samples")}</li>}
             <SampleItem />
+            {sampleRecords.map((item) => (
+              <ModelItem key={item.id} item={item} />
+            ))}
+            {access && <li className="lib__group" aria-hidden="true">{t("lib.mine")}</li>}
             {rows.map((item) => (
               <ModelItem key={item.id} item={item} />
             ))}
           </ul>
-          {isSidebar && library.items.length > SIDEBAR_ROWS && (
+          {access && (
+            <div className="lib__account">
+              <span className="lib__quota" data-testid="lib-quota">{quotaText(access.session)}</span>
+              <AccountButton />
+            </div>
+          )}
+          {isSidebar && own.length > SIDEBAR_ROWS && (
             <button type="button" className="lib-btn lib-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-              {showAll ? "Show fewer" : `Show all ${library.items.length} (${hidden} more)`}
+              {showAll ? "Show fewer" : `Show all ${own.length} (${hidden} more)`}
             </button>
           )}
-          {library.items.length === 0 && <p className="lib-quiet">Save a model here to open it from any device.</p>}
+          {own.length === 0 && <p className="lib-quiet">Save a model here to open it from any device.</p>}
         </>
       )}
     </>

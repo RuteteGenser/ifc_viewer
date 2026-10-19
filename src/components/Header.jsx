@@ -1,6 +1,7 @@
 import LogoMark from "./LogoMark";
 import { NAME } from "../brand";
 import { ModelsChip } from "./ModelsSheet";
+import { AccountButton } from "../access/AccessUI";
 
 export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed, onToggleCollapsed, modelCount = 0, showModelsChip = false, modelsOpen = false, onToggleModels }) {
   return (
@@ -33,6 +34,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
         <span className="header__title">{NAME}</span>
       </div>
 
+      <AccountButton className="acc-account-btn--header" />
       {showModelsChip && modelCount > 0 && <ModelsChip count={modelCount} open={modelsOpen} onClick={onToggleModels} />}
     </header>
   );

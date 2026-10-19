@@ -8,8 +8,9 @@ export const MAX_BYTES = 250 * 1024 * 1024;
 export const ALLOWED = [".ifc", ".ifczip", ".zip"];
 
 export class LibraryError extends Error {
-  constructor(message, { status = 0, hidden = false, aborted = false } = {}) {
+  constructor(message, { status = 0, hidden = false, aborted = false, body = null } = {}) {
     super(message);
+    this.body = body; // JSON of a 402, with the server's code and entitlement
     this.status = status;
     this.hidden = hidden;
     this.aborted = aborted;
@@ -19,6 +20,7 @@ export class LibraryError extends Error {
 const STATUS_TEXT = {
   400: "The server did not accept that file.",
   401: "Sign in again to use your models.",
+  402: "That needs a plan.",
   404: "That model is not saved here any more.",
   411: "The upload could not be sent. Try again.",
   413: "That file is too large. The limit is 250 MB.",
@@ -30,16 +32,27 @@ function sentence(text) {
   return t.charAt(0).toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".");
 }
 
+// Tell the access layer (if the new backend is present) that a plan is needed.
+function upgrade(status, body) {
+  if (status !== 402) return;
+  window.dispatchEvent(new CustomEvent("argus:upgrade", { detail: { code: body?.code, message: body?.error, entitlement: body?.entitlement } }));
+}
+const changed = () => window.dispatchEvent(new Event("argus:library-changed"));
+const WRITE = { "X-Argus-Client": "1" };
+
 async function problem(res) {
   let detail = "";
+  let body = null;
   try {
-    detail = (await res.json())?.error || "";
+    body = await res.json();
+    detail = body?.error || "";
   } catch {
     // not JSON
   }
+  upgrade(res.status, body);
   const base = STATUS_TEXT[res.status] || "Something went wrong. Try again.";
   // The server's own text is clearest for a rejected file (wrong type, not IFC).
-  const err = new LibraryError(res.status === 400 && detail ? sentence(detail) : base, { status: res.status });
+  const err = new LibraryError((res.status === 400 || res.status === 402) && detail ? sentence(detail) : base, { status: res.status, body });
   err.retryAfter = Number(res.headers.get("retry-after")) || 0;
   return err;
 }
@@ -184,7 +197,8 @@ async function getModelOnce(id, signal) {
 export async function renameModel(id, name) {
   const res = await request(`/models/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...WRITE },
+    credentials: "same-origin",
     body: JSON.stringify({ name }),
   });
   if (!res.ok) throw await problem(res);
@@ -192,9 +206,10 @@ export async function renameModel(id, name) {
 }
 
 export async function deleteModel(id) {
-  const res = await request(`/models/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const res = await request(`/models/${encodeURIComponent(id)}`, { method: "DELETE", headers: WRITE, credentials: "same-origin" });
   if (!res.ok) throw await problem(res);
   forgetModel(id);
+  changed();
 }
 
 // Reads the body of one response, reporting progress. A cut connection
@@ -301,6 +316,7 @@ export function uploadModel(file, onProgress) {
   const promise = new Promise((resolve, reject) => {
     xhr.open("POST", `${API}/models?name=${encodeURIComponent(file.name)}`);
     xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("X-Argus-Client", "1");
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress?.(e.loaded / e.total);
     };
@@ -312,12 +328,14 @@ export function uploadModel(file, onProgress) {
         // not JSON
       }
       if (xhr.status === 200 || xhr.status === 201) {
+        changed();
         resolve({ record: body, duplicate: xhr.status === 200 });
         return;
       }
       const detail = body?.error;
-      const message = xhr.status === 400 && detail ? sentence(detail) : STATUS_TEXT[xhr.status] || "Could not save that model. Try again.";
-      reject(new LibraryError(message, { status: xhr.status }));
+      upgrade(xhr.status, body);
+      const message = (xhr.status === 400 || xhr.status === 402) && detail ? sentence(detail) : STATUS_TEXT[xhr.status] || "Could not save that model. Try again.";
+      reject(new LibraryError(message, { status: xhr.status, body }));
     };
     xhr.onerror = () => reject(new LibraryError("Could not reach your models. Check your connection."));
     xhr.onabort = () => reject(new LibraryError("Cancelled", { aborted: true }));

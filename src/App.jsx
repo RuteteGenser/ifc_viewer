@@ -15,6 +15,8 @@ import MeasureLegEditPopup from "./components/MeasureLegEditPopup";
 import ConfirmDialog from "./components/ConfirmDialog";
 import useLeaveGuard from "./hooks/useLeaveGuard";
 import Header from "./components/Header";
+import { AccessProvider, useAccess } from "./access/AccessProvider";
+import AccessUI from "./access/AccessUI";
 import Toolbar from "./components/Toolbar";
 import ViewTools from "./components/ViewTools";
 import Compass from "./components/Compass";
@@ -69,6 +71,9 @@ const MEASURE_LEG_META = {
 };
 
 function App() {
+  const access = useAccess();
+  const accessRef = useRef(access);
+  accessRef.current = access;
   const leaveGuard = useLeaveGuard();
   const {
     containerRef,
@@ -76,7 +81,7 @@ function App() {
     isLoading,
     loadingLabel,
     error,
-    loadFiles,
+    loadFiles: rawLoadFiles,
     saveAsIfcZip,
     confirmReplace,
     confirmReplaceAnswer,
@@ -303,6 +308,19 @@ function App() {
     setPanelExpanded(false);
   }, [measurements.length]);
 
+  // Soft gate: while access is expired, opening a new model shows the paywall instead.
+  const loadFiles = useCallback(
+    (...args) => {
+      const a = accessRef.current;
+      if (a?.expired) {
+        a.setOverlayHidden(false);
+        return undefined;
+      }
+      return rawLoadFiles(...args);
+    },
+    [rawLoadFiles],
+  );
+
   // The sample is an ordinary .ifc served with the app and pushed through
   // the same loadFiles path as a user-picked file; only its display name
   // differs. The landing page deep-links to it with ?demo=1.
@@ -505,6 +523,7 @@ function App() {
           setModelsOpen((v) => !v);
         }}
       />
+      <AccessUI hasWork={models.length > 0} />
 
       <div
         className={`app-body${sidebarCollapsed ? " app-body--no-sidebar" : ""}${panelCollapsed ? " app-body--no-panel" : ""}`}
@@ -781,4 +800,10 @@ function App() {
   );
 }
 
-export default App;
+export default function AccessApp() {
+  return (
+    <AccessProvider>
+      <App />
+    </AccessProvider>
+  );
+}

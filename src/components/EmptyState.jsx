@@ -1,6 +1,7 @@
 import LibrarySection from "../library/LibrarySection";
 import { useLibraryContext } from "../library/LibraryContext";
 import { SaveToggle } from "../library/SaveControls";
+import { CodeLink } from "../access/AccessUI";
 
 // The one screen shown before any model is open: a single primary action
 // (also a drop zone with a mouse) and a quiet link to a sample building.
@@ -25,6 +26,7 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
         <button type="button" className={`empty-state__link${sampleListed ? " empty-state__link--listed" : ""}`} onClick={(e) => { e.stopPropagation(); onLoadSample(); }}>
           or try a sample building
         </button>
+        <CodeLink />
         <LibrarySection variant="empty" />
       </div>
     </div>

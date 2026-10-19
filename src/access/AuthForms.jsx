@@ -32,7 +32,7 @@ export default function AuthForms({ mode: first = "signup", token }) {
   const termsVersion = access.session.public.termsVersion;
 
   const fail = (err) => {
-    const key = mapError(err.status, err.code);
+    const key = mapError(err.status, err.code, err.message);
     setError(key === "rate" ? t("error.rate", { minutes: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) }) : t(key));
   };
   const submit = async (e) => {

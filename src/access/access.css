@@ -50,7 +50,8 @@
 .acc-slim { position: relative; display: flex; align-items: center; gap: 8px; height: 44px; box-sizing: border-box; padding: 0 0 0 12px; background: var(--accent-soft, #f0e4d0); color: var(--ink, #2a2622); font-size: 13px; border-bottom: 1px solid var(--line, #ddd6c7); flex-shrink: 0; }
 .acc-slim--warn { background: var(--danger-bg, #fbeae1); }
 .acc-slim__demo { flex-shrink: 0; padding: 2px 8px; border-radius: 10px; background: #1f3a5f; color: #fff; font-size: 12px; }
-.acc-slim__text { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.acc-bars { flex-shrink: 0; }
+.acc-slim__text { flex: 1 1 auto; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.2; font-size: 12.5px; }
 .acc-slim__menu { flex-shrink: 0; width: 44px; height: 44px; border: 0; background: none; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
 .acc-slim__pop { position: absolute; right: 8px; top: 100%; z-index: 80; width: min(260px, calc(100vw - 16px)); display: flex; flex-direction: column; background: var(--paper-white, #fbfaf6); border: 1px solid var(--line-strong, #2a2622); border-radius: var(--radius, 6px); box-shadow: var(--shadow-lg); }
 .acc-slim__item { min-height: 44px; padding: 0 14px; border: 0; background: none; color: var(--ink, #2a2622); font: inherit; text-align: left; cursor: pointer; }

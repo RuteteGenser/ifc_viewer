@@ -9,25 +9,37 @@ import Dialog from "./Dialog";
 import { DemoBar, useNarrow, DemoTools, DemoInbox, CheckEmail } from "./Demo";
 import "./access.css";
 
-const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
-// Plain English for how long is left; shared with the unit-tested helper in state.js.
-import { timeLeft } from "./state";
+import { timeLeft, formatDay as fmtDate } from "./state";
+
+// What a banner says and offers, shared by the wide bar and the phone's slim bar.
+function bannerText(b, a) {
+  const key = b.kind === "grace" && b.source === "code" ? "banner.grace.code" : `banner.${b.kind}`;
+  return t(key, { timeLeft: b.target ? timeLeft(b.target, a.nowMs) : "", date: fmtDate(b.target) });
+}
+function bannerItems(b, a) {
+  const kind = b?.kind;
+  const guest = !a.registered;
+  return [
+    kind === "trial" && guest && [t("action.keepWork"), { kind: "auth", mode: "signup" }],
+    (kind === "trial" || kind === "grace" || kind === "trial_limit") && [t("action.haveCode"), { kind: "code" }],
+    kind === "trial_limit" && guest && [t("action.login"), { kind: "auth", mode: "login" }],
+    kind === "payment_failed" && [t("action.payAgain"), { kind: "paywall", sheet: true }],
+    kind === "first_payment_failed" && [t("action.tryCard"), { kind: "paywall", sheet: true }],
+    (kind === "grace" || kind === "code_trial") && [t("action.seePlans"), { kind: "paywall", sheet: true }],
+  ].filter(Boolean);
+}
 
 function Banner() {
   const a = useAccess();
   const b = a?.banner;
   const narrow = useNarrow();
   if (narrow || !b || a.dismissed.has(b.kind) || a.expired) return null;
-  const text = t(`banner.${b.kind}`, { timeLeft: b.target ? timeLeft(b.target, a.nowMs) : "", date: fmtDate(b.target) });
   const kindClass = b.tone === "warning" || b.tone === "urgent" ? "acc-banner--warn" : "";
   return (
     <div className={`acc-banner ${kindClass}`} role="status" data-testid="acc-banner" data-kind={b.kind}>
-      <span className="acc-banner__text">{text}</span>
+      <span className="acc-banner__text">{bannerText(b, a)}</span>
       <span className="acc-banner__actions">
-        {(b.kind === "trial") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "auth", mode: "signup" })}>{t("action.keepWork")}</button>}
-        {(b.kind === "trial" || b.kind === "grace") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "code" })}>{t("action.haveCode")}</button>}
-        {b.kind === "payment_failed" && <button type="button" className="acc-link" onClick={() => a.open({ kind: "paywall", sheet: true })}>{t("action.payAgain")}</button>}
-        {(b.kind === "grace" || b.kind === "code_trial") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "paywall", sheet: true })}>{t("action.seePlans")}</button>}
+        {bannerItems(b, a).map(([label, d]) => <button key={label} type="button" className="acc-link" onClick={() => a.open(d)}>{label}</button>)}
         {b.dismissible && <button type="button" className="acc-link" aria-label={t("banner.dismiss")} onClick={() => a.dismiss(b.kind)}>×</button>}
       </span>
     </div>
@@ -48,18 +60,11 @@ function SlimBar() {
   }, [menu]);
   const b = a.banner && !a.dismissed.has(a.banner.kind) && !a.expired ? a.banner : null;
   if (!b && !a.session.demo) return null;
-  const text = b ? t(`banner.${b.kind}`, { timeLeft: b.target ? timeLeft(b.target, a.nowMs) : "", date: fmtDate(b.target) }) : "";
+  const text = b ? bannerText(b, a) : "";
   const warn = b && (b.tone === "warning" || b.tone === "urgent");
-  const kind = b?.kind;
-  const items = [
-    kind === "trial" && [t("action.keepWork"), { kind: "auth", mode: "signup" }],
-    (kind === "trial" || kind === "grace") && [t("action.haveCode"), { kind: "code" }],
-    kind === "payment_failed" && [t("action.payAgain"), { kind: "paywall", sheet: true }],
-    (kind === "grace" || kind === "code_trial") && [t("action.seePlans"), { kind: "paywall", sheet: true }],
-    a.session.demo && [t("action.demoTools"), { kind: "demo" }],
-  ].filter(Boolean);
+  const items = [...(b ? bannerItems(b, a) : []), a.session.demo && [t("action.demoTools"), { kind: "demo" }]].filter(Boolean);
   return (
-    <div ref={ref} className={`acc-slim ${warn ? "acc-slim--warn" : ""}`} role="status" data-testid="acc-banner" data-kind={kind || "demo"}>
+    <div ref={ref} className={`acc-slim ${warn ? "acc-slim--warn" : ""}`} role="status" data-testid="acc-banner" data-kind={b?.kind || "demo"}>
       {a.session.demo && <span className="acc-slim__demo" data-testid="demo-bar">{t("banner.demoShort")}</span>}
       <span className="acc-slim__text" title={text}>{text}</span>
       <button type="button" className="acc-slim__menu" aria-label={t("banner.menu")} aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
@@ -73,6 +78,22 @@ function SlimBar() {
   );
 }
 
+// The bars above the viewer publish their height as --acc-bars-h, so the fixed details panel
+// starts below them (like --hud-h for the floating buttons).
+function Bars({ children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const publish = () => document.documentElement.style.setProperty("--acc-bars-h", `${el.offsetHeight}px`);
+    publish();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(publish);
+    ro?.observe(el);
+    return () => { ro?.disconnect(); document.documentElement.style.setProperty("--acc-bars-h", "0px"); };
+  }, []);
+  return <div className="acc-bars" ref={ref}>{children}</div>;
+}
+
 // Everything the access system draws, in one place. Renders nothing in legacy mode.
 export default function AccessUI({ hasWork }) {
   const a = useAccess();
@@ -81,9 +102,11 @@ export default function AccessUI({ hasWork }) {
   const narrow = useNarrow();
   return (
     <>
-      <DemoBar />
-      <Banner />
-      {narrow && <SlimBar />}
+      <Bars>
+        <DemoBar />
+        <Banner />
+        {narrow && <SlimBar />}
+      </Bars>
       {a.expired && d?.kind !== "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "auth" && <AuthForms mode={d.mode} token={d.token} />}

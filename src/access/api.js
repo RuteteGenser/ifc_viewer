@@ -28,6 +28,12 @@ export async function call(method, path, body, { signal } = {}) {
   return json;
 }
 
+// Settles when the first session call has finished (or after 4 s, or at once when it never starts).
+// The library waits for this so its first request carries the device cookie: no first-visit 401.
+let settle;
+const firstBootstrap = new Promise((resolve) => { settle = resolve; });
+export const whenSessionSettled = () => Promise.race([firstBootstrap, new Promise((r) => setTimeout(r, 4000))]);
+
 // Returns the raw JSON or null. Never throws, gives up after 3 s.
 export async function bootstrapRaw() {
   const ctl = new AbortController();
@@ -38,6 +44,7 @@ export async function bootstrapRaw() {
     return null;
   } finally {
     clearTimeout(timer);
+    settle();
   }
 }
 

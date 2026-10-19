@@ -17,7 +17,7 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
           <path d="M7 14l17 9 17-9M24 23v20" />
         </svg>
         <h1 className="empty-state__title">Open a building model</h1>
-        <p className="empty-state__text">View, section and measure IFC files. Everything stays on your device.</p>
+        <p className="empty-state__text">View, section and measure IFC files. {library?.available ? "Your files stay on your device unless you save them to My models." : "Everything stays on your device."}</p>
         <button type="button" className="empty-state__primary" onClick={(e) => { e.stopPropagation(); onOpenFiles(); }}>
           Open IFC file
         </button>

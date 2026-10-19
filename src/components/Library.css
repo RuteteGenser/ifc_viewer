@@ -481,11 +481,12 @@
 .lib-org__sort {
   flex: 1 1 100%;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
 }
 .lib-org__select {
-  flex: 1 1 0;
+  flex: 1 1 150px; /* wide enough for "Last opened"; the direction button wraps below on a 320 px phone */
 }
 .lib-org__dir {
   flex: 0 1 auto;

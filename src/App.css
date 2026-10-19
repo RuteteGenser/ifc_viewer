@@ -1147,7 +1147,7 @@
      wherever the toolbar's content (the search bar, pushed to the
      toolbar's right edge via margin-left: auto) happens to visually
      extend into the panel's x-range. */
-  top: calc(var(--header-height) * 2);
+  top: calc(var(--header-height) * 2 + var(--acc-bars-h, 0px));
   right: 0;
   bottom: 0;
   width: 320px;
@@ -3070,7 +3070,7 @@
   }
   /* The toolbar stops at the panel, so the panel can use the full height. */
   .element-panel {
-    top: var(--header-height);
+    top: calc(var(--header-height) + var(--acc-bars-h, 0px));
   }
 }
 

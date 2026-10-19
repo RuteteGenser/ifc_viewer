@@ -21,6 +21,7 @@ import {
   renameModel,
   uploadModel,
 } from "./api";
+import { whenSessionSettled } from "../access/api";
 import { folderMessage, loadFolder, saveFolder, pathOf } from "./folders";
 
 const PREF_KEY = "ifcViewer.alsoSaveToLibrary";
@@ -35,7 +36,7 @@ const readPref = () => {
 // Everything about the server model library in one place. The only link
 // to the viewer is loadFiles(files); the library is optional, so a status
 // of "hidden" (no API, signed out) leaves the app exactly as it was.
-export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRenamed }) {
+export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRenamed, canSave: serverSavingAllowed }) {
   const [status, setStatus] = useState("loading"); // loading | ready | error | hidden
   const [items, setItems] = useState([]);
   const [listError, setListError] = useState("");
@@ -74,6 +75,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     lastRefreshRef.current = Date.now();
     setListError("");
     try {
+      // The first visit waits for the session call so the device cookie exists (no 401 in the console).
+      await whenSessionSettled();
+      if (seq !== refreshSeqRef.current) return;
       listFolders().then((fol) => seq === refreshSeqRef.current && setFolderData(fol));
       const data = await listModels();
       if (seq !== refreshSeqRef.current) return;
@@ -145,7 +149,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
             setDownload({ name: record.name, percent: 0, note: attemptText("Downloading", attempt, total) });
           },
         });
-        loadFilesRef.current([file], { add });
+        loadFilesRef.current([file], { add, fromLibrary: true });
       } catch (err) {
         if (!err?.aborted) {
           if (err?.detail) console.error(`Download of ${record.name} failed: ${err.detail}`);
@@ -225,7 +229,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
           if (err?.aborted) {
             uploadQueueRef.current = [];
             say("Upload cancelled.");
-          } else {
+          } else if (!err?.handled) {
             say(`${file.name}: ${err?.message || "Could not save that model."}`, "error");
           }
         }
@@ -270,9 +274,10 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
       const files = Array.from(fileList);
       for (const f of files) localFilesRef.current.set(f.name, f);
       loadFilesRef.current(files, { add });
-      if (alsoSave && status !== "hidden" && status !== "loading") saveFiles(files);
+      // Without an active plan the server would refuse; the file still opens, it just is not saved.
+      if (alsoSave && status !== "hidden" && status !== "loading" && serverSavingAllowed?.() !== false) saveFiles(files);
     },
-    [alsoSave, status, saveFiles],
+    [alsoSave, status, saveFiles, serverSavingAllowed],
   );
 
   const savedNames = useMemo(() => new Set(items.map((i) => i.name)), [items]);

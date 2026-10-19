@@ -3,12 +3,10 @@ import Dialog from "./Dialog";
 import CodeEntry from "./CodeEntry";
 import { useAccess } from "./AccessProvider";
 import { getPlans, startCheckout } from "./api";
-import { downloadAllModels } from "./download";
-import { mapError } from "./state";
+import { deleteAllModels, downloadAllModels } from "./download";
+import { formatBytes, formatDay as fmtDate, mapError, paymentFailure } from "./state";
 import { t } from "./copy";
 
-const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
-const mb = (n) => `${Math.round(n / 1048576)} MB`;
 
 export function priceText(p) {
   const amount = new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency }).format(p.amountMinor / 100);
@@ -27,6 +25,7 @@ export default function Paywall({ hasWork }) {
   const [codeOpen, setCodeOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     getPlans().then((r) => setPlan(r?.plans?.[0] || null)).catch(() => setPlanError(true));
@@ -36,10 +35,24 @@ export default function Paywall({ hasWork }) {
   if (!sheet && access.overlayHidden) return null;
   const price = plan?.prices?.[0];
   const limits = plan?.limits || {};
-  const closable = sheet || (hasWork && e.state !== "blocked");
+  // Never a dead end: the overlay can always be set aside (a blocked account is the one exception),
+  // so files on this device can still be opened and nothing is hidden for good.
+  const closable = sheet || e.state !== "blocked";
   const close = sheet ? access.close : () => access.setOverlayHidden(true);
-  const failed = !!e.flags?.paymentFailed;
-  const title = failed ? t("paywall.title.failed") : access.state === "expired" || access.state === "blocked" ? t("paywall.title.expired") : d?.code?.startsWith("quota") ? t("paywall.title.quota") : t("paywall.title.grace");
+  const failure = paymentFailure(access.session);
+  const failed = failure === "renewal";
+  const ended = access.state === "expired" || access.state === "blocked";
+  const title = failure === "first" ? t("paywall.title.firstFailed")
+    : failed ? t("paywall.title.failed")
+    : ended ? t("paywall.title.expired")
+    : d?.code?.startsWith("quota") ? t("paywall.title.quota")
+    : access.state === "grace" ? t("paywall.title.grace")
+    : t("paywall.title.plans");
+  const whyKey = `paywall.why.${d?.code}`;
+  const why = d?.code ? (t(whyKey) === whyKey ? t("paywall.why.upgrade_required") : t(whyKey)) : "";
+  const keep = e.purgeAt
+    ? access.state === "grace" && e.graceEndsAt ? t("paywall.keepGrace", { open: fmtDate(e.graceEndsAt), date: fmtDate(e.purgeAt) }) : t("paywall.keepUntil", { date: fmtDate(e.purgeAt) })
+    : t("paywall.keep");
 
   const subscribe = async () => {
     setError("");
@@ -54,6 +67,18 @@ export default function Paywall({ hasWork }) {
       setBusy("");
     }
   };
+  const deleteMine = async () => {
+    setError("");
+    setConfirmDelete(false);
+    setBusy("del");
+    try {
+      const n = await deleteAllModels();
+      window.dispatchEvent(new Event("argus:library-refresh"));
+      access.refresh();
+      access.say(t(n ? "deleteModels.done" : "deleteModels.none"));
+    } catch { setError(t("error.generic")); }
+    setBusy("");
+  };
   const download = async () => {
     setError("");
     setBusy("dl");
@@ -66,13 +91,17 @@ export default function Paywall({ hasWork }) {
 
   return (
     <Dialog title={title} onClose={closable ? close : undefined} wide>
-      {d?.message && <p className="acc-note">{d.message}</p>}
+      {why && <p className="acc-note" data-testid="paywall-why">{why}</p>}
+      {failure === "first" && <p className="acc-note" data-testid="paywall-failed">{t("pay.firstFailed")}</p>}
       {failed && <p className="acc-note">{t("paywall.failedNote")}</p>}
       <section className="acc-box">
-        <p>{e.purgeAt ? t("paywall.keepUntil", { date: fmtDate(e.purgeAt) }) : t("paywall.keep")}</p>
+        <p>{keep}</p>
         <button type="button" className="acc-btn acc-btn--full" onClick={download} disabled={!!busy} data-autofocus>
-          {busy && busy !== "pay" && busy !== "dl" ? busy : t("action.downloadMine")}
+          {busy && busy !== "pay" && busy !== "dl" && busy !== "del" ? busy : t("action.downloadMine")}
         </button>
+        {ended && access.session.usage.storedModels > 0 && (
+          <button type="button" className="acc-btn acc-btn--danger acc-btn--full" onClick={() => setConfirmDelete(true)} disabled={!!busy}>{t("action.deleteMine")}</button>
+        )}
       </section>
       <section className="acc-box">
         {plan && price ? (
@@ -81,7 +110,7 @@ export default function Paywall({ hasWork }) {
             <p className="acc-price">{priceText(price)}</p>
             <ul className="acc-bullets">
               {limits.maxStoredModels && <li>{t("paywall.bullet.models", { n: limits.maxStoredModels })}</li>}
-              {limits.maxBytesTotal && <li>{t("paywall.bullet.bytes", { size: mb(limits.maxBytesTotal) })}</li>}
+              {limits.maxBytesTotal && <li>{t("paywall.bullet.bytes", { size: formatBytes(limits.maxBytesTotal) })}</li>}
               <li>{t("paywall.bullet.devices")}</li>
             </ul>
             <label className="acc-check">
@@ -104,8 +133,17 @@ export default function Paywall({ hasWork }) {
         )}
         {!access.registered && <button type="button" className="acc-link" onClick={() => access.open({ kind: "auth", mode: "login" })}>{t("action.login")}</button>}
         {access.session.demo && <button type="button" className="acc-link" onClick={() => access.open({ kind: "demo" })}>{t("action.demoTools")}</button>}
-        {closable && !sheet && <button type="button" className="acc-link" onClick={close}>{t("action.keepLooking")}</button>}
+        {closable && !sheet && <button type="button" className="acc-link" onClick={close}>{t(hasWork ? "action.keepLooking" : "action.keepLookingEmpty")}</button>}
       </div>
+      {confirmDelete && (
+        <Dialog title={t("deleteModels.title")} onClose={() => setConfirmDelete(false)}>
+          <p>{t("deleteModels.body")}</p>
+          <div className="acc-row">
+            <button type="button" className="acc-btn" data-autofocus onClick={() => setConfirmDelete(false)}>{t("deleteModels.cancel")}</button>
+            <button type="button" className="acc-btn acc-btn--danger" onClick={deleteMine}>{t("deleteModels.go")}</button>
+          </div>
+        </Dialog>
+      )}
     </Dialog>
   );
 }

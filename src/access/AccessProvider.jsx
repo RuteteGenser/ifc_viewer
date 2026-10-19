@@ -81,8 +81,9 @@ export function AccessProvider({ children }) {
     const tick = setInterval(() => setNow(Date.now()), 30000);
     // library/api.js reports a 402 or a changed library through window events
     const onUpgrade = (e) => {
+      e.preventDefault(); // tells the library the plans sheet explains this one
       if (e.detail?.entitlement) setSession((s) => (s ? { ...s, entitlement: e.detail.entitlement } : s));
-      setDialog((d) => d || { kind: "paywall", sheet: true, message: e.detail?.message || "", code: e.detail?.code });
+      setDialog((d) => d || { kind: "paywall", sheet: true, code: e.detail?.code });
       refresh();
     };
     const onChanged = () => refresh();

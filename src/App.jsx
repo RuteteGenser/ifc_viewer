@@ -34,6 +34,9 @@ import { pageTitle } from "./a11y";
 import { useLibrary } from "./library/useLibrary";
 import { LibraryContext } from "./library/LibraryContext";
 import TransferBar from "./library/TransferBar";
+import CasesPanel from "./cases/CasesPanel";
+import { useCases } from "./cases/useCases";
+import { saveSnapshot } from "./cases/saveSnapshot";
 import "./components/Library.css";
 
 // iOS/Android file pickers grey out files with extensions they can't map
@@ -164,6 +167,7 @@ function App() {
     cancelLoad,
     viewFeatures,
     spaceControl,
+    cases: casesViewer,
   } = useIfcViewer();
 
   const hasNoModels = models.length === 0;
@@ -192,6 +196,19 @@ function App() {
   const [dropShift, setDropShift] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [casesOpen, setCasesOpen] = useState(false);
+  const casesState = useCases();
+  const casesStateRef = useRef(casesState);
+  casesStateRef.current = casesState;
+  const handleSaveSnapshot = useCallback(
+    (title) => saveSnapshot({ viewer: casesViewer, controller: casesStateRef.current, currentId: casesStateRef.current.currentId, title, showToast }),
+    [casesViewer, showToast],
+  );
+  const openCases = useCallback(() => {
+    setSidebarOpen(false);
+    setModelsOpen(false);
+    setCasesOpen(true);
+  }, []);
   const backdrop = usePresence(sidebarOpen, 160);
   const [multiNotice, setMultiNotice] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -607,6 +624,7 @@ function App() {
             setSidebarOpen(false);
             setHelpOpen(true);
           }}
+          onOpenCases={openCases}
         />
 
         <main
@@ -651,7 +669,7 @@ function App() {
             helpOpen={helpOpen}
             onHelpOpenChange={setHelpOpen}
           />
-          <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} />
+          <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
           <Hud>
             <ToolHint tool={armedTool} onDone={exitArmedTool} />
             <CameraClipPanel
@@ -809,8 +827,11 @@ function App() {
               setModelsOpen(false);
               addFilePicker();
             }}
+            onOpenCases={openCases}
           />
         )}
+
+        <CasesPanel open={casesOpen} onClose={() => setCasesOpen(false)} cases={casesState} viewer={casesViewer} models={models} showToast={showToast} onSaveSnapshot={handleSaveSnapshot} />
 
         {helpOpen && COARSE_POINTER && <GestureSheet onClose={() => setHelpOpen(false)} />}
 

@@ -203,7 +203,7 @@ function ViewsPanel({ views, spaceControl, onClose }) {
   );
 }
 
-function SharePanel({ views, onClose }) {
+function SharePanel({ views, onClose, onSaveSnapshot, onOpenCases }) {
   const panelRef = useRef(null);
   useExitGhost(panelRef);
   // A menu: focus lands on the first item, Up/Down/Home/End move between items.
@@ -226,10 +226,21 @@ function SharePanel({ views, onClose }) {
         className="view-tools__action"
         onClick={() => {
           onClose();
+          onSaveSnapshot?.("");
+        }}
+      >
+        <span>Save snapshot to case</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="view-tools__action"
+        onClick={() => {
+          onClose();
           views.saveScreenshot();
         }}
       >
-        <span>{canShareFiles ? "Share or save image" : "Save image"}</span>
+        <span>{canShareFiles ? "Share or download image" : "Download image (.png)"}</span>
         <kbd>P</kbd>
       </button>
       <button
@@ -243,6 +254,17 @@ function SharePanel({ views, onClose }) {
       >
         <span>Copy view link</span>
       </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="view-tools__action"
+        onClick={() => {
+          onClose();
+          onOpenCases?.();
+        }}
+      >
+        <span>Open Cases</span>
+      </button>
       <p className="view-tools__hint">The link shares the camera view only.</p>
     </div>
   );
@@ -251,7 +273,7 @@ function SharePanel({ views, onClose }) {
 // Floating controls at the top right of the 3D view: the views/levels
 // panel and the save/share menu. Kept out of the toolbar, which is already
 // full on a phone.
-export default function ViewTools({ views, spaceControl, onOpenChange }) {
+export default function ViewTools({ views, spaceControl, onOpenChange, onSaveSnapshot, onOpenCases }) {
   const [open, setOpen] = useState(null); // "views" | "share" | null
   const rootRef = useRef(null);
   // Closing from inside a panel (Esc, Done, a menu item) hands focus back to the button that opened it.
@@ -327,7 +349,7 @@ export default function ViewTools({ views, spaceControl, onOpenChange }) {
         </div>
       </div>
       {open === "views" && <ViewsPanel views={views} spaceControl={spaceControl} onClose={close} />}
-      {open === "share" && <SharePanel views={views} onClose={close} />}
+      {open === "share" && <SharePanel views={views} onClose={close} onSaveSnapshot={onSaveSnapshot} onOpenCases={onOpenCases} />}
     </div>
   );
 }

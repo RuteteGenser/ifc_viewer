@@ -1,0 +1,71 @@
+/* Annotation overlay. Colours of the marks come from the palette; chrome uses the app tokens. */
+.ann-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ann-svg { position: absolute; z-index: 13; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+.ann-shape { display: none; }
+.ann-shape[data-vis="1"] { display: inline; }
+.ann-stroke { stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; paint-order: stroke; }
+.ann-head { fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.ann-shape.is-selected .ann-stroke { stroke-width: 5; }
+.ann-shape[data-occ="1"] { opacity: 0.25; }
+.ann-shape[data-occ="1"] .ann-stroke { stroke-dasharray: 2 6; }
+.ann-rubber { stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; fill: none; opacity: 0.85; }
+
+.ann-capture { position: absolute; z-index: 14; inset: 0; pointer-events: auto; touch-action: none; cursor: crosshair; }
+
+.ann-item { position: absolute; z-index: 15; left: 0; top: 0; visibility: hidden; pointer-events: none; will-change: transform; }
+.ann-item[data-vis="1"] { visibility: visible; }
+.ann-item[data-occ="1"] { opacity: 0.25; }
+.ann-item[data-occ="1"] .ann-badge, .ann-item[data-occ="1"] .ann-card, .ann-item[data-occ="1"] .ann-dot { border-style: dashed; }
+.ann-handle { -webkit-tap-highlight-color: transparent; position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; padding: 0; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; pointer-events: auto; font: inherit; }
+.ann-item--pin .ann-handle { margin: -44px 0 0 -22px; align-items: flex-end; }
+.ann-item--text .ann-handle { width: auto; min-width: 44px; padding: 0 6px; white-space: nowrap; }
+.ann-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 50%; }
+.ann-badge { width: 26px; height: 26px; border-radius: 50%; background: var(--c); color: var(--ink); font-size: 13px; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.is-selected > .ann-handle .ann-badge { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--c); }
+.ann-pin { display: block; line-height: 0; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)); }
+.ann-label { font-size: 15px; font-weight: 700; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff; }
+.ann-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c); border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.ann-card { position: absolute; left: 22px; top: -12px; width: max-content; max-width: min(220px, 60vw); padding: 6px 10px; border-radius: 12px; background: var(--bg); color: var(--text); border: 2px solid; font-size: 13px; line-height: 1.35; box-shadow: var(--shadow-md); overflow-wrap: anywhere; white-space: pre-wrap; pointer-events: none; display: none; max-height: 5.6em; overflow: hidden; }
+.ann-card.is-open { display: block; animation: ann-in var(--dur-2, 160ms) var(--ease, ease) backwards; }
+.ann-card.is-selected { max-height: 40vh; overflow: auto; pointer-events: auto; }
+@keyframes ann-in { from { opacity: 0; } }
+
+.ann-bar { position: absolute; left: 0; top: 0; visibility: hidden; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border-strong); box-shadow: var(--shadow-md); pointer-events: auto; z-index: 17; }
+.ann-bar[data-vis="1"] { visibility: visible; }
+.ann-bar__row { display: flex; gap: 2px; justify-content: center; }
+.ann-btn { min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ann-btn:hover:not(:disabled) { background: var(--bg-subtle); }
+.ann-btn:disabled { opacity: 0.45; cursor: default; }
+.ann-btn--danger { color: #c92a2a; }
+.ann-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ann-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+.ann-swatch { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; border-radius: 50%; }
+.ann-swatch span { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3); }
+.ann-swatch[aria-pressed="true"] span { box-shadow: 0 0 0 2px var(--text); }
+
+.ann-editor { position: absolute; z-index: 18; width: 320px; max-width: calc(100% - 16px); padding: 10px; display: flex; flex-direction: column; gap: 8px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border-strong); box-shadow: var(--shadow-md); pointer-events: auto; }
+.ann-editor--sheet { position: fixed; left: 0; right: 0; width: auto; max-width: none; border-radius: 16px 16px 0 0; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+.ann-editor__title { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.ann-editor textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; max-height: 40vh; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+.ann-editor__foot { display: flex; align-items: center; gap: 8px; }
+.ann-editor__count { margin-right: auto; font-size: 12px; color: var(--text-muted); }
+.ann-note { z-index: 16; position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 14px; border-radius: 999px; background: var(--text); color: var(--bg); font-size: 13px; pointer-events: none; opacity: 0; transition: opacity var(--dur-2, 160ms) var(--ease, ease); }
+.ann-note:not(:empty) { opacity: 1; }
+
+.ann-dock { position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 16; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; border-radius: 16px; background: var(--bg); border: 1px solid var(--border-strong); box-shadow: var(--shadow-md); max-width: calc(100% - 16px); pointer-events: auto; }
+.ann-dock__row { display: flex; gap: 2px; }
+.ann-tool { -webkit-tap-highlight-color: transparent; position: relative; min-width: 44px; min-height: 44px; padding: 4px 6px; border-radius: 12px; border: 0; background: transparent; color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font: inherit; cursor: pointer; }
+.ann-tool:hover:not(:disabled) { background: var(--bg-subtle); }
+.ann-tool:disabled { opacity: 0.4; cursor: default; }
+.ann-tool[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.ann-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ann-tool__cap { display: none; font-size: 11px; line-height: 1; }
+.ann-cur { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
+.ann-colorwrap { position: relative; }
+.ann-palette { position: absolute; bottom: calc(100% + 8px); left: 0; display: flex; padding: 4px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border-strong); box-shadow: var(--shadow-md); }
+@media (pointer: coarse), (max-width: 768px) {
+  .ann-tool { min-width: 56px; min-height: 52px; }
+  .ann-tool__cap { display: block; }
+  .ann-palette { left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .ann-card.is-open { animation: none; } .ann-note { transition: none; } }

@@ -291,7 +291,7 @@ await suite("annotations-real", [
       await startAnnotating(page);
       await place(page, true, "comment", "Comment", await spot(page, 0.5, 0.45), "Narrow comment");
       await arm(page, "Pin");
-      await tap(page, true, await spot(page, 0.3, 0.5));
+      await tap(page, true, await spot(page, 0.3, 0.4)); // above the dock: at 320 px it starts at 0.5 of the canvas
       const ed = page.locator(".ann-editor");
       await ed.waitFor();
       await ed.locator("textarea").fill("Pin text");

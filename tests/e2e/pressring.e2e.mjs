@@ -28,7 +28,7 @@ await suite("pressring", [
   {
     name: "touch: a ring charges at the finger, then stays pinned to the pressed point and follows the model until the menu closes",
     projects: ["iphone13", "ipad-mini"],
-    timeout: 150000,
+    timeout: 200000,
     fn: async ({ page, ctx, project, skip }) => {
       // Software GL draws a frame in 0.3 to 1 s, which would let the 500 ms press fire before the test could look at the
       // charging ring: stretch only that timer to 3 s (15 s on the iPad profile, which renders 4x the pixels) (the ring's own animation keeps its 500 ms).
@@ -51,7 +51,7 @@ await suite("pressring", [
       assert.ok(charging.w >= 44 && charging.w <= 56, `ring size ${charging.w}`);
       assert.ok(Math.hypot(charging.cx - x, charging.cy - y) <= 1.5, "charge ring centred on the finger");
       assert.equal(charging.pe, "none");
-      await page.waitForFunction(() => document.querySelector(".press-ring--pin.is-on"), null, { timeout: 8000 });
+      await page.waitForFunction(() => document.querySelector(".press-ring--pin.is-on"), null, { timeout: 30000 });
       await page.waitForFunction(() => +getComputedStyle(document.querySelector(".press-ring--pin")).opacity > 0.9, null, { timeout: 10000, polling: 20 });
       const pin = await ring(page, ".press-ring--pin");
       const gone = await ring(page, ".press-ring--charge");

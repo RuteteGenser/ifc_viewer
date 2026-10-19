@@ -150,15 +150,17 @@ export function LegalLinks({ docs = ["terms", "privacy"], className = "", lang }
   );
 }
 
-// "I accept the Terms of Service and have read the Privacy Policy", with both links.
-export function TermsConsentLabel() {
+// "I accept the Terms of Service and have read the Privacy Policy" with the checkbox, and the
+// two documents as full-size links right under it (links inside the sentence would be too
+// small to tap and would overlap each other on a phone).
+export function TermsConsent({ checked, onChange, extraDocs = [] }) {
   return (
-    <span>
-      {lt("consent.terms.before")}
-      <a href={legalHash("terms")}>{lt("consent.terms.link1")}</a>
-      {lt("consent.terms.middle")}
-      <a href={legalHash("privacy")}>{lt("consent.terms.link2")}</a>
-      {lt("consent.terms.after")}
-    </span>
+    <div className="legal-consent" data-testid="consent-terms">
+      <label className="acc-check">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span>{lt("consent.terms")}</span>
+      </label>
+      <LegalLinks docs={["terms", "privacy", ...extraDocs]} className="legal-consent__links" />
+    </div>
   );
 }

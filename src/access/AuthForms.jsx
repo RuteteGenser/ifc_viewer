@@ -6,7 +6,7 @@ import { rememberDemoEmail } from "./Demo";
 import { mapError } from "./state";
 import { t } from "./copy";
 import { signupBody } from "../legal/consent";
-import { TermsConsentLabel } from "../legal/LegalPage";
+import { TermsConsent } from "../legal/LegalPage";
 import { lt } from "../legal/strings";
 
 function Field({ id, label, type = "text", value, onChange, autoComplete, hint, error, autoFocus }) {
@@ -113,7 +113,7 @@ export default function AuthForms({ mode: first = "signup", token }) {
           </>
         )}
         {mode === "signup" && (
-          <label className="acc-check" data-testid="consent-terms"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> <TermsConsentLabel /></label>
+          <TermsConsent checked={terms} onChange={setTerms} />
         )}
         {error && <p className="acc-error" role="alert">{error}</p>}
         {sent && <p className="acc-ok" role="status">{mode === "magic" ? t("magic.sent") : `${t("auth.resetSent")} ${access.session.demo ? "" : t("auth.resetDemo")}`}</p>}

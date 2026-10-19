@@ -6,7 +6,7 @@ import { getPlans, startCheckout } from "./api";
 import { deleteAllModels, downloadAllModels } from "./download";
 import { formatBytes, formatDay as fmtDate, mapError, paymentFailure } from "./state";
 import { t } from "./copy";
-import { LegalLinks, TermsConsentLabel } from "../legal/LegalPage";
+import { TermsConsent } from "../legal/LegalPage";
 import { lt, priceSummary } from "../legal/strings";
 
 
@@ -116,10 +116,7 @@ export default function Paywall({ hasWork }) {
               {limits.maxBytesTotal && <li>{t("paywall.bullet.bytes", { size: formatBytes(limits.maxBytesTotal) })}</li>}
               <li>{t("paywall.bullet.devices")}</li>
             </ul>
-            <label className="acc-check" data-testid="consent-terms">
-              <input type="checkbox" checked={terms} onChange={(ev) => setTerms(ev.target.checked)} />
-              <TermsConsentLabel />
-            </label>
+            <TermsConsent checked={terms} onChange={setTerms} extraDocs={["purchase-info", "withdrawal-form"]} />
             <label className="acc-check" data-testid="consent-waiver">
               <input type="checkbox" checked={waiver} onChange={(ev) => setWaiver(ev.target.checked)} />
               <span>{lt("consent.waiver")}</span>
@@ -134,7 +131,6 @@ export default function Paywall({ hasWork }) {
           <p className="acc-hint">{planError || plan === null ? t("paywall.noPlans") : ""}</p>
         )}
         {error && <p className="acc-error" role="alert">{error}</p>}
-        <LegalLinks docs={["terms", "privacy", "purchase-info", "withdrawal-form"]} />
       </section>
       <div className="acc-links">
         {codeOpen ? <CodeEntry onDone={() => { setCodeOpen(false); if (sheet) access.close(); }} initial={access.prefillCode} /> : (

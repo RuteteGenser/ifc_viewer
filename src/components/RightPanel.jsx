@@ -1,7 +1,14 @@
 import { useEffect, useRef } from "react";
 import ElementInfoPanel from "./ElementInfoPanel";
+import { nextIndex } from "../a11y";
 import MeasureControl from "./MeasureControl";
 import DimensionTagsPanel from "./DimensionTagsPanel";
+
+const TABS = [
+  { id: "info", label: "Properties", short: "Info" },
+  { id: "measurements", label: "Measurements", short: "Measure" },
+  { id: "dimensions", label: "Tags", short: "Tags" },
+];
 
 // One underline for all tabs. It is a fixed 100px box moved with transform (translate + scaleX), so
 // sliding between tabs never touches layout. Re-placed on tab change and whenever the bar or a tab
@@ -160,6 +167,15 @@ export default function RightPanel({
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
+  // Arrow keys move between the tabs (automatic activation); only the selected tab is in the Tab order.
+  const tabKeys = (e) => {
+    const i = TABS.findIndex((t) => t.id === activeTab);
+    const next = nextIndex(e.key, i, TABS.length);
+    if (next < 0) return;
+    e.preventDefault();
+    onTabChange(TABS[next].id);
+    requestAnimationFrame(() => document.getElementById(`rp-tab-${TABS[next].id}`)?.focus());
+  };
   const resizeKey = (e) => {
     const step = e.shiftKey ? 48 : 16;
     if (e.key === "ArrowLeft") onResize(width + step);
@@ -200,33 +216,25 @@ export default function RightPanel({
       </button>
       <div className="element-panel__tabbar" ref={tabbarRef} {...swipe}>
         <TabIndicator barRef={tabbarRef} active={activeTab} />
-        <button
-          type="button"
-          className={`element-panel__tab${activeTab === "info" ? " element-panel__tab--active" : ""}`}
-          aria-label="Properties"
-          onClick={() => onTabChange("info")}
-        >
-          <span className="tab-label tab-label--full">Properties</span>
-          <span className="tab-label tab-label--short" aria-hidden="true">Info</span>
-        </button>
-        <button
-          type="button"
-          className={`element-panel__tab${activeTab === "measurements" ? " element-panel__tab--active" : ""}`}
-          aria-label="Measurements"
-          onClick={() => onTabChange("measurements")}
-        >
-          <span className="tab-label tab-label--full">Measurements</span>
-          <span className="tab-label tab-label--short" aria-hidden="true">Measure</span>
-        </button>
-        <button
-          type="button"
-          className={`element-panel__tab${activeTab === "dimensions" ? " element-panel__tab--active" : ""}`}
-          aria-label="Tags"
-          onClick={() => onTabChange("dimensions")}
-        >
-          <span className="tab-label tab-label--full">Tags</span>
-          <span className="tab-label tab-label--short" aria-hidden="true">Tags</span>
-        </button>
+        <div className="element-panel__tablist" role="tablist" aria-label="Details sections" onKeyDown={tabKeys}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`rp-tab-${t.id}`}
+              aria-selected={activeTab === t.id}
+              aria-controls="rp-tabpanel"
+              tabIndex={activeTab === t.id ? 0 : -1}
+              className={`element-panel__tab${activeTab === t.id ? " element-panel__tab--active" : ""}`}
+              aria-label={t.label}
+              onClick={() => onTabChange(t.id)}
+            >
+              <span className="tab-label tab-label--full">{t.label}</span>
+              <span className="tab-label tab-label--short" aria-hidden="true">{t.short}</span>
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           className="element-panel__collapse"
@@ -246,7 +254,7 @@ export default function RightPanel({
         </button>
       </div>
 
-      <div className="element-panel__body">
+      <div className="element-panel__body" role="tabpanel" id="rp-tabpanel" aria-labelledby={`rp-tab-${activeTab}`}>
         {activeTab === "info" ? (
           <ElementInfoPanel element={element} loading={loading} onHide={onHideElement} onToast={onToast} />
         ) : activeTab === "measurements" ? (

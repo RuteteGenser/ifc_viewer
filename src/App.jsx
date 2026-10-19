@@ -30,6 +30,7 @@ import { GestureSheet } from "./components/ShortcutsHelp";
 import { CameraClipPanel } from "./components/CameraClipControl";
 import { announcePopover } from "./hooks/usePopoverGroup";
 import FirstRunHint from "./components/FirstRunHint";
+import { pageTitle } from "./a11y";
 import { useLibrary } from "./library/useLibrary";
 import { LibraryContext } from "./library/LibraryContext";
 import TransferBar from "./library/TransferBar";
@@ -166,6 +167,27 @@ function App() {
   } = useIfcViewer();
 
   const hasNoModels = models.length === 0;
+  const mainRef = useRef(null);
+  // The tab and history entry name the open model.
+  const modelNames = models.map((m) => m.name).join("\u0000");
+  useEffect(() => {
+    document.title = pageTitle(modelNames ? modelNames.split("\u0000") : []);
+  }, [modelNames]);
+  // The control that opened a file picker (or a library row) can disappear or go disabled while the model loads, which
+  // drops focus to the page start. Put a keyboard user back on it, or in the viewer when it is gone.
+  const pickerOpenerRef = useRef(null);
+  useEffect(() => {
+    if (isLoading || confirmReplace) return undefined;
+    const raf = requestAnimationFrame(() => {
+      const a = document.activeElement;
+      if (a && a !== document.body && a.isConnected && !a.closest(".confirm-dialog-backdrop")) return;
+      const back = pickerOpenerRef.current;
+      pickerOpenerRef.current = null;
+      if (back?.isConnected && !back.disabled) back.focus({ preventScroll: true });
+      else if (models.length > 0) mainRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isLoading, confirmReplace, models.length]);
   const [isDragging, setIsDragging] = useState(false);
   const [dropShift, setDropShift] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -389,10 +411,12 @@ function App() {
   // Opening replaces what is loaded; "Add another model" is the explicit way to add.
   const openFilePicker = useCallback(() => {
     pickAddRef.current = false;
+    pickerOpenerRef.current = document.activeElement;
     fileInputRef.current?.click();
   }, []);
   const addFilePicker = useCallback(() => {
     pickAddRef.current = true;
+    pickerOpenerRef.current = document.activeElement;
     fileInputRef.current?.click();
   }, []);
 
@@ -499,6 +523,16 @@ function App() {
     <BrowserContext.Provider value={browser}>
     <LibraryContext.Provider value={library}>
     <div className="app">
+      <a
+        className="skip-link"
+        href="#viewer"
+        onClick={(e) => {
+          e.preventDefault();
+          mainRef.current?.focus();
+        }}
+      >
+        Skip to the viewer
+      </a>
       <input
         ref={fileInputRef}
         type="file"
@@ -575,7 +609,10 @@ function App() {
           }}
         />
 
-        <div
+        <main
+          id="viewer"
+          tabIndex={-1}
+          ref={mainRef}
           className="viewport-wrapper"
           inert={sidebarOpen && drawerLayout ? true : undefined}
           onDragEnter={handleDragEnter}
@@ -583,6 +620,7 @@ function App() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {models.length > 0 && <h1 className="sr-only">{models.length === 1 ? models[0].name : `${models.length} models`}</h1>}
           <Viewport containerRef={containerRef} reveal={models.length > 0} />
           <DropOverlay visible={isDragging} hasModels={models.length > 0} shift={dropShift} />
           {models.length === 0 && !isLoading && <EmptyState onOpenFiles={openFilePicker} onLoadSample={handleLoadSample} />}
@@ -690,7 +728,7 @@ function App() {
               <span aria-hidden="true">&lsaquo;</span>
             </button>
           )}
-        </div>
+        </main>
 
         {contextMenu && (
           <ContextMenu

@@ -7,7 +7,7 @@
   /* Ink */
   --ink: #2a2622;
   --ink-muted: #6b6155;
-  --ink-faint: #72685a; /* 4.7:1 on the paper surfaces */
+  --ink-faint: #6a6054; /* 4.5:1 or more on every paper surface, including grey and the soft accent */
 
   /* Lines */
   --line: #ddd6c7;
@@ -282,7 +282,7 @@
   text-align: right;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.24);
   padding: 1px 6px;
   border-radius: 3px;
   font-size: 11px;
@@ -1000,7 +1000,7 @@
 }
 
 .search-bar__input:focus {
-  outline: 2px solid var(--accent-soft);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
   border-color: var(--border-strong);
 }
@@ -1467,7 +1467,7 @@
 }
 
 .compass__offset input:focus {
-  outline: 2px solid var(--accent-soft);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -2261,7 +2261,8 @@
   }
 }
 
-@media (max-height: 500px) and (pointer: coarse) {
+/* Not only touch: a desktop window zoomed to 200% is just as short and narrow. */
+@media (max-height: 500px) {
   .app-body[data-sheet="none"] .element-panel {
     display: none;
   }
@@ -2533,6 +2534,18 @@
   font-size: 12.5px;
   line-height: 1.35;
   color: var(--text-muted);
+}
+
+/* Very narrow (a 400% zoom): the tips wrap instead of pushing the close button off screen. */
+@media (max-width: 400px) {
+  .first-run {
+    border-radius: 22px;
+  }
+  .first-run__list {
+    flex-wrap: wrap;
+    white-space: normal;
+    min-width: 0;
+  }
 }
 
 .first-run__row b {
@@ -3672,4 +3685,83 @@
 }
 .sidebar__add-button {
   flex: 1 1 100%;
+}
+
+/* ---------- Accessibility ---------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* First stop for a keyboard user: jumps past the header and the model list to the viewer. */
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: 8px;
+  z-index: 1000;
+  transform: translateY(-200%);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper-white);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus {
+  transform: none;
+  outline: 2px solid var(--paper-white);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--ink);
+}
+
+/* The armed-tool pill is accent coloured, so the accent ring would vanish into it. */
+.tool-hint :focus-visible {
+  outline-color: #fff;
+  outline-offset: 1px;
+}
+
+/* A landmark that only receives focus from the skip link or after a model opens: no ring around the whole view. */
+.viewport-wrapper:focus {
+  outline: none;
+}
+
+/* The tab buttons sit directly in the tab bar for layout; the wrapper only carries the tablist role. */
+.element-panel__tablist {
+  display: contents;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+
+/* Windows high contrast and similar: system colours drop our backgrounds, so state and focus need real borders. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .top-bar__icon-button--active,
+  .top-bar__home-button,
+  .sb-chip--on,
+  .lib-chip--on,
+  .view-tools__chip.is-active,
+  .element-panel__tab--active,
+  [aria-pressed="true"] {
+    border: 2px solid Highlight;
+  }
+  .toast,
+  .status-banner,
+  .tooltip__box {
+    border: 1px solid CanvasText;
+  }
 }

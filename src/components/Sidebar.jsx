@@ -144,7 +144,7 @@ export default function Sidebar({
     },
   };
   return (
-    <aside className={`sidebar ${className}`.trim()} {...swipe}>
+    <aside className={`sidebar ${className}`.trim()} aria-label="Models and structure" {...swipe}>
       <div className="sidebar__top-buttons">
         <button
           type="button"

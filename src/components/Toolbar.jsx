@@ -106,7 +106,7 @@ export default function Toolbar({
   const locked = (text) => (hasModels ? text : "Open a model first");
 
   return (
-    <div className="toolbar" ref={rootRef}>
+    <div className="toolbar" ref={rootRef} role="group" aria-label="Tools">
       <Tooltip description={locked("Fit the whole model in view")}>
         <button
           type="button"

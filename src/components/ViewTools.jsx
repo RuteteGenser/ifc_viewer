@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
 import { useExitGhost } from "../usePresence";
+import { nextIndex } from "../a11y";
 import { STANDARD_VIEWS } from "../ifc/viewHelpers";
 import { formatElevation } from "../ifc/storeys";
 import "./ViewTools.css";
@@ -74,6 +75,10 @@ function ViewsPanel({ views, spaceControl, onClose }) {
   const panelRef = useRef(null);
   useExitGhost(panelRef);
   const { flat, setFlatProjection, goToView, levels, levelSel, showLevels, showAllLevels } = views;
+  // A dialog takes focus when it opens (its trigger gets it back on close).
+  useEffect(() => {
+    panelRef.current?.querySelector("button")?.focus();
+  }, []);
   const [mode, setMode] = useState(levelSel?.mode ?? "only");
   // On a touch screen the panel covers much of the model, so it gets out of
   // the way once a choice is made. With a mouse it stays for quick flipping.
@@ -201,9 +206,20 @@ function ViewsPanel({ views, spaceControl, onClose }) {
 function SharePanel({ views, onClose }) {
   const panelRef = useRef(null);
   useExitGhost(panelRef);
+  // A menu: focus lands on the first item, Up/Down/Home/End move between items.
+  useEffect(() => {
+    panelRef.current?.querySelector('[role="menuitem"]')?.focus();
+  }, []);
+  const menuKeys = (e) => {
+    const items = [...panelRef.current.querySelectorAll('[role="menuitem"]')];
+    const next = nextIndex(e.key, items.indexOf(document.activeElement), items.length, false);
+    if (next < 0) return;
+    e.preventDefault();
+    items[next].focus();
+  };
   const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function" && window.matchMedia?.("(pointer: coarse)").matches;
   return (
-    <div className="view-tools__panel view-tools__panel--menu" ref={panelRef} role="menu" aria-label="Save and share">
+    <div className="view-tools__panel view-tools__panel--menu" ref={panelRef} role="menu" aria-label="Save and share" onKeyDown={menuKeys}>
       <button
         type="button"
         role="menuitem"
@@ -238,7 +254,12 @@ function SharePanel({ views, onClose }) {
 export default function ViewTools({ views, spaceControl, onOpenChange }) {
   const [open, setOpen] = useState(null); // "views" | "share" | null
   const rootRef = useRef(null);
-  const close = useCallback(() => setOpen(null), []);
+  // Closing from inside a panel (Esc, Done, a menu item) hands focus back to the button that opened it.
+  const close = useCallback(() => {
+    const root = rootRef.current;
+    if (root && document.activeElement?.closest?.(".view-tools__panel")) root.querySelector('.view-tools__buttons [aria-expanded="true"]')?.focus();
+    setOpen(null);
+  }, []);
   useDismiss(open !== null, close, rootRef);
   usePopoverGroup("view-tools", open !== null, close);
   useEffect(() => {

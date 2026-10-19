@@ -43,10 +43,11 @@ export const PROJECTS = {
   iphone13: { ...devices["iPhone 13"] },
   "ipad-mini": { ...devices["iPad Mini"] },
   pixel7: { ...devices["Pixel 7"] }, // opt-in: a case lists it in `projects`
+  small320: { ...devices["iPhone SE"], viewport: { width: 320, height: 568 } }, // opt-in: the smallest phone we support
 };
 const DEFAULT_PROJECTS = ["desktop", "iphone13", "ipad-mini"];
 export const isTouch = (project) => project !== "desktop";
-export const isPhone = (project) => project === "iphone13" || project === "pixel7";
+export const isPhone = (project) => project === "iphone13" || project === "pixel7" || project === "small320";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };

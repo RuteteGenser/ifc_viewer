@@ -6,6 +6,7 @@ import { BrowserContext } from "./hooks/BrowserContext";
 import DropOverlay from "./components/DropOverlay";
 import LoadingOverlay from "./components/LoadingOverlay";
 import StatusBanner from "./components/StatusBanner";
+import { useUpdateNotice } from "./reliability/useUpdateNotice";
 import { startupIntent } from "./reliability/recovery";
 import { attemptText, withBackoff } from "./reliability/retry";
 import ContextMenu from "./components/ContextMenu";
@@ -507,6 +508,11 @@ function App() {
     setPanelOpen(false);
     setPanelExpanded(false);
   }, [tagToolActive, toggleTagTool]);
+  // One banner slot: on a phone the error / update notice shares the HUD column with the tool pill, and wins over it.
+  const updateAvailable = useUpdateNotice();
+  const banner = <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} onChooseFile={openFilePicker} idle={!isLoading && !armedTool} updateAvailable={updateAvailable} />;
+  const bannerShown = !!error || (updateAvailable && !isLoading && !armedTool);
+  const hintTool = surfaces.phone && (bannerShown || surfaces.anySheet) ? null : armedTool;
   const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
 
@@ -679,7 +685,8 @@ function App() {
           />
           <ViewTools views={viewFeatures} spaceControl={spaceControl} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
           <Hud>
-            <ToolHint tool={armedTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
+            {surfaces.phone && banner}
+            <ToolHint tool={hintTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
             <CameraClipPanel
               enabled={cameraClipEnabled}
               distance={cameraClipDistance}
@@ -689,7 +696,7 @@ function App() {
             />
           </Hud>
           <PlaneSwitch planes={clipPlanes} onSelect={setActiveClipPlane} />
-          <FirstRunHint visible={models.length > 0 && !isLoading} />
+          <FirstRunHint visible={models.length > 0 && !isLoading && !surfaces.anySheet} />
           <div className="history-buttons">
             <button
               type="button"
@@ -722,9 +729,9 @@ function App() {
             onOffsetChange={setNorthOffset}
             disabled={models.length === 0}
           />
-          <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} onChooseFile={openFilePicker} idle={!isLoading && !armedTool} />
+          {!surfaces.phone && banner}
           <Toast toast={toast} />
-          {multiNotice && models.length > 1 && (
+          {multiNotice && models.length > 1 && !surfaces.anySheet && (
             <div className="multi-notice" role="status">
               <span>{models.length} models are loaded together. Use Models to remove one.</span>
               <button

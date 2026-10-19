@@ -15,7 +15,7 @@ const TOOLS = [
 const typing = (t) => t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
 // Tool buttons (44px), colour, undo/redo/delete, the armed-tool hint and the keyboard shortcuts.
-export default function AnnotationToolbar({ tool, onTool, color, onColor, canUndo, canRedo, onUndo, onRedo, hasSelection, onDelete, onCancel }) {
+export default function AnnotationToolbar({ tool, onTool, color, onColor, canUndo, canRedo, onUndo, onRedo, hasSelection, onDelete, onCancel, onDone }) {
   const [palette, setPalette] = useState(false);
   const live = useRef({});
   live.current = { tool, onTool, canUndo, canRedo, onUndo, onRedo, hasSelection, onDelete, onCancel };
@@ -75,6 +75,7 @@ export default function AnnotationToolbar({ tool, onTool, color, onColor, canUnd
           <button type="button" className="ann-tool" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}>{I(<path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" />)}<span className="ann-tool__cap">Undo</span></button>
           <button type="button" className="ann-tool" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo}>{I(<path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" />)}<span className="ann-tool__cap">Redo</span></button>
           <button type="button" className="ann-tool" aria-label="Delete selected" title="Delete (Del)" disabled={!hasSelection} onClick={onDelete}>{I(<path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13" />)}<span className="ann-tool__cap">Delete</span></button>
+          {onDone && <button type="button" className="ann-tool ann-tool--done" aria-label="Finish annotating" title="Finish annotating" onClick={onDone}>{I(<path d="M5 12l5 5 9-10" />)}<span className="ann-tool__cap">Done</span></button>}
         </div>
       </div>
     </>

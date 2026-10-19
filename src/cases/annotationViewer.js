@@ -39,6 +39,8 @@ export function createAnnotationViewer(d, getBase) {
   const toLive = (p, point) => v.set(point[0], point[1], point[2]).applyMatrix4(delta);
   const toBase = (w) => { inv.copy(delta).invert(); return w.clone().applyMatrix4(inv).toArray(); };
   const size = (p) => ({ width: p.canvas.clientWidth, height: p.canvas.clientHeight });
+  // What the person can see: side panels and sheets cover part of the canvas (the app frames the model in the rest).
+  const visibleSize = (p) => { const s = size(p), f = d().getVisibleFrac?.() || { x: 1, y: 1 }; return { width: s.width * f.x, height: s.height * f.y }; };
 
   function project(point) {
     const p = parts();
@@ -159,7 +161,7 @@ export function createAnnotationViewer(d, getBase) {
     pick,
     isOccluded,
     unprojectOnPlane,
-    getSize: () => { const p = parts(); return p ? size(p) : { width: 0, height: 0 }; },
+    getSize: () => { const p = parts(); return p ? visibleSize(p) : { width: 0, height: 0 }; },
     subscribeCamera(cb) {
       subs.add(cb);
       window.addEventListener("resize", cb);

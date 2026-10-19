@@ -6201,7 +6201,7 @@ export function useIfcViewer() {
   casesDepsRef.current = {
     cameraRef, controlsRef, modelsGroupRef, modelsRef, rendererRef, sceneRef, requestRenderRef, clipPlaneManagerRef, setClipPlanes,
     hiddenCategoriesRef, isolatedKeysRef, setIsolatedKeys, applyIsolation, setCategoryHidden, cancelCameraAnim, cameraAnimRef, autoFramedRef, applyPose,
-    clearSelection, pipelineRef, invalidateGroupSphereRef, setFlat: viewFeatures.setFlat, raycastVisibleRef,
+    clearSelection, pipelineRef, invalidateGroupSphereRef, setFlat: viewFeatures.setFlat, raycastVisibleRef, getVisibleFrac,
     levels: () => viewFeatures.levels,
     models: () => models,
     spacesShown: () => spaces.shown,

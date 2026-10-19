@@ -6,7 +6,7 @@ import { useAnnotations } from "./useAnnotations";
 
 // Layer + toolbar wired together. Mount inside the viewport wrapper, above the canvas.
 // Props: viewer, annotations (current snapshot's array), onChange(nextArray), author.
-export default function Annotations({ viewer, annotations, onChange, author = "" }) {
+export default function Annotations({ viewer, annotations, onChange, author = "", onDone }) {
   const a = useAnnotations(annotations, onChange);
   const [tool, setTool] = useState(null);
   const [color, setColor] = useState(PALETTE[0]);
@@ -20,7 +20,7 @@ export default function Annotations({ viewer, annotations, onChange, author = ""
         onCreate={(x) => { a.add(x); setSelectedId(null); }} onUpdate={a.update} onRemove={a.remove} />
       <AnnotationToolbar tool={tool} onTool={(t) => { setTool(t); setSelectedId(null); }} color={color} onColor={setColor}
         canUndo={a.canUndo} canRedo={a.canRedo} onUndo={a.undo} onRedo={a.redo}
-        hasSelection={exists} onDelete={onDelete} onCancel={() => (tool ? setTool(null) : setSelectedId(null))} />
+        hasSelection={exists} onDone={onDone} onDelete={onDelete} onCancel={() => (tool ? setTool(null) : setSelectedId(null))} />
     </>
   );
 }

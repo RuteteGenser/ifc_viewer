@@ -38,6 +38,8 @@ import TransferBar from "./library/TransferBar";
 import CasesPanel from "./cases/CasesPanel";
 import { useCases } from "./cases/useCases";
 import { saveSnapshot } from "./cases/saveSnapshot";
+import AnnotationSession from "./cases/AnnotationSession";
+import { COPY as CASES_COPY } from "./cases/copy";
 import "./components/Library.css";
 
 // iOS/Android file pickers grey out files with extensions they can't map
@@ -203,11 +205,19 @@ function App() {
   const casesState = useCases();
   const casesStateRef = useRef(casesState);
   casesStateRef.current = casesState;
+  // Annotations over the view: `shownSnap` = the snapshot the Cases sheet shows (read-only), `annotating` = being edited.
+  const [shownSnap, setShownSnap] = useState(null);
+  const [annotating, setAnnotating] = useState(null);
+  const lastSnapRef = useRef(null);
+  const annotExportRef = useRef(null);
+  if (annotating || shownSnap) lastSnapRef.current = annotating || shownSnap;
   const handleSaveSnapshot = useCallback(
-    (title) => saveSnapshot({ viewer: casesViewer, controller: casesStateRef.current, currentId: casesStateRef.current.currentId, title, showToast }),
+    (title) => saveSnapshot({ viewer: casesViewer, controller: casesStateRef.current, currentId: casesStateRef.current.currentId, title, showToast, annotations: annotExportRef.current?.() ?? [] }),
     [casesViewer, showToast],
   );
+  const startAnnotating = useCallback((target) => { setAnnotating(target); setCasesOpen(false); }, []);
   const openCases = useCallback(() => {
+    setAnnotating(null);
     setSidebarOpen(false);
     setModelsOpen(false);
     setCasesOpen(true);
@@ -635,6 +645,10 @@ function App() {
         >
           {models.length > 0 && <h1 className="sr-only">{models.length === 1 ? models[0].name : `${models.length} models`}</h1>}
           <Viewport containerRef={containerRef} reveal={models.length > 0} />
+          {models.length > 0 && (annotating || shownSnap) && (
+            <AnnotationSession viewer={casesViewer} target={annotating || shownSnap} edit={!!annotating} exportRef={annotExportRef}
+              onDone={() => setAnnotating(null)} onSaveFailed={() => showToast(CASES_COPY.saveFailed)} />
+          )}
           <DropOverlay visible={isDragging} hasModels={models.length > 0} shift={dropShift} />
           {models.length === 0 && !isLoading && <EmptyState onOpenFiles={openFilePicker} onLoadSample={handleLoadSample} />}
           <LoadingOverlay visible={isLoading && !confirmReplace} label={loadingLabel} onCancel={cancelLoad} />
@@ -827,7 +841,7 @@ function App() {
           />
         )}
 
-        <CasesPanel open={casesOpen} onClose={() => setCasesOpen(false)} cases={casesState} viewer={casesViewer} models={models} showToast={showToast} onSaveSnapshot={handleSaveSnapshot} />
+        <CasesPanel open={casesOpen} onClose={() => setCasesOpen(false)} cases={casesState} viewer={casesViewer} models={models} showToast={showToast} onSaveSnapshot={handleSaveSnapshot} resume={lastSnapRef.current} onShowSnapshot={setShownSnap} onAnnotate={startAnnotating} />
 
         {helpOpen && COARSE_POINTER && <GestureSheet onClose={() => setHelpOpen(false)} />}
 

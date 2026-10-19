@@ -80,11 +80,11 @@ function List({ cases, modelName, controller, onOpen, onWarnings, showToast }) {
   );
 }
 
-function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapshot }) {
+function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapshot, resume, onShowSnapshot, onAnnotate }) {
   const ref = useRef(null);
   const library = useLibraryContext();
   const [openId, setOpenId] = useState(cases.currentId);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(resume && resume.caseId === cases.currentId ? resume.snapshotId : null);
   const [warnings, setWarnings] = useState(null);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -116,6 +116,11 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
     if (res) { setAsking(false); setOpenId(res.caseId); setSelectedId(res.snapshotId); }
   };
   const exists = openId && cases.cases.some((c) => c.id === openId);
+  // Tell the app which snapshot is on show, so its own annotations are drawn over the view while the sheet is open.
+  const shown = exists && selectedId && !closed ? `${openId}\u0000${selectedId}` : null;
+  useEffect(() => {
+    onShowSnapshot?.(shown ? { caseId: openId, snapshotId: selectedId } : null);
+  }, [shown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return createPortal(
     <div className="cases" data-state={state} role="dialog" aria-label={COPY.title} ref={ref}>
@@ -140,7 +145,7 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
           caseId={openId} viewer={viewer} library={library} controller={controller} showToast={showToast}
           modelKey={models.map((m) => m.id).join("|")}
           selectedId={selectedId} onSelect={setSelectedId}
-          onBack={() => open(null)} onOpen={open} onWarnings={setWarnings}
+          onBack={() => open(null)} onOpen={open} onWarnings={setWarnings} onAnnotate={onAnnotate}
         />
       ) : (
         <List cases={cases.cases} modelName={modelName} controller={controller} onOpen={open} onWarnings={setWarnings} showToast={showToast} />

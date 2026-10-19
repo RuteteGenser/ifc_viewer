@@ -2172,8 +2172,22 @@ export function useIfcViewer() {
     );
     pivotMarker.visible = false;
     pivotMarker.renderOrder = 999;
+    // A fingertip covers about 40 px, so on touch a thin ring (radius in
+    // pixels) around the dot stays visible next to the finger. It is a
+    // child of the dot: same position, visibility and (via the unit ring
+    // radius * PIVOT_RING_PIXELS / PIVOT_MARKER_PIXELS) screen size.
+    const PIVOT_RING_PIXELS = 26;
+    const pivotRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.92, 1, 48),
+      new THREE.MeshBasicMaterial({ color: 0xff6a00, depthTest: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+    );
+    pivotRing.scale.setScalar(PIVOT_RING_PIXELS / PIVOT_MARKER_PIXELS);
+    pivotRing.renderOrder = 999;
+    pivotRing.visible = TOUCH_UI;
+    pivotMarker.add(pivotRing);
     scene.add(pivotMarker);
 
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.pivotState = () => ({ visible: pivotMarker.visible, pos: pivotMarker.position.toArray(), scale: pivotMarker.scale.x, rotating, pending: pivotPending });
     const scalePivotMarker = () => {
       if (!pivotMarker.visible) return;
       const distance = camera.position.distanceTo(pivotMarker.position);
@@ -2181,6 +2195,7 @@ export function useIfcViewer() {
         (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) /
         renderer.domElement.clientHeight;
       pivotMarker.scale.setScalar(worldPerPixel * PIVOT_MARKER_PIXELS);
+      pivotRing.quaternion.copy(camera.quaternion);
     };
 
     // "Orbit the model" rotation (left mouse button). The camera never
@@ -2216,6 +2231,8 @@ export function useIfcViewer() {
     let startPhi = 0;
     let startNdcX = 0;
     let startNdcY = 0;
+    let gainX = 1;
+    let gainY = 1;
     const cameraQuatStart = new THREE.Quaternion();
     const groupQuatStart = new THREE.Quaternion();
     const groupPosStart = new THREE.Vector3();
@@ -2751,13 +2768,13 @@ export function useIfcViewer() {
     renderer.domElement.addEventListener("wheel", clearNameHover, { passive: true });
 
     const applyRotation = (ndc) => {
-      const theta = startTheta - Math.PI * ROTATE_GAIN * (ndc.x - startNdcX);
+      const theta = startTheta - Math.PI * ROTATE_GAIN * gainX * (ndc.x - startNdcX);
       // + on the elevation term: ndc.y grows upward, and dragging up
       // should tip the model's top away from you (equivalently, raise
       // the virtual camera), matching OrbitControls' vertical direction.
       const phi = Math.max(
         EPS,
-        Math.min(Math.PI - EPS, startPhi + Math.PI * ROTATE_GAIN * (ndc.y - startNdcY)),
+        Math.min(Math.PI - EPS, startPhi + Math.PI * ROTATE_GAIN * gainY * (ndc.y - startNdcY)),
       );
 
       const modelQuat = cameraQuatStart
@@ -2780,6 +2797,12 @@ export function useIfcViewer() {
     // instant of the call the accumulated rotation is exactly identity.
     const anchorGesture = (ndc, pivot) => {
       rotatePivot.copy(pivot);
+      // Same turn per pixel along both axes: NDC spans the width and the
+      // height, so scale each by its size relative to the smaller side.
+      const rect = renderer.domElement.getBoundingClientRect();
+      const small = Math.max(1, Math.min(rect.width, rect.height));
+      gainX = rect.width / small;
+      gainY = rect.height / small;
       startNdcX = ndc.x;
       startNdcY = ndc.y;
       cameraQuatStart.copy(camera.quaternion);
@@ -2812,6 +2835,7 @@ export function useIfcViewer() {
     // exact same raycast already dispatched for the rotation pivot below
     // (same screen position) rather than firing a second one.
     const CLICK_MOVE_THRESHOLD = 5;
+    const PIVOT_RING_PX = 14; // touch: how far from the press point to look for a surface when it hits nothing
     let downClientX = 0;
     let downClientY = 0;
     let pivotRaycastPromise = null;
@@ -3799,14 +3823,31 @@ export function useIfcViewer() {
       // behind an active clip plane, so rotating/selecting after a cut
       // pivots on what's actually on screen.
       pivotRaycastPromise = pipeline ? raycastVisible(event.clientX, event.clientY) : Promise.resolve(null);
-      pivotRaycastPromise
+      // Thin walls, window frames and edges are easy to miss with a fat
+      // finger: when the exact press point misses, a touch pivots on the
+      // first hit on a small ring around it instead of on the model centre.
+      const pivotHitPromise = pivotRaycastPromise.then(async (hit) => {
+        if (hit || !pipeline || event.pointerType !== "touch") return hit;
+        // One at a time: the fragments raycast answers null to a call made
+        // while another is still in flight.
+        for (let i = 0; i < 8; i++) {
+          const a = (i * Math.PI) / 4;
+          const ringHit = await raycastVisible(event.clientX + Math.cos(a) * PIVOT_RING_PX, event.clientY + Math.sin(a) * PIVOT_RING_PX);
+          if (ringHit) return ringHit;
+        }
+        return null;
+      });
+      pivotHitPromise
         .then((hit) => {
           // The gesture already ended (a fast click-and-release faster
           // than the raycast) or was superseded by a newer one — nothing
           // left to anchor.
           if (!pivotPending || gestureId !== gestureSeq) return;
           pivotPending = false;
-          const ndc = pendingNdc ?? startNdc;
+          // Anchor at the press position; the pointer travel buffered in
+          // pendingNdc while the raycast ran is applied around the right
+          // pivot on the next frame instead of being dropped.
+          const ndc = startNdc;
           // hit.point is already expressed in modelsGroup's *current*
           // frame (the fragments library converts its local-space hit
           // to world space using matrixWorld as of when the raycast

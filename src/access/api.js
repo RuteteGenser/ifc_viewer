@@ -1,4 +1,5 @@
 // Same-origin client for the access API. Every write sends X-Argus-Client.
+import { checkoutBody } from "../legal/consent";
 const BASE = "/api";
 
 export class AccessError extends Error {
@@ -59,8 +60,9 @@ export const getAccount = () => call("GET", "/account");
 export const exportAccount = () => call("GET", "/account/export");
 export const deleteAccount = (password) => call("POST", "/account/delete", { confirm: "DELETE", password });
 export const claimDeviceModels = () => call("POST", "/account/claim-device-models", {});
-export const startCheckout = (priceLookupKey, termsVersion) =>
-  call("POST", "/billing/checkout", { priceLookupKey, consent: { startNow: true, termsVersion } });
+// Sends terms: { version: LEGAL_VERSION } and the withdrawal waiver (see legal/consent.js).
+export const startCheckout = (priceLookupKey, termsVersion, { withdrawalWaiver = false } = {}) =>
+  call("POST", "/billing/checkout", checkoutBody({ priceLookupKey, legacyTermsVersion: termsVersion, withdrawalWaiver }));
 export const openPortal = (flow = "manage") => call("POST", "/billing/portal", { flow });
 export const verifyEmail = (token) => call("POST", "/auth/verify-email", { token });
 export const resendVerify = () => call("POST", "/auth/verify-email/resend", {});

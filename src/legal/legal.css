@@ -23,6 +23,7 @@
 .legal-doc__static a { display: inline-flex; align-items: center; min-height: 44px; }
 .legal-links { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: center; margin-top: 4px; font-size: 13px; }
 .legal-links__a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-hover, #7d5326); }
-.acc-check a { color: var(--accent-hover, #7d5326); }
+/* Inline links in a consent sentence: the padding gives a 44px hit area without changing the line layout. */
+.acc-check a { color: var(--accent-hover, #7d5326); padding: 14px 0; }
 .acc-price-line { margin: 8px 0 0; font-size: 14px; font-weight: 600; }
 .sidebar__legal { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--line, #ddd6c7); }

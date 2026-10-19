@@ -22,7 +22,6 @@ export default {
   "auth.email": "E-post",
   "auth.password": "Passord",
   "auth.passwordHint": "Minst 10 tegn.",
-  "auth.terms": "Jeg godtar vilkårene og personvernerklæringen.",
   "account.title": "Konto",
   "account.downloadAll": "Last ned alle modellene mine",
   "account.delete": "Slett kontoen min",

@@ -7,6 +7,7 @@ import { downloadAccountData, downloadAllModels } from "./download";
 import { formatBytes as mb, formatDay as fmtDate, mapError, subscriptionLine } from "./state";
 import { t } from "./copy";
 import { LegalLinks } from "../legal/LegalPage";
+import { lt } from "../legal/strings";
 
 
 export function quotaText(session) {
@@ -48,6 +49,9 @@ export default function AccountPage() {
     setBusy("");
   };
   const portal = run("portal", async () => window.location.assign((await openPortal("manage")).url));
+  const cancel = run("cancel", async () => window.location.assign((await openPortal("cancel")).url));
+  // A running subscription that is not already ending: one tap to the provider's cancel step.
+  const canCancel = access.registered && s.entitlement.state === "active" && !!sub && sub.status !== "canceled" && !sub.cancelAtPeriodEnd && !s.entitlement.flags?.cancelAtPeriodEnd;
   const downloadAll = run("dl", async () => {
     const n = await downloadAllModels((i, total) => setBusy(t("account.downloading", { i, n: total })));
     if (!n) setError(t("account.noModels"));
@@ -84,9 +88,11 @@ export default function AccountPage() {
         <h3 className="acc-h3">{t("account.plan")}: {s.entitlement.planName}</h3>
         <p data-testid="acc-state">{stateLine(access)}</p>
         {subKey && <p className="acc-hint" data-testid="acc-sub">{t(subKey)}</p>}
+        {canCancel && <p className="acc-hint">{lt("cancel.hint")}</p>}
         <p className="acc-hint">{quotaText(s)}</p>
         <div className="acc-row">
           {access.registered && s.entitlement.state === "active" && <button type="button" className="acc-btn" disabled={!!busy} onClick={portal}>{label("portal", t("action.manageBilling"))}</button>}
+          {canCancel && <button type="button" className="acc-btn" disabled={!!busy} onClick={cancel} data-testid="cancel-subscription">{label("cancel", lt("cancel.button"))}</button>}
           {s.entitlement.flags?.paymentFailed && <button type="button" className="acc-btn acc-btn--primary" onClick={() => access.open({ kind: "paywall", sheet: true })}>{t("action.payAgain")}</button>}
           {access.state !== "active" && <button type="button" className="acc-btn" onClick={() => access.open({ kind: "paywall", sheet: true })}>{t("action.seePlans")}</button>}
         </div>

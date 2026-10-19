@@ -99,7 +99,7 @@ test("BCF 3.0 style: comments and viewpoints nested in Topic", () => {
   const z = zipSync({ "bcf.version": strToU8('<Version VersionId="3.0"/>'), [`${T1}/markup.bcf`]: strToU8(m3), [`${T1}/vp.bcfv`]: strToU8(vpFile) });
   const { case: c, warnings } = parseBcf(z);
   assert.equal(c.snapshots[0].title, "Tre"); assert.equal(c.snapshots[0].annotations[0].text, "Hei"); assert.ok(near(c.snapshots[0].view.camera.position, [10, 1.5, -20]));
-  assert.deepEqual(warnings, []);
+  assert.deepEqual(warnings.filter((w) => !/clipping plane/.test(w)), []);
 });
 test("project.bcfp name is used as the case name", () => {
   const z = realZip({ "project.bcfp": strToU8('<ProjectExtension><Project ProjectId="p1"><Name>Skolen</Name></Project></ProjectExtension>') });

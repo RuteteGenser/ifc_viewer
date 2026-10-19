@@ -2821,6 +2821,7 @@ export function useIfcViewer() {
     // exact same raycast already dispatched for the rotation pivot below
     // (same screen position) rather than firing a second one.
     const CLICK_MOVE_THRESHOLD = 5;
+    const PIVOT_RING_PX = 14; // touch: how far from the press point to look for a surface when it hits nothing
     let downClientX = 0;
     let downClientY = 0;
     let pivotRaycastPromise = null;
@@ -3808,7 +3809,21 @@ export function useIfcViewer() {
       // behind an active clip plane, so rotating/selecting after a cut
       // pivots on what's actually on screen.
       pivotRaycastPromise = pipeline ? raycastVisible(event.clientX, event.clientY) : Promise.resolve(null);
-      pivotRaycastPromise
+      // Thin walls, window frames and edges are easy to miss with a fat
+      // finger: when the exact press point misses, a touch pivots on the
+      // first hit on a small ring around it instead of on the model centre.
+      const pivotHitPromise = pivotRaycastPromise.then(async (hit) => {
+        if (hit || !pipeline || event.pointerType !== "touch") return hit;
+        // One at a time: the fragments raycast answers null to a call made
+        // while another is still in flight.
+        for (let i = 0; i < 8; i++) {
+          const a = (i * Math.PI) / 4;
+          const ringHit = await raycastVisible(event.clientX + Math.cos(a) * PIVOT_RING_PX, event.clientY + Math.sin(a) * PIVOT_RING_PX);
+          if (ringHit) return ringHit;
+        }
+        return null;
+      });
+      pivotHitPromise
         .then((hit) => {
           // The gesture already ended (a fast click-and-release faster
           // than the raycast) or was superseded by a newer one — nothing

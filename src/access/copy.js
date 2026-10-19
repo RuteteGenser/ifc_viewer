@@ -90,6 +90,8 @@ export const en = {
   "account.deleteTitle": "Delete your account?",
   "account.deleteConfirm": "This deletes your account and all your saved models now. It cannot be undone. Records of payments are kept for bookkeeping. Type DELETE to confirm.",
   "account.deleteGo": "Delete everything",
+  "banner.demoShort": "Demo",
+  "banner.menu": "More",
   "banner.demo": "Demo mode: payments and emails are simulated.",
   "action.payAgain": "Pay again",
   "action.demoTools": "Demo tools",

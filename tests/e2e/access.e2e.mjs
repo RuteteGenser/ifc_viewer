@@ -40,6 +40,12 @@ const setEnds = async (page, afterMs) => {
   clock(new Date(Date.parse(s.entitlement.endsAt) + afterMs).toISOString());
 };
 const banner = (page) => page.getByTestId("acc-banner");
+// On narrow screens the banner actions live in the "More" menu; on desktop they are inline.
+const viaMenu = async (page, name) => {
+  const more = page.getByRole("button", { name: "More", exact: true });
+  if (await more.count()) { await more.click(); await page.getByRole("group", { name: "More" }).getByRole("button", { name }).click(); }
+  else await page.getByTestId("acc-banner").getByRole("button", { name }).click();
+};
 const noOverflow = async (page) => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "horizontal overflow");
 const smallTargets = async (page, scope) => {
   const bad = await page.evaluate((sel) => [...document.querySelectorAll(`${sel} button, ${sel} input:not([type=checkbox]), ${sel} a`)].filter((e) => e.offsetParent).map((e) => ({ t: (e.textContent || e.getAttribute("aria-label") || e.id).trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44), scope);
@@ -99,8 +105,17 @@ await suite("access", [
       assert.ok(b.y >= h.y + h.height - 1, "banner sits under the header");
       await noOverflow(page);
       if (touch) await smallTargets(page, '[data-testid="acc-banner"]');
+      const narrow = page.viewportSize().width <= 768;
+      if (narrow) {
+        assert.ok(b.height <= 56, `banner is ${b.height}px high`);
+        const t = await banner(page).locator(".acc-slim__text").boundingBox();
+        assert.ok(t.height < 24, "banner text wraps");
+        const tb = await page.locator(".header").boundingBox();
+        assert.ok(b.y >= tb.y + tb.height - 1, "banner overlaps the toolbar");
+        assert.ok(b.x >= 0 && b.x + b.width <= page.viewportSize().width + 1, "banner overflows");
+      }
       await shot(page, project, "banner");
-      await page.getByRole("button", { name: "Dismiss" }).click();
+      await viaMenu(page, "Dismiss");
       assert.equal(await banner(page).count(), 0);
       await shot(page, project, "empty-state-code-link");
       assert.ok(await page.getByRole("button", { name: "Have an access code?" }).count() >= 1);
@@ -115,7 +130,7 @@ await suite("access", [
       await fresh(page);
       await openApp(page);
       await banner(page).waitFor();
-      await page.getByRole("button", { name: "Have an access code?" }).first().click();
+      await viaMenu(page, "Have an access code?");
       const dlg = page.getByRole("dialog");
       await dlg.getByLabel("Access code").fill("nope");
       await dlg.getByRole("button", { name: "Apply" }).click();

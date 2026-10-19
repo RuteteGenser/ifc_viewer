@@ -11,9 +11,25 @@ const remember = (email) => { try { sessionStorage.setItem(KEY, email); } catch 
 const remembered = () => { try { return sessionStorage.getItem(KEY) || ""; } catch { return ""; } };
 export const rememberDemoEmail = remember;
 
+// True on phones and portrait tablets, where one slim bar replaces the demo bar and the banner.
+export function useNarrow() {
+  const q = "(max-width: 768px)";
+  const get = () => typeof window !== "undefined" && !!window.matchMedia?.(q).matches;
+  const [n, setN] = useState(get);
+  useEffect(() => {
+    const m = window.matchMedia?.(q);
+    if (!m) return undefined;
+    const f = () => setN(m.matches);
+    m.addEventListener("change", f); f();
+    return () => m.removeEventListener("change", f);
+  }, []);
+  return n;
+}
+
 export function DemoBar() {
   const a = useAccess();
-  if (!a?.session.demo) return null;
+  const narrow = useNarrow();
+  if (!a?.session.demo || narrow) return null;
   return (
     <div className="acc-demobar" data-testid="demo-bar">
       <span>{t("banner.demo")}</span>

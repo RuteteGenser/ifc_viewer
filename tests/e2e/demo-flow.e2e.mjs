@@ -30,8 +30,14 @@ let n = 0;
 const email = () => `demo${Date.now()}${n++}@example.com`;
 const PW = "correct horse battery";
 const dlg = (page, name) => page.getByRole("dialog", { name });
+// On narrow screens "Demo tools" and "Have an access code?" live in the slim bar's "More" menu.
+const bar = async (page, name) => {
+  const more = page.getByRole("button", { name: "More", exact: true });
+  if (await more.count()) { await more.click(); await page.getByRole("group", { name: "More" }).getByRole("button", { name }).click(); }
+  else await page.getByRole("button", { name }).first().click();
+};
 const tools = async (page, label) => {
-  await page.getByRole("button", { name: "Demo tools" }).first().click();
+  await bar(page, "Demo tools");
   await dlg(page, "Demo tools").getByRole("button", { name: label }).click();
 };
 const openAccount = (page) => page.getByRole("button", { name: "Account" }).first().click();
@@ -69,8 +75,19 @@ await suite("demo-flow", [
     fn: async ({ page, project, touch }) => {
       await openApp(page);
       await page.getByTestId("demo-bar").waitFor();
-      assert.match(await page.getByTestId("demo-bar").innerText(), /Demo mode: payments and emails are simulated/);
+      const narrow = page.viewportSize().width <= 768;
+      assert.match(await page.getByTestId("demo-bar").innerText(), narrow ? /^Demo$/ : /Demo mode: payments and emails are simulated/);
       assert.equal(await page.getByTestId("acc-banner").getAttribute("data-kind"), "trial");
+      if (narrow) {
+        assert.equal(await page.locator('[data-testid="acc-banner"], [data-testid="demo-bar"]').evaluateAll((l) => new Set(l.map((e) => e.closest(".acc-slim")?.className)).size), 1, "one slim bar");
+        const b = await page.getByTestId("acc-banner").boundingBox(), h = await page.locator(".header").boundingBox();
+        assert.ok(b.height <= 56, `demo+trial bar is ${b.height}px`);
+        assert.ok(b.y >= h.y + h.height - 1, "bar overlaps the toolbar");
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "horizontal overflow");
+        await page.getByRole("button", { name: "More", exact: true }).click();
+        for (const n of ["Keep my work", "Have an access code?", "Demo tools"]) assert.ok(await page.getByRole("group", { name: "More" }).getByRole("button", { name: n }).count(), n);
+        await page.keyboard.press("Escape");
+      }
       await shot(page, project, "1-first-visit");
       await tools(page, "+1 day");
       await page.locator('[data-kind="grace"]').waitFor();
@@ -163,7 +180,7 @@ await suite("demo-flow", [
     allowErrors: [...NOISE, /redeem/], timeout: 60000,
     fn: async ({ page }) => {
       await openApp(page);
-      await page.getByRole("button", { name: "Have an access code?" }).first().click();
+      await bar(page, "Have an access code?");
       await page.getByRole("textbox", { name: "Access code" }).fill("123");
       await page.getByRole("button", { name: "Apply" }).click();
       await page.getByText(/Access code active until/).first().waitFor();
@@ -176,7 +193,7 @@ await suite("demo-flow", [
       await openApp(page);
       await tools(page, "+1 day");
       await page.locator('[data-kind="grace"]').waitFor();
-      await page.getByRole("button", { name: "Demo tools" }).first().click();
+      await bar(page, "Demo tools");
       await Promise.all([page.waitForEvent("load"), dlg(page, "Demo tools").getByRole("button", { name: "Reset my demo" }).click()]);
       await page.getByTestId("acc-banner").waitFor();
       assert.equal(await page.getByTestId("acc-banner").getAttribute("data-kind"), "trial");

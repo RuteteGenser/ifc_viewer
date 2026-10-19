@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useAccess } from "./AccessProvider";
 import { t } from "./copy";
 import Paywall from "./Paywall";
@@ -5,7 +6,7 @@ import AuthForms from "./AuthForms";
 import AccountPage from "./AccountPage";
 import CodeEntry from "./CodeEntry";
 import Dialog from "./Dialog";
-import { DemoBar, DemoTools, DemoInbox, CheckEmail } from "./Demo";
+import { DemoBar, useNarrow, DemoTools, DemoInbox, CheckEmail } from "./Demo";
 import "./access.css";
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
@@ -15,7 +16,8 @@ import { timeLeft } from "./state";
 function Banner() {
   const a = useAccess();
   const b = a?.banner;
-  if (!b || a.dismissed.has(b.kind) || a.expired) return null;
+  const narrow = useNarrow();
+  if (narrow || !b || a.dismissed.has(b.kind) || a.expired) return null;
   const text = t(`banner.${b.kind}`, { timeLeft: b.target ? timeLeft(b.target, a.nowMs) : "", date: fmtDate(b.target) });
   const kindClass = b.tone === "warning" || b.tone === "urgent" ? "acc-banner--warn" : "";
   return (
@@ -32,15 +34,56 @@ function Banner() {
   );
 }
 
+// Phones: one slim line (state text + one menu button) replaces the demo bar and the banner.
+function SlimBar() {
+  const a = useAccess();
+  const [menu, setMenu] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const away = (e) => { if (!ref.current?.contains(e.target)) setMenu(false); };
+    const esc = (e) => { if (e.key === "Escape") setMenu(false); };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [menu]);
+  const b = a.banner && !a.dismissed.has(a.banner.kind) && !a.expired ? a.banner : null;
+  if (!b && !a.session.demo) return null;
+  const text = b ? t(`banner.${b.kind}`, { timeLeft: b.target ? timeLeft(b.target, a.nowMs) : "", date: fmtDate(b.target) }) : "";
+  const warn = b && (b.tone === "warning" || b.tone === "urgent");
+  const kind = b?.kind;
+  const items = [
+    kind === "trial" && [t("action.keepWork"), { kind: "auth", mode: "signup" }],
+    (kind === "trial" || kind === "grace") && [t("action.haveCode"), { kind: "code" }],
+    kind === "payment_failed" && [t("action.payAgain"), { kind: "paywall", sheet: true }],
+    (kind === "grace" || kind === "code_trial") && [t("action.seePlans"), { kind: "paywall", sheet: true }],
+    a.session.demo && [t("action.demoTools"), { kind: "demo" }],
+  ].filter(Boolean);
+  return (
+    <div ref={ref} className={`acc-slim ${warn ? "acc-slim--warn" : ""}`} role="status" data-testid="acc-banner" data-kind={kind || "demo"}>
+      {a.session.demo && <span className="acc-slim__demo" data-testid="demo-bar">{t("banner.demoShort")}</span>}
+      <span className="acc-slim__text" title={text}>{text}</span>
+      <button type="button" className="acc-slim__menu" aria-label={t("banner.menu")} aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
+      {menu && (
+        <div className="acc-slim__pop" role="group" aria-label={t("banner.menu")}>
+          {items.map(([label, d]) => <button key={label} type="button" className="acc-slim__item" onClick={() => { setMenu(false); a.open(d); }}>{label}</button>)}
+          {b?.dismissible && <button type="button" className="acc-slim__item" onClick={() => { setMenu(false); a.dismiss(b.kind); }}>{t("banner.dismiss")}</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Everything the access system draws, in one place. Renders nothing in legacy mode.
 export default function AccessUI({ hasWork }) {
   const a = useAccess();
   if (!a) return null;
   const d = a.dialog;
+  const narrow = useNarrow();
   return (
     <>
       <DemoBar />
       <Banner />
+      {narrow && <SlimBar />}
       {a.expired && d?.kind !== "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "auth" && <AuthForms mode={d.mode} token={d.token} />}

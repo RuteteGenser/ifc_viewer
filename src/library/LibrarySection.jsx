@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ModelName from "../components/ModelName";
 import { useLibraryContext } from "./LibraryContext";
 import { formatSize, relativeDate } from "./format";
+import { applyOrganize, loadState, saveState } from "./organize";
+import OrganizeBar from "./OrganizeBar";
 import { useAccess } from "../access/AccessProvider";
 import { AccountButton } from "../access/AccessUI";
 import { quotaText } from "../access/AccountPage";
@@ -227,17 +229,33 @@ export default function LibrarySection({ variant }) {
   const library = useLibraryContext();
   const [open, setOpen] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [state, setState] = useState(() => ({ ...loadState() }));
+  useEffect(() => saveState(state), [state]);
+  const items = library?.items;
+  const loadedNames = library?.loadedNames;
+  const access = useAccess();
+  const result = useMemo(
+    () =>
+      applyOrganize({
+        own: (items || []).filter((i) => i.owner !== "samples"),
+        samples: (items || []).filter((i) => i.owner === "samples"),
+        state,
+        loadedNames: loadedNames || new Set(),
+      }),
+    [items, state, loadedNames],
+  );
   if (!library || !library.available || library.status === "loading") return null;
   const isSidebar = variant === "sidebar";
   const headingId = `lib-heading-${variant}`;
   const listId = `lib-list-${variant}`;
   // In the drawer the list is part of the one scrolling column, so it shows a
   // few rows and a button for the rest, instead of scrolling inside the scroll.
-  const access = useAccess();
-  const sampleRecords = library.items.filter((i) => i.owner === "samples");
-  const own = library.items.filter((i) => i.owner !== "samples");
+  const sampleRecords = result.samples;
+  const own = result.own;
   const rows = isSidebar && !showAll ? own.slice(0, SIDEBAR_ROWS) : own;
   const hidden = own.length - rows.length;
+  const clear = () => setState((p) => ({ ...p, query: "", formats: [], disciplines: [], openNow: false }));
+  const canOpenNow = (items || []).some((i) => i.owner !== "samples" && loadedNames.has(i.name));
   const body = (
     <>
       {library.status === "error" ? (
@@ -249,13 +267,16 @@ export default function LibrarySection({ variant }) {
         </p>
       ) : (
         <>
+          {result.total > 1 && (
+            <OrganizeBar id={`lib-org-${variant}`} state={result.state} setState={setState} result={result} canOpenNow={canOpenNow} />
+          )}
           <ul className="lib-list" id={listId} aria-labelledby={headingId}>
             {access && <li className="lib__group" aria-hidden="true">{t("lib.samples")}</li>}
-            <SampleItem />
+            {result.builtIn && <SampleItem />}
             {sampleRecords.map((item) => (
               <ModelItem key={item.id} item={item} />
             ))}
-            {access && <li className="lib__group" aria-hidden="true">{t("lib.mine")}</li>}
+            {access && own.length > 0 && <li className="lib__group" aria-hidden="true">{t("lib.mine")}</li>}
             {rows.map((item) => (
               <ModelItem key={item.id} item={item} />
             ))}
@@ -271,7 +292,15 @@ export default function LibrarySection({ variant }) {
               {showAll ? "Show fewer" : `Show all ${own.length} (${hidden} more)`}
             </button>
           )}
-          {own.length === 0 && <p className="lib-quiet">Save a model here to open it from any device.</p>}
+          {result.total === 0 && <p className="lib-quiet">Save a model here to open it from any device.</p>}
+          {result.total > 0 && own.length === 0 && (
+            <p className="lib-quiet" role="status">
+              No models match.{" "}
+              <button type="button" className="lib-link" onClick={clear}>
+                Clear filters
+              </button>
+            </p>
+          )}
         </>
       )}
     </>

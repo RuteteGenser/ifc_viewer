@@ -1,7 +1,8 @@
 import LogoMark from "./LogoMark";
 import { NAME } from "../brand";
+import { ModelsChip } from "./ModelsSheet";
 
-export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed, onToggleCollapsed }) {
+export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed, onToggleCollapsed, modelCount = 0, showModelsChip = false, modelsOpen = false, onToggleModels }) {
   return (
     <header className="header">
       <button
@@ -31,6 +32,8 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
         <LogoMark />
         <span className="header__title">{NAME}</span>
       </div>
+
+      {showModelsChip && modelCount > 0 && <ModelsChip count={modelCount} open={modelsOpen} onClick={onToggleModels} />}
     </header>
   );
 }

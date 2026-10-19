@@ -5125,45 +5125,85 @@ export function useIfcViewer() {
     setModels((prev) => prev.map((m) => (m.name === oldName ? { ...m, name: newName } : m)));
   }, []);
 
-  const removeModel = useCallback(async (modelId) => {
+  // Everything in the scene that is not tied to one model: measurements, section
+  // planes, hidden categories, isolation, and the undo history. Used when the
+  // whole scene is replaced or the last model is removed.
+  const clearSceneState = useCallback(() => {
+    const measures = measureManagerRef.current;
+    if (measures) {
+      for (const m of measures.list()) measures.remove(m.id);
+      setMeasurements(measures.list());
+    }
+    const planes = clipPlaneManagerRef.current;
+    if (planes) {
+      for (const p of planes.list()) planes.remove(p.id);
+      setClipPlanes(planes.list());
+    }
+    hiddenCategoriesRef.current.clear();
+    setHiddenCategories([]);
+    setIsolatedKeys(new Set());
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    syncHistoryCounts();
+    requestRenderRef.current();
+  }, [syncHistoryCounts]);
+
+  // Takes the given models out of the scene together: every one is gone from the
+  // viewer's state before any is disposed, so nothing reads a model that is being
+  // disposed. `refit` frames what is left.
+  const removeModels = useCallback(async (modelIds, { refit = true } = {}) => {
     const pipeline = pipelineRef.current;
     const modelsGroup = modelsGroupRef.current;
-    const entry = modelsRef.current.get(modelId);
-
-    // The selection (highlight box and Info panel) may belong to this model.
-    if (selectedHitRef.current?.modelId === modelId) {
-      clearHighlightRef.current?.();
-      selectedHitRef.current = null;
-      setSelectedElement(null);
+    const ids = new Set(modelIds);
+    for (const modelId of ids) {
+      const entry = modelsRef.current.get(modelId);
+      // The selection (highlight box and Info panel) may belong to this model.
+      if (selectedHitRef.current?.modelId === modelId) {
+        clearHighlightRef.current?.();
+        selectedHitRef.current = null;
+        setSelectedElement(null);
+      }
+      if (entry && modelsGroup) modelsGroup.remove(entry.object);
+      if (entry?.onViewUpdatedHandler) entry.model.onViewUpdated.remove(entry.onViewUpdatedHandler);
+      modelsRef.current.delete(modelId);
+      clearDimensionTagsForModelRef.current?.(modelId);
+      const rawHandle = rawIfcHandlesRef.current.get(modelId);
+      if (rawHandle) {
+        closeRawIfcModel(rawHandle);
+        rawIfcHandlesRef.current.delete(modelId);
+      }
     }
-    if (entry && modelsGroup) modelsGroup.remove(entry.object);
-    if (entry?.onViewUpdatedHandler) entry.model.onViewUpdated.remove(entry.onViewUpdatedHandler);
-    modelsRef.current.delete(modelId);
-    // Undo steps that act on the removed model's elements can no longer run.
-    undoStackRef.current = undoStackRef.current.filter((e) => e.modelId !== modelId);
-    redoStackRef.current = redoStackRef.current.filter((e) => e.modelId !== modelId);
+    // Undo steps that act on the removed models' elements can no longer run.
+    undoStackRef.current = undoStackRef.current.filter((e) => !ids.has(e.modelId));
+    redoStackRef.current = redoStackRef.current.filter((e) => !ids.has(e.modelId));
     syncHistoryCounts();
-    clearDimensionTagsForModelRef.current?.(modelId);
-    const rawHandle = rawIfcHandlesRef.current.get(modelId);
-    if (rawHandle) {
-      closeRawIfcModel(rawHandle);
-      rawIfcHandlesRef.current.delete(modelId);
-    }
     invalidateGroupSphereRef.current();
     requestRenderRef.current();
-    setModels((prev) => prev.filter((m) => m.id !== modelId));
-    setSearchResults((prev) => prev.filter((r) => r.modelId !== modelId));
+    setModels((prev) => prev.filter((m) => !ids.has(m.id)));
+    setSearchResults((prev) => prev.filter((r) => !ids.has(r.modelId)));
     setIsolatedKeys((prev) => {
-      const next = new Set([...prev].filter((key) => !key.startsWith(`${modelId}::`)));
+      const next = new Set([...prev].filter((key) => ![...ids].some((id) => key.startsWith(`${id}::`))));
       return next.size === prev.size ? prev : next;
     });
+    // Nothing left to measure or cut: the empty state starts from a clean scene.
+    if (modelsRef.current.size === 0) clearSceneState();
+    // The rest of the models fill the view again.
+    else if (refit) refitModelRef.current(true);
 
-    try {
-      await pipeline?.fragments.core.disposeModel(modelId);
-    } catch (err) {
-      console.error(`Failed to dispose model ${modelId}`, err);
-    }
-  }, [syncHistoryCounts]);
+    await Promise.all(
+      [...ids].map(async (modelId) => {
+        try {
+          await pipeline?.fragments.core.disposeModel(modelId);
+        } catch (err) {
+          console.error(`Failed to dispose model ${modelId}`, err);
+        }
+      }),
+    );
+  }, [syncHistoryCounts, clearSceneState]);
+
+  const removeModel = useCallback((modelId, options) => removeModels([modelId], options), [removeModels]);
+
+  const removeAllModels = useCallback(() => removeModels([...modelsRef.current.keys()], { refit: false }), [removeModels]);
 
   // Shows the "replace existing file?" modal and resolves to the user's
   // choice; ConfirmDialog (rendered from the `confirmReplace` state)
@@ -5225,6 +5265,27 @@ export function useIfcViewer() {
     };
     // What to reopen if Argus has to reload itself (a File cannot survive a reload).
     let currentIntent = null;
+    // How the file being opened joins the scene (see loadFiles): a "replace" batch
+    // swaps out what was loaded when it started, once its first model is in.
+    let currentBatch = null;
+
+    // Replace batches whose old models are hidden and not yet removed.
+    const swaps = [];
+    const finalizeSwaps = async () => {
+      for (const batch of swaps.splice(0)) {
+        const old = batch.hidden.filter((id) => modelsRef.current.has(id));
+        if (batch.newIds.some((id) => modelsRef.current.has(id))) {
+          if (old.length) {
+            await removeModels(old, { refit: false });
+            clearSceneState();
+          }
+        } else {
+          // Nothing of the new set survived: the old scene stays.
+          for (const id of old) modelsRef.current.get(id).object.visible = true;
+        }
+        requestRenderRef.current();
+      }
+    };
 
     // A model the fragments worker builds for a load that was given up (Cancel,
     // the build watchdog) must not stay in memory: abort the build, or dispose
@@ -5246,7 +5307,11 @@ export function useIfcViewer() {
     // by reference, so an attempt that starts over costs no copy).
     // `retryFile` is what Retry opens again if this one fails.
     const loadOneIfc = async (source, displayName, retryFile) => {
-      const existingId = [...modelNamesRef.current.entries()].find(([, name]) => name === displayName)?.[0];
+      const batch = currentBatch;
+      const replacing = !!batch && !batch.add && !batch.swapped;
+      let existingId = [...modelNamesRef.current.entries()].find(([, name]) => name === displayName)?.[0];
+      // A model of the scene being replaced goes with the swap below, without a question.
+      if (existingId && replacing && batch.oldIds.includes(existingId)) existingId = undefined;
       if (existingId) {
         const replace = await confirmReplaceFile(displayName);
         if (abandoned()) return;
@@ -5389,6 +5454,15 @@ export function useIfcViewer() {
         }
         // Replace: only now that the new model is in does the old one go.
         if (existingId && modelsRef.current.has(existingId)) await removeModel(existingId);
+        // Replace: the first model of the batch to load takes the old scene out of
+        // view; finalizeSwaps below removes it once the new model is known to have
+        // geometry (a file with none must not cost the user the model they had).
+        if (replacing && !batch.swapped) {
+          batch.swapped = true;
+          batch.hidden = batch.oldIds.filter((oldId) => modelsRef.current.has(oldId));
+          for (const oldId of batch.hidden) modelsRef.current.get(oldId).object.visible = false;
+          swaps.push(batch);
+        }
         if (abandoned()) {
           discardModel(buildCore, modelId, building);
           return;
@@ -5398,6 +5472,7 @@ export function useIfcViewer() {
         modelsGroup.add(model.object);
         const entry = { model, object: model.object, sourceBytes, fileName: displayName };
         modelsRef.current.set(modelId, entry);
+        batch?.newIds.push(modelId);
         await spaces.hideOnLoad(modelId); // rooms start hidden; not an undo step
         // Tiles regenerate in the background (LOD/visibility changes),
         // which would otherwise silently drop a manual color override on
@@ -5454,6 +5529,8 @@ export function useIfcViewer() {
     // One picked file: an .ifc, or an archive (.ifcZIP, or a .zip that holds an .ifc).
     const openFile = async (file) => {
       currentIntent = file.argusIntent ?? { type: "local", name: file.name };
+      currentBatch = file.argusBatch ?? null;
+      if (currentBatch && !currentBatch.add && !currentBatch.oldIds) currentBatch.oldIds = [...modelsRef.current.keys()];
       const kind = fileKind(file.name);
       if (kind === "zip") {
         setLoadingLabel(`Unpacking ${file.name}…`);
@@ -5487,6 +5564,7 @@ export function useIfcViewer() {
           delete unzipped[innerName];
           const retryFile = new File([blob], baseName);
           retryFile.argusIntent = currentIntent;
+          retryFile.argusBatch = currentBatch;
           setLoadingLabel(`Parsing ${baseName}…`);
           await loadOneIfc(blob, baseName, retryFile);
           if (abandoned()) return;
@@ -5545,9 +5623,10 @@ export function useIfcViewer() {
         // A valid IFC that carries no 3D geometry would otherwise sit in the list
         // as an invisible model: say so and take it out again.
         for (const [id, name] of geometryless) {
-          await removeModel(id);
+          await removeModel(id, { refit: false });
           appendError(`"${name}" has no 3D geometry to show.`);
         }
+        await finalizeSwaps();
         if (cameraRef.current && controlsRef.current) {
           autoFramedRef.current = true;
           frameCameraOnScene(
@@ -5567,13 +5646,22 @@ export function useIfcViewer() {
       setIsLoading(false);
       setLoadingLabel("");
     } finally {
+      await finalizeSwaps();
       if (!abandoned()) loadRunningRef.current = false;
     }
-  }, [confirmReplaceFile, removeModel, getVisibleFrac, spaces.hideOnLoad]);
+  }, [confirmReplaceFile, removeModel, removeModels, clearSceneState, getVisibleFrac, spaces.hideOnLoad]);
 
-  const loadFiles = useCallback((fileList) => {
+  // Opening replaces what is loaded, as a set: the new file(s) load first, and only
+  // when the first one is in does the old scene go (a failed open keeps the old
+  // model). { add: true } puts them next to what is loaded instead. A file that is
+  // opened again after a failure keeps the way its batch was opening.
+  const loadFiles = useCallback((fileList, options = {}) => {
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
+    const prev = files[0].argusBatch;
+    const add = options.add ?? (prev ? prev.add || !!prev.swapped : false);
+    const batch = { add, oldIds: null, swapped: false, hidden: [], newIds: [] };
+    for (const file of files) file.argusBatch = batch;
     if (!pipelineRef.current || !modelsGroupRef.current) {
       // Still booting: keep the choice and load it as soon as the viewer is
       // ready (see the effect after cancelLoad).
@@ -5875,6 +5963,7 @@ export function useIfcViewer() {
     setVisible,
     setModelColor,
     removeModel,
+    removeAllModels,
     renameLoadedModel,
     resetView,
     clearError,

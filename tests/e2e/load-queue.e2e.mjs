@@ -242,19 +242,36 @@ await scenario("R2 fragments worker hangs every time: accurate message after the
 });
 
 // ---- F6: overlapping loads ----
-await scenario("F6 a second pick while the first is opening is queued; both open", {}, async (page) => {
+await scenario("F6 a second pick while the first is opening is queued; it replaces the first once that is in", {}, async (page) => {
   await pick(page, F.a);
   await sleep(300);
   await pick(page, F.b);
   const queued = await until(page, (x) => /Added to the queue/.test(x.notice), 5000);
   assert.match(queued.notice, /Added to the queue: beta\.ifc/);
-  const v = await opened(page, ["alpha.ifc", "beta.ifc"]);
-  assert.deepEqual({ engine: v.stats.engine, open: v.stats.open }, { engine: 2, open: 2 });
+  // Opening replaces: only the last pick is left, and nothing of the first stays in memory.
+  const v = await opened(page, ["beta.ifc"]);
+  assert.deepEqual({ engine: v.stats.engine, open: v.stats.open }, { engine: 1, open: 1 });
 });
-await scenario("F6 a library download and a local pick at once: both open", {}, async (page) => {
+await scenario("F6 a library download and a local pick at once: the later one replaces the earlier, one model is left", {}, async (page) => {
   await openLibrary(page);
   await pick(page, F.c);
-  await opened(page, ["Library demo.ifc", "gamma.ifc"]);
+  const v = await until(page, (x) => idle(x) && x.models.length >= 1 && x.stats?.queued === 0, 90000);
+  await sleep(1500);
+  const end = await view(page);
+  assert.equal(end.models.length, 1, `models ${JSON.stringify(end.models)}`);
+  assert.ok(["Library demo", "gamma"].includes(end.models[0]), `models ${JSON.stringify(end.models)}`);
+  assert.deepEqual({ engine: end.stats.engine, open: end.stats.open }, { engine: 1, open: 1 });
+  assert.equal(end.banner, "");
+  void v;
+});
+await scenario("F6 Add another model puts a second model next to the first", {}, async (page) => {
+  await pick(page, F.a);
+  await opened(page, ["alpha.ifc"]);
+  const chooser = page.waitForEvent("filechooser", { timeout: 10000 });
+  await page.getByRole("button", { name: "Add another model" }).click();
+  await (await chooser).setFiles([F.b]);
+  const v = await opened(page, ["alpha.ifc", "beta.ifc"]);
+  assert.deepEqual({ engine: v.stats.engine, open: v.stats.open }, { engine: 2, open: 2 });
 });
 await scenario("F6 Cancel during the build leaks no model, and the next pick works", { patch: fragmentsWorkerPatch("slow", 1) }, async (page) => {
   await pick(page, F.a, F.b);
@@ -267,10 +284,12 @@ await scenario("F6 Cancel during the build leaks no model, and the next pick wor
   v = await opened(page, ["gamma.ifc"]);
   assert.equal(v.stats.engine, 1);
 });
-await scenario("F6 the replace question: Cancel keeps the old model and removes nothing", {}, async (page) => {
+await scenario("F6 adding a file with the name of a loaded one asks; Cancel keeps the old model and removes nothing", {}, async (page) => {
   await pick(page, F.a);
   await opened(page, ["alpha.ifc"]);
-  await pick(page, F.a);
+  const chooser = page.waitForEvent("filechooser", { timeout: 10000 });
+  await page.getByRole("button", { name: "Add another model" }).click();
+  await (await chooser).setFiles([F.a]);
   await page.waitForSelector(".confirm-dialog");
   await page.click(".confirm-dialog__cancel");
   const v = await until(page, idle, 20000);
@@ -335,10 +354,9 @@ const patchFailFromSecond = () => {
 await scenario("F11 Replace whose new import fails: the old model is still there", { patch: patchFailFromSecond }, async (page) => {
   await pick(page, F.a);
   await opened(page, ["alpha.ifc"]);
-  await pick(page, F.a);
-  await page.waitForSelector(".confirm-dialog");
-  await page.click(".confirm-dialog__confirm");
+  await pick(page, F.a); // replaces without a question; the import fails, so the old one stays
   const v = await until(page, (x) => idle(x) && x.banner, 90000);
+  assert.equal(await page.locator(".confirm-dialog").count(), 0, "replace asks no question");
   assert.deepEqual(v.models, ["alpha"], "the old model was removed");
   assert.equal(v.stats.engine, 1);
   assert.match(v.banner, /Argus hit an unexpected error opening "alpha\.ifc", even after trying again/);
@@ -402,7 +420,8 @@ await scenario("INSECURE local pick, queued second pick, header variants: all op
   await pick(page, F.a);
   await sleep(300);
   await pick(page, F.b, F.zip, F.comment, F.lower, F.far);
-  await opened(page, ["alpha.ifc", "beta.ifc", "inner.ifc", "commentschema.ifc", "lowerschema.ifc", "farheader.ifc"], 150000);
+  // the second pick replaces the first: its five files are all open, alpha is gone
+  await opened(page, ["beta.ifc", "inner.ifc", "commentschema.ifc", "lowerschema.ifc", "farheader.ifc"], 150000);
   noConsoleErrors(page);
 });
 await scenario("INSECURE library open (plain download, no checksum, no offline copy)", { origin: insecure }, async (page) => {

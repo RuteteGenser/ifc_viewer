@@ -103,10 +103,10 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
 
   // ---- open from the library ----
   const openRecord = useCallback(
-    async (record) => {
+    async (record, { add = false } = {}) => {
       // Another download is running: this one waits its turn (never dropped silently).
       if (abortDownloadRef.current) {
-        if (!waitingRecordsRef.current.some((r) => r.id === record.id)) waitingRecordsRef.current.push(record);
+        if (!waitingRecordsRef.current.some((r) => r.record.id === record.id)) waitingRecordsRef.current.push({ record, add });
         say(`Added to the queue: ${record.name}`);
         return;
       }
@@ -131,11 +131,11 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
             setDownload({ name: record.name, percent: 0, note: attemptText("Downloading", attempt, total) });
           },
         });
-        loadFilesRef.current([file]);
+        loadFilesRef.current([file], { add });
       } catch (err) {
         if (!err?.aborted) {
           if (err?.detail) console.error(`Download of ${record.name} failed: ${err.detail}`);
-          say(err?.message || "Could not open that model.", "error", err?.retryable ? () => openRecord(record) : undefined);
+          say(err?.message || "Could not open that model.", "error", err?.retryable ? () => openRecord(record, { add }) : undefined);
         }
       } finally {
         abortDownloadRef.current = null;
@@ -143,7 +143,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
         // Cancel drops the waiting ones too; otherwise the next one starts.
         const next = controller.signal.aborted ? null : waitingRecordsRef.current.shift();
         if (controller.signal.aborted) waitingRecordsRef.current = [];
-        if (next) openRecordRef.current?.(next);
+        if (next) openRecordRef.current?.(next.record, { add: next.add });
       }
     },
     [say],
@@ -152,15 +152,17 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   openRecordRef.current = openRecord;
 
   const open = useCallback(
-    (item) => {
+    (item, options) => {
       if (loadedNames.has(item.name)) {
         onOpenedRef.current?.();
         return;
       }
-      openRecord(item);
+      openRecord(item, options);
     },
     [loadedNames, openRecord],
   );
+  // "Add to view": opens next to what is loaded instead of replacing it.
+  const addToView = useCallback((item) => open(item, { add: true }), [open]);
 
   const cancelDownload = useCallback(() => abortDownloadRef.current?.abort(), []);
 
@@ -250,10 +252,10 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
 
   // Local file picker / drop: open as before, optionally save too.
   const openLocal = useCallback(
-    (fileList) => {
+    (fileList, { add = false } = {}) => {
       const files = Array.from(fileList);
       for (const f of files) localFilesRef.current.set(f.name, f);
-      loadFilesRef.current(files);
+      loadFilesRef.current(files, { add });
       if (alsoSave && status !== "hidden" && status !== "loading") saveFiles(files);
     },
     [alsoSave, status, saveFiles],
@@ -312,9 +314,11 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     alsoSave,
     setAlsoSave,
     loadedNames,
+    hasModels: models.length > 0,
     savedNames,
     refresh,
     open,
+    addToView,
     openSample: onLoadSample,
     cancelDownload,
     cancelUpload,

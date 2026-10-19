@@ -58,7 +58,7 @@ if [ $want_e2e -eq 1 ] || [ $want_hook -eq 1 ]; then
   if [ $want_hook -eq 1 ]; then
     HURL="$("$ROOT/tests/e2e/hook-build.sh" start)" || { note "FAIL hook build"; rc=1; HURL=""; }
     if [ -n "$HURL" ]; then
-      for n in navigation; do run_e2e_file "tests/e2e/$n.e2e.mjs" "$HURL" "[hook build]"; done
+      for n in navigation sections; do run_e2e_file "tests/e2e/$n.e2e.mjs" "$HURL" "[hook build]"; done
       "$ROOT/tests/e2e/hook-build.sh" stop
     fi
   fi

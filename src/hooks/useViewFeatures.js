@@ -256,7 +256,7 @@ export function useViewFeatures(ctx) {
   // The newest clip plane, when it lies along one of the model's axes: its
   // position can then be slid with a single slider (0..1 across the model).
   const [sliderTick, setSliderTick] = useState(0);
-  const lastPlane = ctx.clipPlanes[ctx.clipPlanes.length - 1];
+  const lastPlane = ctx.clipPlanes.find((p) => p.active) ?? ctx.clipPlanes[ctx.clipPlanes.length - 1];
   let section = null;
   if (lastPlane) {
     const snap = ctx.clipPlaneManagerRef.current?.getPlaneSnapshot(lastPlane.id);
@@ -276,7 +276,8 @@ export function useViewFeatures(ctx) {
   const setSectionFraction = useCallback((fraction) => {
     const manager = ctxRef.current.clipPlaneManagerRef.current;
     const box = localBoxOf();
-    const id = ctxRef.current.clipPlanes[ctxRef.current.clipPlanes.length - 1]?.id;
+    const planes = ctxRef.current.clipPlanes;
+    const id = (planes.find((p) => p.active) ?? planes[planes.length - 1])?.id;
     const snap = id && manager?.getPlaneSnapshot(id);
     if (!snap || !box) return;
     const axis = [0, 1, 2].find((a) => Math.abs(Math.abs(snap.normal.getComponent(a)) - 1) < 1e-3);

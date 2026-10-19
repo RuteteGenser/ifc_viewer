@@ -1,0 +1,81 @@
+.plane-switch {
+  position: absolute;
+  left: calc(12px + var(--safe-left, 0px));
+  bottom: calc(var(--sheet-inset, 0px) + 12px + 44px + 10px + var(--transfer-h, 0px));
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.plane-switch > * {
+  pointer-events: auto;
+}
+.plane-switch__model {
+  width: 84px;
+  height: 80px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+.plane-switch__edge {
+  fill: none;
+  stroke: var(--text-faint, #8a8478);
+  stroke-width: 0.05;
+  stroke-linecap: round;
+}
+.plane-switch__slab {
+  cursor: pointer;
+  stroke-linejoin: round;
+}
+.plane-switch__pills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plane-switch__pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 22px;
+  box-shadow: var(--shadow-md);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.plane-switch__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--plane-color);
+  opacity: 0.45;
+}
+.plane-switch__pill.is-active {
+  border: 2px solid var(--plane-color);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--plane-color) 18%, var(--bg));
+}
+.plane-switch__pill.is-active .plane-switch__dot {
+  opacity: 1;
+}
+/* Mouse screens use the sidebar's Section list instead. */
+@media (min-width: 769px) and (pointer: fine) {
+  .plane-switch {
+    display: none;
+  }
+}
+@media (max-height: 500px) and (pointer: coarse) {
+  .plane-switch {
+    bottom: calc(8px + 44px + 8px + var(--transfer-h, 0px));
+  }
+}
+.app-body[data-sheet="none"] .plane-switch {
+  display: none;
+}

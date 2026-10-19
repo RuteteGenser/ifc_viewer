@@ -113,6 +113,7 @@ export default function Sidebar({
   onSetClipPlaneGizmoVisible,
   onFlipClipPlane,
   onRemoveClipPlane,
+  onSelectClipPlane,
   hiddenCategories,
   onShowCategory,
   browser,
@@ -234,6 +235,7 @@ export default function Sidebar({
         onSetClipPlaneGizmoVisible={onSetClipPlaneGizmoVisible}
         onFlipClipPlane={onFlipClipPlane}
         onRemoveClipPlane={onRemoveClipPlane}
+        onSelectClipPlane={onSelectClipPlane}
       />
 
       <button type="button" className="sidebar__help-button" onClick={onOpenCases}>

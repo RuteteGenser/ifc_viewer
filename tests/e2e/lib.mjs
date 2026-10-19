@@ -42,9 +42,11 @@ export const PROJECTS = {
   desktop: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   iphone13: { ...devices["iPhone 13"] },
   "ipad-mini": { ...devices["iPad Mini"] },
+  pixel7: { ...devices["Pixel 7"] }, // opt-in: a case lists it in `projects`
 };
+const DEFAULT_PROJECTS = ["desktop", "iphone13", "ipad-mini"];
 export const isTouch = (project) => project !== "desktop";
-export const isPhone = (project) => project === "iphone13";
+export const isPhone = (project) => project === "iphone13" || project === "pixel7";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
@@ -228,7 +230,7 @@ export async function suite(title, cases) {
   let passed = 0;
   for (const c of cases) {
     if (onlyCase && !c.name.includes(onlyCase)) continue;
-    for (const project of c.projects ?? Object.keys(PROJECTS)) {
+    for (const project of c.projects ?? DEFAULT_PROJECTS) {
       if (only && !only.includes(project)) continue;
       const label = `${title} / ${c.name} [${project}]`;
       const t0 = Date.now();

@@ -147,7 +147,7 @@ export default function Sidebar({
     },
   };
   return (
-    <aside className={`sidebar ${className}`.trim()} aria-label="Models and structure" {...swipe}>
+    <aside className={`sidebar ${className}`.trim()} data-surface-sheet={className.includes("sidebar--open") ? "menu" : undefined} aria-label="Models and structure" {...swipe}>
       <div className="sidebar__top-buttons">
         <button
           type="button"

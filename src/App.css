@@ -3706,3 +3706,39 @@ textarea::placeholder {
   .press-ring--charge.is-on { animation: none; opacity: 1; }
   .press-ring--charge.is-on .press-ring__arc { animation: none; stroke-dashoffset: 0; }
 }
+
+/* ---------- Surfaces (src/ui/surfaces.js, docs/SURFACES.md): phone only, desktop is untouched ---------- */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  :root {
+    --canvas-h: calc(100dvh - var(--header-height) - var(--acc-bars-h, 0px) - var(--toolbar-h, 52px));
+    /* A bottom sheet never covers more than 60 percent of the canvas; its content scrolls. */
+    --sheet-max: max(240px, calc(var(--canvas-h) * 0.6));
+  }
+  .models-sheet,
+  .cases,
+  .help-sheet {
+    max-height: var(--sheet-max);
+  }
+  /* The Views panel hangs under the zoom buttons (56 px) and stays inside the same budget. */
+  .view-tools__panel {
+    max-height: max(160px, calc(var(--sheet-max) - 70px - var(--hud-h, 0px)));
+  }
+  /* Error / update banner share the HUD column with the tool pill. */
+  .hud .status-stack {
+    position: static;
+    transform: none;
+    max-width: 100%;
+  }
+  /* A toast is seen above whatever sheet is open (--surface-h is published by the manager). */
+  .toast {
+    position: fixed;
+    z-index: 75;
+    bottom: calc(max(var(--sheet-inset, 0px), var(--surface-h, 0px)) + 20px);
+  }
+}
+/* The details sheet at full height leaves no room: the floating controls step aside instead of overlapping it. */
+@media (max-width: 768px) and (min-height: 501px) {
+  .app-body[data-sheet="full"] :is(.history-buttons, .compass, .view-tools, .details-fab, .plane-switch) {
+    visibility: hidden;
+  }
+}

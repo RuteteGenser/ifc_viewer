@@ -6,6 +6,7 @@ import { BrowserContext } from "./hooks/BrowserContext";
 import DropOverlay from "./components/DropOverlay";
 import LoadingOverlay from "./components/LoadingOverlay";
 import StatusBanner from "./components/StatusBanner";
+import { useUpdateNotice } from "./reliability/useUpdateNotice";
 import { startupIntent } from "./reliability/recovery";
 import { attemptText, withBackoff } from "./reliability/retry";
 import ContextMenu from "./components/ContextMenu";
@@ -38,6 +39,7 @@ import { LibraryContext } from "./library/LibraryContext";
 import TransferBar from "./library/TransferBar";
 import CasesPanel from "./cases/CasesPanel";
 import { useCases } from "./cases/useCases";
+import { SurfaceProvider, useSurfaces, useSurfaceFlag, useSurfaceMirror, PHONE_QUERY } from "./ui/surfaces";
 import { saveSnapshot } from "./cases/saveSnapshot";
 import AnnotationSession from "./cases/AnnotationSession";
 import { COPY as CASES_COPY } from "./cases/copy";
@@ -48,7 +50,7 @@ import "./components/Library.css";
 // devices the filter is dropped; loadFiles reports unparseable files.
 const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 const SAMPLE_NAME = "Sample building";
-const DRAWER_QUERY = "(max-width: 768px), (max-height: 500px) and (pointer: coarse)";
+const DRAWER_QUERY = PHONE_QUERY;
 import "./App.css";
 // Test builds only (VITE_TEST_HOOK=1): exposes window.__annotations. Removed from production builds.
 if (import.meta.env.VITE_TEST_HOOK) import("./annotations/mountForTests");
@@ -85,7 +87,11 @@ function App() {
   const access = useAccess();
   const accessRef = useRef(access);
   accessRef.current = access;
-  const leaveGuard = useLeaveGuard();
+  const surfaces = useSurfaces();
+  // Back closes the topmost open surface before it asks about leaving (set below, once the viewer exists).
+  const backRef = useRef(() => false);
+  const leaveGuard = useLeaveGuard(useCallback(() => backRef.current(), []));
+  backRef.current = surfaces.closeTop;
   const {
     containerRef,
     models,
@@ -200,9 +206,10 @@ function App() {
   }, [isLoading, confirmReplace, models.length]);
   const [isDragging, setIsDragging] = useState(false);
   const [dropShift, setDropShift] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [modelsOpen, setModelsOpen] = useState(false);
-  const [casesOpen, setCasesOpen] = useState(false);
+  // Sheets live in the surface manager (src/ui/surfaces.js): on a phone opening one closes the one before.
+  const [sidebarOpen, setSidebarOpen] = useSurfaceFlag("menu");
+  const [modelsOpen, setModelsOpen] = useSurfaceFlag("models");
+  const [casesOpen, setCasesOpen] = useSurfaceFlag("cases");
   const casesState = useCases();
   const casesStateRef = useRef(casesState);
   casesStateRef.current = casesState;
@@ -222,10 +229,10 @@ function App() {
     setSidebarOpen(false);
     setModelsOpen(false);
     setCasesOpen(true);
-  }, []);
+  }, [setSidebarOpen, setModelsOpen, setCasesOpen]);
   const backdrop = usePresence(sidebarOpen, 160);
   const [multiNotice, setMultiNotice] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useSurfaceFlag("help");
   // On narrow screens the model list is a drawer over the view: while it is
   // open the view behind it takes no taps and no focus.
   const [drawerLayout, setDrawerLayout] = useState(() => !!window.matchMedia?.(DRAWER_QUERY).matches);
@@ -261,8 +268,11 @@ function App() {
   const [activeRightTab, setActiveRightTab] = useState("info");
   // Only meaningful on narrow screens, where the right panel is a bottom
   // sheet that starts collapsed to a peek bar; on desktop it's always shown.
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelExpanded, setPanelExpanded] = useState(false);
+  const handleClosePanelRef = useRef(() => {});
+  const [panelOpen, setPanelOpen] = useSurfaceFlag("details", () => handleClosePanelRef.current());
+  const panelExpanded = surfaces.snap.details === "full";
+  const { setSnap, snapOf } = surfaces;
+  const setPanelExpanded = useCallback((v) => setSnap("details", (typeof v === "function" ? v(snapOf("details") === "full") : v) ? "full" : "half"), [setSnap, snapOf]);
   const dragDepthRef = useRef(0);
   const lastAutoSwitchGuidRef = useRef(null);
   const hadSelectionRef = useRef(false);
@@ -275,7 +285,7 @@ function App() {
     const guid = selectedElement?.guid ?? null;
     if (guid && guid !== lastAutoSwitchGuidRef.current) {
       setActiveRightTab("info");
-      setPanelOpen(true);
+      surfaces.open("details", { auto: true });
     }
     // Selection cleared (tap on empty space, Escape): drop the sheet back to
     // its peek bar so it stops covering the model, unless another tab is in use.
@@ -307,8 +317,8 @@ function App() {
   const handleClosePanel = useCallback(() => {
     clearSelection();
     setPanelOpen(false);
-    setPanelExpanded(false);
-  }, [clearSelection]);
+  }, [clearSelection, setPanelOpen]);
+  handleClosePanelRef.current = handleClosePanel;
 
   const handleTabChange = useCallback(
     (tab) => {
@@ -482,18 +492,20 @@ function App() {
     else if (tagToolActive) toggleTagTool();
     else if (categoryHideModeActive) toggleCategoryHideMode();
   }, [armedTool, setClipMoveMode, measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
+  // The manager keeps one tool armed and never one beside a sheet; overlays are what Back closes first.
+  useSurfaceMirror("tool", "measure", measureModeActive, toggleMeasureMode);
+  useSurfaceMirror("tool", "tag", tagToolActive, toggleTagTool);
+  useSurfaceMirror("tool", "category", categoryHideModeActive, toggleCategoryHideMode);
+  useSurfaceMirror("tool", "sectionMove", clipMoveMode, useCallback(() => setClipMoveMode(false), [setClipMoveMode]));
+  useSurfaceMirror("tool", "cameraClip", cameraClipEnabled, useCallback(() => setCameraClipEnabled(false), [setCameraClipEnabled]));
+  useSurfaceMirror("overlay", "context", !!contextMenu, closeContextMenu);
+  useSurfaceMirror("overlay", "legEdit", !!measureLegEditPopup, closeMeasureLegEditPopup);
+  useSurfaceMirror("overlay", "measureDelete", !!measureDeletePopup, closeMeasureDeletePopup);
+  useSurfaceMirror("overlay", "replace", !!confirmReplace, useCallback(() => confirmReplaceAnswer(false), [confirmReplaceAnswer]));
   // Arming a tool closes any open popover.
   useEffect(() => {
     if (armedTool) announcePopover("tool");
   }, [armedTool]);
-  // On a phone the details sheet drops to its peek bar while the views panel
-  // is open, so the panel has the room.
-  const handleViewToolsOpen = useCallback((open) => {
-    if (open !== "views") return;
-    if (!window.matchMedia?.("(max-width: 768px), (max-height: 500px) and (pointer: coarse)").matches) return;
-    setPanelOpen(false);
-    setPanelExpanded(false);
-  }, []);
   // "Start measuring" / "Start tagging" in the details sheet: arm the tool and
   // drop the sheet away so the model is in view.
   const startMeasuring = useCallback(() => {
@@ -506,6 +518,11 @@ function App() {
     setPanelOpen(false);
     setPanelExpanded(false);
   }, [tagToolActive, toggleTagTool]);
+  // One banner slot: on a phone the error / update notice shares the HUD column with the tool pill, and wins over it.
+  const updateAvailable = useUpdateNotice();
+  const banner = <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} onChooseFile={openFilePicker} idle={!isLoading && !armedTool} updateAvailable={updateAvailable} />;
+  const bannerShown = !!error || (updateAvailable && !isLoading && !armedTool);
+  const hintTool = surfaces.phone && (bannerShown || surfaces.anySheet) ? null : armedTool;
   const notifyBlocked = useCallback((text) => showToast(text || "Open a model first"), [showToast]);
 
 
@@ -681,9 +698,10 @@ function App() {
             helpOpen={helpOpen}
             onHelpOpenChange={setHelpOpen}
           />
-          <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
+          <ViewTools views={viewFeatures} spaceControl={spaceControl} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
           <Hud>
-            <ToolHint tool={armedTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
+            {surfaces.phone && banner}
+            <ToolHint tool={hintTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
             <CameraClipPanel
               enabled={cameraClipEnabled}
               distance={cameraClipDistance}
@@ -693,7 +711,7 @@ function App() {
             />
           </Hud>
           <PlaneSwitch planes={clipPlanes} onSelect={setActiveClipPlane} />
-          <FirstRunHint visible={models.length > 0 && !isLoading} />
+          <FirstRunHint visible={models.length > 0 && !isLoading && !surfaces.anySheet} />
           <div className="history-buttons">
             <button
               type="button"
@@ -726,9 +744,9 @@ function App() {
             onOffsetChange={setNorthOffset}
             disabled={models.length === 0}
           />
-          <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} onChooseFile={openFilePicker} idle={!isLoading && !armedTool} />
+          {!surfaces.phone && banner}
           <Toast toast={toast} />
-          {multiNotice && models.length > 1 && (
+          {multiNotice && models.length > 1 && !surfaces.anySheet && (
             <div className="multi-notice" role="status">
               <span>{models.length} models are loaded together. Use Models to remove one.</span>
               <button
@@ -881,7 +899,9 @@ function App() {
 export default function AccessApp() {
   return (
     <AccessProvider>
-      <App />
+      <SurfaceProvider>
+        <App />
+      </SurfaceProvider>
     </AccessProvider>
   );
 }

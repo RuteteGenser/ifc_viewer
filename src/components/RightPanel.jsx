@@ -190,6 +190,7 @@ export default function RightPanel({
       ref={asideRef}
       className={`element-panel${mode !== "hidden" ? " element-panel--open" : ""}${mode === "full" ? " element-panel--full" : ""}`}
       aria-label="Details"
+      data-surface-sheet={mode !== "hidden" ? "details" : undefined}
       aria-hidden={collapsed ? "true" : undefined} inert={collapsed ? "" : undefined}>
       <div className="element-panel__compact-probe" ref={compactProbeRef} aria-hidden="true" />
       <div

@@ -308,7 +308,7 @@ suite("a11y", [
       await setFile(page, fx("not-ifc.txt"));
       await waitForBanner(page, /not an \.ifc/, 15000);
       await page.keyboard.press("Shift"); // keyboard modality: programmatic focus then matches :focus-visible
-      const rows = await page.evaluate(async () => {
+      const sample = () => page.evaluate(async () => {
         const out = [];
         const seen = new Set();
         const sel = "button, input, select, [role=tab], [role=treeitem], [role=separator][tabindex], a[href], summary";
@@ -327,7 +327,13 @@ suite("a11y", [
         }
         return out;
       });
-      assert.ok(rows.length > 10, `sampled ${rows.length} control kinds`);
+      // On a phone the error banner takes the tool pill's place (one slot), so look at both: with the banner, then the pill.
+      const rows = await sample();
+      await page.getByRole("button", { name: "Dismiss error" }).click();
+      await settle(page, 400);
+      await page.keyboard.press("Shift");
+      rows.push(...(await sample()));
+      assert.ok(rows.length >= 10, `sampled ${rows.length} control kinds`);
       const bad = [];
       for (const r of rows) {
         const bg = flatten(r.chain);

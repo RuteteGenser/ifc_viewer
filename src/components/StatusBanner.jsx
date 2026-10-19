@@ -1,14 +1,13 @@
 import { reloadNow } from "../reliability/recovery";
-import { useUpdateNotice } from "../reliability/useUpdateNotice";
 import { copyText } from "./copyText";
 
 // Buttons appear only after Argus's own automatic attempts have all failed.
 // `errorInfo` ({ details, intent, reload, chooseAnother }) comes with load failures: Details is
 // text for a bug report, Reload reopens the page and then the same model.
+// `updateAvailable` comes from useUpdateNotice (App reads it, so the tool pill can make room).
 // `idle` is true when nothing is loading and no tool is armed: only then is the
 // "new version" notice shown (it never reloads by itself while the user works).
-export default function StatusBanner({ error, errorInfo, onDismissError, onRetry, onChooseFile, idle = true }) {
-  const updateAvailable = useUpdateNotice();
+export default function StatusBanner({ error, errorInfo, onDismissError, onRetry, onChooseFile, idle = true, updateAvailable = false }) {
   const showUpdate = updateAvailable && idle && !error;
   if (!error && !showUpdate) return null;
   if (!error) {

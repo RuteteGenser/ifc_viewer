@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
 import { useExitGhost } from "../usePresence";
+import useSheetSwipe from "../ui/useSheetSwipe";
 
 // Every hotkey the app responds to (see the keydown handler in
 // useIfcViewer.js) — kept as a plain list here rather than derived, since
@@ -55,6 +56,7 @@ export function GestureSheet({ onClose }) {
   const sheetRef = useRef(null);
   useExitGhost(scrimRef, "fade");
   useExitGhost(sheetRef, "sheet");
+  const swipe = useSheetSwipe(onClose, sheetRef);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
@@ -65,8 +67,8 @@ export function GestureSheet({ onClose }) {
   return (
     <>
       <button type="button" className="help-sheet__scrim" ref={scrimRef} aria-label="Close help" onClick={onClose} />
-      <div className="help-sheet" ref={sheetRef} role="dialog" aria-label="How to move around">
-        <div className="help-sheet__title">How to move around</div>
+      <div className="help-sheet" ref={sheetRef} data-surface-sheet="help" role="dialog" aria-label="How to move around">
+        <div className="help-sheet__title" {...swipe.head}>How to move around</div>
         <dl className="help-sheet__list">
           {GESTURES.map((g) => (
             <div className="help-sheet__row" key={g.gesture}>

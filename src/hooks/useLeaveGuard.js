@@ -8,8 +8,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 //
 // Browsers ignore history entries added without a user gesture, so the guard
 // is added on the first touch/click/key press and again after "Stay".
-export default function useLeaveGuard() {
+// `onBack` (optional) closes the topmost open surface and returns true; then Back does only that, no question.
+export default function useLeaveGuard(onBack) {
   const [asking, setAsking] = useState(false);
+  const askingRef = useRef(false);
+  askingRef.current = asking;
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
   const leavingRef = useRef(false);
   const hashRef = useRef(typeof window === "undefined" ? "" : window.location.hash);
 
@@ -31,6 +36,10 @@ export default function useLeaveGuard() {
       // Back onto the guard entry itself, or a link whose only change is the
       // part after #: nothing to ask about.
       if (event.state?.ifcGuard || hashOnly) return;
+      if (!askingRef.current && onBackRef.current?.()) {
+        arm();
+        return;
+      }
       // The guard went with this Back. Put it straight back so that a second
       // Back, while the question is still open, asks again instead of leaving.
       arm();

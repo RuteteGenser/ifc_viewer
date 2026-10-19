@@ -10,7 +10,7 @@ const NAME_INDEX_CAP = 30000; // most elements we will pre-load names for to mak
 // useIfcViewer.js. It only touches the viewer through the handles passed in,
 // and uses the same primitives as the existing tools: FragmentsModel
 // setVisible for hide/show (with an undo entry), and the viewer's own
-// selectElementFrom + zoomToHit for pick and fly-to.
+// selectElementFrom for picking.
 export default function useModelBrowser({
   models,
   selectedElement,
@@ -21,7 +21,6 @@ export default function useModelBrowser({
   selectedHitRef,
   clearSelection,
   selectElementFromRef,
-  zoomToHit,
   pushUndo,
   renderForAWhile,
 }) {
@@ -205,7 +204,7 @@ export default function useModelBrowser({
     [modelsRef, pipelineRef, requestRenderRef, invalidateGroupSphereRef, selectedHitRef, clearSelection, pushUndo, renderForAWhile, refreshHidden],
   );
 
-  // Select one element and fly to it, exactly like clicking it in the view.
+  // Select one element, exactly like clicking it in the view. The camera stays put; "Zoom to element" flies there.
   const selectElement = useCallback(
     async (modelId, localId) => {
       const entry = modelsRef.current.get(modelId);
@@ -214,9 +213,8 @@ export default function useModelBrowser({
       const point = box && !box.isEmpty() ? box.getCenter(new THREE.Vector3()) : new THREE.Vector3();
       const hit = { fragments: entry.model, localId, point };
       selectElementFromRef.current(Promise.resolve(hit));
-      if (box && !box.isEmpty()) zoomToHit(hit);
     },
-    [modelsRef, selectElementFromRef, zoomToHit],
+    [modelsRef, selectElementFromRef],
   );
 
   // Pre-load every element name (capped) so the tree filter can match by name.

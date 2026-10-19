@@ -29,6 +29,8 @@ import { createViewerAdapter } from "../cases/viewerAdapter";
 import { robustUnion } from "../ifc/modelBounds";
 import { sheetRect, PLANE_COLORS, SHEET_OPACITY, planesToDrop, activeAfterRemove, axisOf, KIND_BY_AXIS, miniSlab } from "../ifc/sectionPlanes";
 import { stackUp } from "../ifc/labelStack";
+import { createPressRings } from "../ifc/pressRings";
+import { visibleByHit, stepVisibility, onScreen } from "../ifc/anchorVisibility";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format is a plain ZIP archive containing one or
@@ -414,6 +416,8 @@ export function useIfcViewer() {
   const showToastRef = useRef(() => {});
   const clipMoveModeRef = useRef(false);
   const refitModelRef = useRef(() => {});
+  const pressRingsRef = useRef(null);
+  const selectionTouchedRef = useRef(false); // an element has been selected: the info sheet never moves the camera after that
   const fitByFocusRef = useRef(false); // the last focus re-fitted the whole model; re-fit again when the sheet size changes
   const selectionAnchorRef = useRef(null); // selected point in modelsGroup-local coordinates
   const viewInsetRightRef = useRef(0);
@@ -1788,6 +1792,7 @@ export function useIfcViewer() {
       // has no dimension line, but still gets a tag from its family name
       // alone. Only suppress the tag entirely when neither resolves.
       if (!style || (!dimLines && !familyName)) {
+        entry.showable = false;
         if (entry.sprite) entry.sprite.visible = false;
         requestRender();
         return;
@@ -1812,7 +1817,8 @@ export function useIfcViewer() {
       // Gated by the user's own show/hide toggle, on top of the "is
       // there anything to show" check above — pinned and hovered tags
       // alike stay in the scene but invisible while toggled off.
-      entry.sprite.visible = tagsVisibleRef.current;
+      entry.showable = true;
+      entry.sprite.visible = tagsVisibleRef.current && (entry.anchor?.fade ?? 1) > 0.01;
       requestRender();
     };
 
@@ -1868,6 +1874,7 @@ export function useIfcViewer() {
       const entry = dimensionTags.get(key);
       if (!entry) return;
       entry.pinned = pinned;
+      if (pinned) entry.anchor ??= makeAnchor(entry.localPosition); // a placed pin hides behind things; a hover tag follows the cursor and never does
       if (!pinned && !entry.hovered) destroyDimensionTagEntry(key);
       else refreshDimensionTagEntry(key);
       syncPinnedDimensionTagsState();
@@ -2023,6 +2030,102 @@ export function useIfcViewer() {
     // height and every line shrinking as more are added. The ratio is
     // calibrated against a single line's own canvas height so a
     // one-line tag's on-screen size is unchanged from before.
+    // ---- Visibility of anchored things (pinned tags, the long-press ring): shown only while nothing stands
+    // between the camera and the anchor. One ray per anchor from the camera through the anchor's pixel, with the
+    // same raycast as picking (it answers null to a second call while one is in flight, so the rays run one at a
+    // time, a few per frame, and only for anchors whose view changed). Two agreeing answers flip the state.
+    const ANCHOR_RAYS_PER_FRAME = 3;
+    const ANCHOR_FADE_MS = 120;
+    const anchorPose = new Float32Array(36);
+    let anchorPoseVersion = 0;
+    let anchorBusy = false;
+    let anchorFadeAt = performance.now();
+    const anchorWorld = new THREE.Vector3();
+    const anchorNdc = new THREE.Vector3();
+    const anchorReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    function makeAnchor(local) {
+      return { local, vis: { shown: true, agree: 0 }, seen: -1, tries: 0, fade: 1 };
+    }
+    const anchorPoseChanged = () => {
+      camera.updateMatrixWorld();
+      modelsGroup.updateMatrixWorld();
+      let changed = false;
+      const put = (v, i) => {
+        if (Math.abs(anchorPose[i] - v) > 1e-6) {
+          anchorPose[i] = v;
+          changed = true;
+        }
+      };
+      const pe = camera.projectionMatrix.elements;
+      camera.matrixWorld.elements.forEach((v, i) => put(v, i));
+      modelsGroup.matrixWorld.elements.forEach((v, i) => put(v, 16 + i));
+      put(pe[0], 32); put(pe[5], 33); put(pe[8], 34); put(pe[9], 35);
+      return changed;
+    };
+    const projectAnchor = (a) => anchorNdc.copy(a.local).applyMatrix4(modelsGroup.matrixWorld).project(camera);
+    const checkAnchors = async (due, version) => {
+      anchorBusy = true;
+      try {
+        const rect = renderer.domElement.getBoundingClientRect();
+        for (const a of due.slice(0, ANCHOR_RAYS_PER_FRAME)) {
+          const ndc = projectAnchor(a);
+          if (!onScreen(ndc)) continue;
+          anchorWorld.copy(a.local).applyMatrix4(modelsGroup.matrixWorld);
+          const anchorDistance = camera.position.distanceTo(anchorWorld);
+          const hit = await raycastVisible(rect.left + (ndc.x * 0.5 + 0.5) * rect.width, rect.top + (-ndc.y * 0.5 + 0.5) * rect.height);
+          const seen = visibleByHit(anchorDistance, hit ? camera.position.distanceTo(hit.point) : null);
+          if (seen === null) {
+            // no answer (a pick was in flight): retry on the next frames, a few times
+            if (++a.tries >= 3) { a.seen = version; a.tries = 0; }
+            continue;
+          }
+          a.tries = 0;
+          a.seen = version;
+          a.vis = stepVisibility(a.vis, seen);
+        }
+      } catch (err) {
+        console.error("Visibility check failed", err);
+      } finally {
+        anchorBusy = false;
+        requestRender();
+      }
+    };
+    const pumpAnchorVisibility = () => {
+      if (anchorPoseChanged()) anchorPoseVersion++;
+      const now = performance.now();
+      const dt = Math.min(100, now - anchorFadeAt);
+      anchorFadeAt = now;
+      const anchors = [];
+      for (const entry of dimensionTags.values()) if (entry.anchor && entry.sprite && tagsVisibleRef.current) anchors.push(entry.anchor);
+      if (pressPin.anchor && pressRings.isPinOn()) anchors.push(pressPin.anchor);
+      if (anchors.length === 0) return;
+      const due = [];
+      for (const a of anchors) {
+        if (!onScreen(projectAnchor(a))) {
+          a.vis = { shown: false, agree: 0 }; // off screen or behind the camera: no ray needed
+          a.seen = anchorPoseVersion;
+        } else if (a.seen !== anchorPoseVersion || a.vis.agree > 0) due.push(a);
+      }
+      if (due.length > 0 && !anchorBusy) checkAnchors(due, anchorPoseVersion);
+      let animating = false;
+      for (const a of anchors) {
+        const target = a.vis.shown ? 1 : 0;
+        const next = anchorReduced?.matches ? target : a.fade + Math.sign(target - a.fade) * Math.min(Math.abs(target - a.fade), dt / ANCHOR_FADE_MS);
+        if (next !== a.fade) {
+          a.fade = next;
+          animating = true;
+        }
+      }
+      for (const entry of dimensionTags.values()) {
+        const a = entry.anchor;
+        if (!a || !entry.sprite) continue;
+        entry.sprite.material.opacity = a.fade;
+        entry.sprite.visible = !!entry.showable && tagsVisibleRef.current && a.fade > 0.01;
+      }
+      if (pressPin.anchor && pressRings.isPinOn()) pressRings.setPinHidden(!pressPin.anchor.vis.shown);
+      if (animating) requestRender();
+    };
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.tagState = () => [...dimensionTags.values()].filter((e) => e.anchor).map((e) => ({ guid: e.guid, shown: e.anchor.vis.shown, fade: e.anchor.fade, visible: !!e.sprite?.visible, opacity: e.sprite?.material.opacity ?? null }));
     const dimensionTagScratchVec3 = new THREE.Vector3();
     const dimensionTagForwardScratch = new THREE.Vector3();
     const DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT = MEASURE_LABEL_LINE_HEIGHT + MEASURE_LABEL_PADDING_Y * 2;
@@ -2156,9 +2259,25 @@ export function useIfcViewer() {
     // browser's native one. Kick off the surface raycast immediately so
     // it's ready (or close to it) by the time the user picks a menu item;
     // the menu itself opens without waiting on it.
+    const LONG_PRESS_MS = 500;
+    // A ring at the finger while it charges toward the long press, then a ring pinned to the pressed
+    // 3D point for as long as the context menu is open (right-click on desktop gets the same pin).
+    const pressRings = createPressRings(container, LONG_PRESS_MS);
+    pressRingsRef.current = pressRings;
+    const pressPin = { anchor: null }; // anchored to the pressed point (modelsGroup space) once the raycast answers
+    const pressPinScratch = new THREE.Vector3();
+    const updatePressPin = () => {
+      if (!pressPin.anchor || !pressRings.isPinOn()) return;
+      modelsGroup.updateMatrixWorld();
+      pressPinScratch.copy(pressPin.anchor.local).applyMatrix4(modelsGroup.matrixWorld).project(camera);
+      const r = renderer.domElement.getBoundingClientRect();
+      pressRings.movePin(r.left + (pressPinScratch.x * 0.5 + 0.5) * r.width, r.top + (-pressPinScratch.y * 0.5 + 0.5) * r.height);
+    };
     let contextMenuSeq = 0;
     const openContextMenuAt = (clientX, clientY, touch = false) => {
       const id = ++contextMenuSeq;
+      pressPin.anchor = null;
+      pressRings.showPin(clientX, clientY);
       const promise = raycastVisible(clientX, clientY).catch((err) => {
         console.error("Surface pick failed", err);
         return null;
@@ -2168,7 +2287,12 @@ export function useIfcViewer() {
       // Nothing under the pointer: the menu has nothing to act on, so close
       // it and say what to do instead of leaving an inert menu.
       promise.then((hit) => {
+        if (hit && id === contextMenuSeq) {
+          modelsGroup.updateMatrixWorld();
+          pressPin.anchor = makeAnchor(modelsGroup.worldToLocal(hit.point.clone()));
+        }
         if (hit || id !== contextMenuSeq) return;
+        pressRings.hidePin();
         setContextMenu(null);
         showToastRef.current(touch ? "Press and hold on a model part" : "Right-click on a model part");
       });
@@ -2289,6 +2413,7 @@ export function useIfcViewer() {
         renderer.domElement.clientHeight;
       pivotMarker.scale.setScalar(worldPerPixel * PIVOT_MARKER_PIXELS);
       pivotRing.quaternion.copy(camera.quaternion);
+      pivotRing.visible = TOUCH_UI && !longPress; // while the long-press ring charges it is the one ring around the finger
     };
 
     // "Orbit the model" rotation (left mouse button). The camera never
@@ -3237,6 +3362,7 @@ export function useIfcViewer() {
     };
 
     const selectElementFrom = async (raycastPromise) => {
+      pressRings.hidePin();
       if (!raycastPromise) {
         clearHighlight();
         selectedHitRef.current = null;
@@ -3254,6 +3380,7 @@ export function useIfcViewer() {
         }
         clearHighlight();
         modelsGroup.updateMatrixWorld(true);
+        selectionTouchedRef.current = true;
         selectionAnchorRef.current = modelsGroup.worldToLocal(hit.point.clone());
         showHighlightFill(hit).catch((err) => console.error("Highlight fill failed", err));
         selectedHitRef.current = { modelId: hit.fragments.modelId, localId: hit.localId };
@@ -4002,21 +4129,25 @@ export function useIfcViewer() {
     // the same context menu (create clip plane / hide element). The
     // pending rotate gesture is cancelled so lifting the finger doesn't
     // also select whatever is underneath.
-    const LONG_PRESS_MS = 500;
     const LONG_PRESS_SLOP_PX = 10;
     let longPress = null; // { id, x, y, timer } | null
     const cancelLongPress = () => {
       if (!longPress) return;
       clearTimeout(longPress.timer);
       longPress = null;
+      pressRings.stopCharge();
+      requestRender();
     };
     const onLongPressDown = (event) => {
       cancelLongPress();
       if (event.pointerType !== "touch" || !event.isPrimary) return;
       if (modelsGroup.children.length === 0) return;
       const pressed = { id: event.pointerId, x: event.clientX, y: event.clientY, timer: 0 };
+      pressRings.startCharge(pressed.x, pressed.y);
+      requestRender();
       pressed.timer = setTimeout(() => {
         longPress = null;
+        pressRings.stopCharge();
         longPressFiredAt = Date.now();
         if (activePointerId !== null) onRotateEnd({ pointerId: activePointerId, type: "pointercancel" });
         openContextMenuAt(pressed.x, pressed.y, true);
@@ -4238,9 +4369,11 @@ export function useIfcViewer() {
       controls.update();
       enforcePinchLimits();
       pipelineRef.current?.fragments.core.update();
+      pumpAnchorVisibility();
       if (!needsRender) return;
       needsRender = false;
       scalePivotMarker();
+      updatePressPin();
       scaleMeasureMarkers();
       layoutMeasureLabels();
       scaleDimensionTags();
@@ -4349,6 +4482,8 @@ export function useIfcViewer() {
       window.removeEventListener("pointercancel", dropPressAndMenu);
       window.removeEventListener("resize", dropPressAndMenu);
       window.removeEventListener("orientationchange", dropPressAndMenu);
+      pressRings.dispose();
+      pressRingsRef.current = null;
       cancelLongPress();
       renderer.domElement.removeEventListener("pointermove", onMeasureMarkerHoverCursor);
       renderer.domElement.style.cursor = "";
@@ -4468,6 +4603,10 @@ export function useIfcViewer() {
   }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  // The ring marking the pressed point lives exactly as long as the menu.
+  useEffect(() => {
+    if (!contextMenu) pressRingsRef.current?.hidePin();
+  }, [contextMenu]);
   const closeMeasureDeletePopup = useCallback(() => setMeasureDeletePopup(null), []);
   const closeMeasureLegEditPopup = useCallback(() => setMeasureLegEditPopup(null), []);
 
@@ -4801,6 +4940,7 @@ export function useIfcViewer() {
       const controls = controlsRef.current;
       if (!camera || !controls) return;
       cancelCameraAnim();
+      applyViewInsetRef.current();
       if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
         applyPose(camera, controls, pose);
         requestRenderRef.current();
@@ -4840,79 +4980,16 @@ export function useIfcViewer() {
       dir.normalize();
       const pose = computeFit(camera, box, getVisibleFrac(), dir);
       if (animate) easeToPose(pose);
-      else applyPose(camera, controls, pose);
+      else {
+        applyViewInsetRef.current();
+        applyPose(camera, controls, pose);
+      }
       requestRenderRef.current();
     },
     [easeToPose, getVisibleFrac],
   );
 
   refitModelRef.current = refitModel;
-
-  // Pans (no zoom) so the selected point sits in the middle of the visible
-  // area, then nudges the whole model back inside that area if it fits.
-  const focusSelection = useCallback(() => {
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    const group = modelsGroupRef.current;
-    const anchor = selectionAnchorRef.current;
-    if (!camera || !controls || !group || !anchor) return;
-    // A docked side panel on a mouse layout never covers the view unexpectedly,
-    // so only sheets and touch drawers re-centre.
-    if (viewInsetBottomRef.current <= 0 && !(TOUCH_UI && viewInsetRightRef.current > 0)) return;
-    group.updateMatrixWorld(true);
-    camera.updateMatrixWorld(true);
-    const pose = withoutViewOffset(camera, () => {
-    const frac = getVisibleFrac();
-    const world = anchor.clone().applyMatrix4(group.matrixWorld);
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-    const fwd = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).negate();
-    const depthOf = (pt) => Math.max(pt.clone().sub(camera.position).dot(fwd), 0.01);
-    const p = world.clone().project(camera);
-    // Offset needed, in NDC; pan the camera by the same world amount.
-    let dx = p.x;
-    let dy = p.y;
-    const box = getSceneBox(modelsRef.current.values());
-    if (box) {
-      const corners = boxCorners(box);
-      const b = ndcBounds(camera, corners);
-      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.98 && (b.maxY - b.minY) <= 2 * frac.y * 0.98;
-      // Whole model currently framed (not zoomed into a detail) but too big
-      // for the space the sheet left: ease it back to fit instead of
-      // leaving parts of it hidden behind the sheet.
-      const framedWhole = (b.maxX - b.minX) <= 2.05 && (b.maxY - b.minY) <= 2.05;
-      if (!fits && framedWhole) {
-        const dir = camera.position.clone().sub(controls.target).normalize();
-        fitByFocusRef.current = true;
-        return computeFitRaw(camera, box, frac, dir, FIT_MARGIN);
-      }
-      if (fits) {
-        // After the pan, keep the model's bounds inside the visible rectangle.
-        const lim = 0.98;
-        const clampD = (d, lo, hi, flo, fhi) => {
-          // moving content by -d: bounds become lo-d..hi-d
-          const maxD = lo + fhi * lim; // d must be <= lo + lim*f (keep lo-d >= -lim*f)
-          const minD = hi - fhi * lim; // d must be >= hi - lim*f
-          return Math.min(Math.max(d, minD), maxD);
-        };
-        dx = clampD(dx, b.minX, b.maxX, 0, frac.x);
-        dy = clampD(dy, b.minY, b.maxY, 0, frac.y);
-      }
-    }
-    const depth = depthOf(world);
-    const delta = new THREE.Vector3()
-      .addScaledVector(right, dx * tanHalf * camera.aspect * depth)
-      .addScaledVector(up, dy * tanHalf * depth);
-    if (delta.length() < 1e-4) return null;
-    const pose = {
-      position: camera.position.clone().add(delta),
-      target: controls.target.clone().add(delta),
-    };
-    return pose;
-    });
-    if (pose) easeToPose(pose);
-  }, [easeToPose, getVisibleFrac]);
 
   // Eases the camera so `box` (world space) fills the visible area, keeping
   // the current viewing direction.
@@ -5952,6 +6029,7 @@ export function useIfcViewer() {
     const controls = controlsRef.current;
     if (!camera || !controls) return;
     cancelCameraAnim();
+    applyViewInsetRef.current();
     autoFramedRef.current = true;
     const startQuat = modelsGroup ? modelsGroup.quaternion.clone() : null;
     const startPos = modelsGroup ? modelsGroup.position.clone() : null;
@@ -6035,6 +6113,9 @@ export function useIfcViewer() {
     ({ bottom = 0, right = 0 }) => {
       viewInsetBottomRef.current = Math.max(0, bottom || 0);
       viewInsetRightRef.current = Math.max(0, right || 0);
+      // Once something has been selected the sheet opening and closing must not move the camera at all:
+      // the insets are only remembered, and the next explicit camera move (Home, zoom to, views) applies them.
+      if (selectionTouchedRef.current) return;
       applyViewInset();
       if (autoFramedRef.current || fitByFocusRef.current || wholeModelInView()) refitModel(true);
     },
@@ -6111,7 +6192,6 @@ export function useIfcViewer() {
     selectedHitRef,
     clearSelection,
     selectElementFromRef,
-    zoomToHit,
     pushUndo,
     renderForAWhile,
   });
@@ -6206,7 +6286,6 @@ export function useIfcViewer() {
     canRedo: historyCounts.redo > 0,
     hideSelectedElement,
     setViewInsets,
-    focusSelection,
     clipMoveMode,
     setClipMoveMode,
     toast,

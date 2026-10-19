@@ -365,8 +365,8 @@ export default function SearchBar({
                         <button
                           type="button"
                           className="sb-go"
-                          aria-label={`Select and zoom to ${r.name}`}
-                          title="Select and zoom to this element"
+                          aria-label={`Select ${r.name}`}
+                          title="Select this element"
                           onClick={() => goTo(r)}
                         >
                           <TargetIcon />

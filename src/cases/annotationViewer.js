@@ -28,6 +28,11 @@ export function createAnnotationViewer(d, getBase) {
     const camera = x.cameraRef.current, group = x.modelsGroupRef.current, canvas = x.rendererRef.current?.domElement;
     return camera && group && canvas ? { camera, group, canvas } : null;
   };
+  // The overlay is the viewport wrapper; on a phone the canvas starts below the toolbars, not at the wrapper's corner.
+  const origin = (p) => {
+    const c = p.canvas.getBoundingClientRect(), w = (p.canvas.closest(".viewport-wrapper") || p.canvas).getBoundingClientRect();
+    return { x: c.left - w.left, y: c.top - w.top };
+  };
   const sync = (p) => {
     const t = performance.now();
     if (t - lastSync < 4) return;
@@ -40,15 +45,15 @@ export function createAnnotationViewer(d, getBase) {
   const toBase = (w) => { inv.copy(delta).invert(); return w.clone().applyMatrix4(inv).toArray(); };
   const size = (p) => ({ width: p.canvas.clientWidth, height: p.canvas.clientHeight });
   // What the person can see: side panels and sheets cover part of the canvas (the app frames the model in the rest).
-  const visibleSize = (p) => { const s = size(p), f = d().getVisibleFrac?.() || { x: 1, y: 1 }; return { width: s.width * f.x, height: s.height * f.y }; };
+  const visibleSize = (p) => { const s = size(p), o = origin(p), f = d().getVisibleFrac?.() || { x: 1, y: 1 }; return { width: o.x + s.width * f.x, height: o.y + s.height * f.y }; };
 
   function project(point) {
     const p = parts();
     if (!p) return { x: 0, y: 0, visible: false, depth: 0 };
     sync(p);
     const ndc = toLive(p, point).project(p.camera);
-    const s = size(p);
-    return { x: (ndc.x * 0.5 + 0.5) * s.width, y: (-ndc.y * 0.5 + 0.5) * s.height, visible: onScreen(ndc), depth: ndc.z };
+    const s = size(p), o = origin(p);
+    return { x: o.x + (ndc.x * 0.5 + 0.5) * s.width, y: o.y + (-ndc.y * 0.5 + 0.5) * s.height, visible: onScreen(ndc), depth: ndc.z };
   }
 
   const serial = (fn) => { const run = queue.then(fn, fn); queue = run.catch(() => {}); return run; };

@@ -637,6 +637,7 @@ function App() {
           tabIndex={-1}
           ref={mainRef}
           className="viewport-wrapper"
+          data-annotating={annotating ? "" : undefined}
           inert={sidebarOpen && drawerLayout ? true : undefined}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}

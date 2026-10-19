@@ -97,3 +97,10 @@
 }
 
 .models-sheet__remove-all.models-sheet__cases { color: var(--text); border-color: var(--border-strong); }
+
+/* While annotating: the annotation toolbar has its own undo/redo, so the app's pair steps aside; on a phone the toolbar
+   sits above the compass in the bottom-left corner. */
+.viewport-wrapper[data-annotating] .history-buttons { display: none; }
+@media (pointer: coarse), (max-width: 768px) {
+  .viewport-wrapper[data-annotating] .ann-dock { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+}

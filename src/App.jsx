@@ -43,6 +43,8 @@ const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(po
 const SAMPLE_NAME = "Sample building";
 const DRAWER_QUERY = "(max-width: 768px), (max-height: 500px) and (pointer: coarse)";
 import "./App.css";
+// Test builds only (VITE_TEST_HOOK=1): exposes window.__annotations. Removed from production builds.
+if (import.meta.env.VITE_TEST_HOOK) import("./annotations/mountForTests");
 
 const PANEL_MIN = 260;
 const PANEL_MAX = 560;

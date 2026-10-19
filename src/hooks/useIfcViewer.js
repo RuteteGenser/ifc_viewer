@@ -26,6 +26,7 @@ import { LoadQueue, buildLimitMs, fileKind, ifcEntries, mayRetryStall, queuedTex
 import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
+import { stackUp } from "../ifc/labelStack";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format is a plain ZIP archive containing one or
@@ -1847,6 +1848,7 @@ export function useIfcViewer() {
     // leg label already placed. So a tiny measurement reads as one clear
     // number, and a large one shows the full breakdown.
     const layoutScratch = new THREE.Vector3();
+    const MEASURE_TOTAL_LABEL_CENTER_Y = -0.1; // as createMeasureLabel(..., -0.1) for the total
     const layoutMeasureLabels = () => {
       const w = renderer.domElement.clientWidth;
       const h = renderer.domElement.clientHeight;
@@ -1870,8 +1872,18 @@ export function useIfcViewer() {
       // neighbouring measurements never sit on top of each other either.
       const placed = [];
       if (tagsVisibleRef.current) {
+        // Total labels of close measurements: read every rect once, work out the
+        // vertical nudges once, then write each sprite's anchor once (no layout reads
+        // after writes). The sprite hangs above its point; a nudge stacks it higher.
+        const totals = measurementsRuntime.filter((e) => e.label.visible);
+        for (const e of totals) e.label.center.y = MEASURE_TOTAL_LABEL_CENTER_Y;
+        const totalRects = totals.map((e) => rectOf(e.label, MEASURE_LEG_LABEL_PIXEL_HEIGHT, 2));
+        const lifts = stackUp(totalRects, 2);
+        totals.forEach((e, i) => {
+          if (lifts[i] > 0) e.label.center.y = MEASURE_TOTAL_LABEL_CENTER_Y - lifts[i] / MEASURE_LEG_LABEL_PIXEL_HEIGHT;
+        });
         for (const entry of measurementsRuntime) {
-          placed.push(rectOf(entry.label, MEASURE_LEG_LABEL_PIXEL_HEIGHT, 2));
+          placed.push(rectOf(entry.label, MEASURE_LEG_LABEL_PIXEL_HEIGHT, 4));
           for (const m of [entry.markerA, entry.markerB]) {
             toPx(m, pa);
             const r = MEASURE_MARKER_PIXELS + 3;

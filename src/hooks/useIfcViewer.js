@@ -27,6 +27,7 @@ import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
 import { stackUp } from "../ifc/labelStack";
+import { createPressRings } from "../ifc/pressRings";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format is a plain ZIP archive containing one or
@@ -408,6 +409,7 @@ export function useIfcViewer() {
   const showToastRef = useRef(() => {});
   const clipMoveModeRef = useRef(false);
   const refitModelRef = useRef(() => {});
+  const pressRingsRef = useRef(null);
   const selectionTouchedRef = useRef(false); // an element has been selected: the info sheet never moves the camera after that
   const fitByFocusRef = useRef(false); // the last focus re-fitted the whole model; re-fit again when the sheet size changes
   const selectionAnchorRef = useRef(null); // selected point in modelsGroup-local coordinates
@@ -2076,9 +2078,25 @@ export function useIfcViewer() {
     // browser's native one. Kick off the surface raycast immediately so
     // it's ready (or close to it) by the time the user picks a menu item;
     // the menu itself opens without waiting on it.
+    const LONG_PRESS_MS = 500;
+    // A ring at the finger while it charges toward the long press, then a ring pinned to the pressed
+    // 3D point for as long as the context menu is open (right-click on desktop gets the same pin).
+    const pressRings = createPressRings(container, LONG_PRESS_MS);
+    pressRingsRef.current = pressRings;
+    const pressPin = { local: null }; // pressed point in modelsGroup space once the raycast answers
+    const pressPinScratch = new THREE.Vector3();
+    const updatePressPin = () => {
+      if (!pressPin.local || !pressRings.isPinOn()) return;
+      modelsGroup.updateMatrixWorld();
+      pressPinScratch.copy(pressPin.local).applyMatrix4(modelsGroup.matrixWorld).project(camera);
+      const r = renderer.domElement.getBoundingClientRect();
+      pressRings.movePin(r.left + (pressPinScratch.x * 0.5 + 0.5) * r.width, r.top + (-pressPinScratch.y * 0.5 + 0.5) * r.height);
+    };
     let contextMenuSeq = 0;
     const openContextMenuAt = (clientX, clientY, touch = false) => {
       const id = ++contextMenuSeq;
+      pressPin.local = null;
+      pressRings.showPin(clientX, clientY);
       const promise = raycastVisible(clientX, clientY).catch((err) => {
         console.error("Surface pick failed", err);
         return null;
@@ -2088,7 +2106,12 @@ export function useIfcViewer() {
       // Nothing under the pointer: the menu has nothing to act on, so close
       // it and say what to do instead of leaving an inert menu.
       promise.then((hit) => {
+        if (hit && id === contextMenuSeq) {
+          modelsGroup.updateMatrixWorld();
+          pressPin.local = modelsGroup.worldToLocal(hit.point.clone());
+        }
         if (hit || id !== contextMenuSeq) return;
+        pressRings.hidePin();
         setContextMenu(null);
         showToastRef.current(touch ? "Press and hold on a model part" : "Right-click on a model part");
       });
@@ -2209,6 +2232,7 @@ export function useIfcViewer() {
         renderer.domElement.clientHeight;
       pivotMarker.scale.setScalar(worldPerPixel * PIVOT_MARKER_PIXELS);
       pivotRing.quaternion.copy(camera.quaternion);
+      pivotRing.visible = TOUCH_UI && !longPress; // while the long-press ring charges it is the one ring around the finger
     };
 
     // "Orbit the model" rotation (left mouse button). The camera never
@@ -3157,6 +3181,7 @@ export function useIfcViewer() {
     };
 
     const selectElementFrom = async (raycastPromise) => {
+      pressRings.hidePin();
       if (!raycastPromise) {
         clearHighlight();
         selectedHitRef.current = null;
@@ -3897,21 +3922,25 @@ export function useIfcViewer() {
     // the same context menu (create clip plane / hide element). The
     // pending rotate gesture is cancelled so lifting the finger doesn't
     // also select whatever is underneath.
-    const LONG_PRESS_MS = 500;
     const LONG_PRESS_SLOP_PX = 10;
     let longPress = null; // { id, x, y, timer } | null
     const cancelLongPress = () => {
       if (!longPress) return;
       clearTimeout(longPress.timer);
       longPress = null;
+      pressRings.stopCharge();
+      requestRender();
     };
     const onLongPressDown = (event) => {
       cancelLongPress();
       if (event.pointerType !== "touch" || !event.isPrimary) return;
       if (modelsGroup.children.length === 0) return;
       const pressed = { id: event.pointerId, x: event.clientX, y: event.clientY, timer: 0 };
+      pressRings.startCharge(pressed.x, pressed.y);
+      requestRender();
       pressed.timer = setTimeout(() => {
         longPress = null;
+        pressRings.stopCharge();
         longPressFiredAt = Date.now();
         if (activePointerId !== null) onRotateEnd({ pointerId: activePointerId, type: "pointercancel" });
         openContextMenuAt(pressed.x, pressed.y, true);
@@ -4136,6 +4165,7 @@ export function useIfcViewer() {
       if (!needsRender) return;
       needsRender = false;
       scalePivotMarker();
+      updatePressPin();
       scaleMeasureMarkers();
       layoutMeasureLabels();
       scaleDimensionTags();
@@ -4242,6 +4272,8 @@ export function useIfcViewer() {
       window.removeEventListener("pointercancel", dropPressAndMenu);
       window.removeEventListener("resize", dropPressAndMenu);
       window.removeEventListener("orientationchange", dropPressAndMenu);
+      pressRings.dispose();
+      pressRingsRef.current = null;
       cancelLongPress();
       renderer.domElement.removeEventListener("pointermove", onMeasureMarkerHoverCursor);
       renderer.domElement.style.cursor = "";
@@ -4361,6 +4393,10 @@ export function useIfcViewer() {
   }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  // The ring marking the pressed point lives exactly as long as the menu.
+  useEffect(() => {
+    if (!contextMenu) pressRingsRef.current?.hidePin();
+  }, [contextMenu]);
   const closeMeasureDeletePopup = useCallback(() => setMeasureDeletePopup(null), []);
   const closeMeasureLegEditPopup = useCallback(() => setMeasureLegEditPopup(null), []);
 

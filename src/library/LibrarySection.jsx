@@ -6,6 +6,8 @@ import { useLibraryContext } from "./LibraryContext";
 import { formatSize, relativeDate } from "./format";
 import { applyOrganize, loadState, saveState } from "./organize";
 import OrganizeBar from "./OrganizeBar";
+import { FolderBar, FolderRow, MovePicker, dragModel, useFrozen } from "./FolderUI";
+import { childrenOf, pathLabel, scopeModels } from "./folders";
 import { useAccess } from "../access/AccessProvider";
 import { AccountButton } from "../access/AccessUI";
 import { quotaText } from "../access/AccountPage";
@@ -83,8 +85,10 @@ function RenameForm({ item, onDone }) {
   );
 }
 
-function ModelItem({ item }) {
+function ModelItem({ item, showPath }) {
   const library = useLibraryContext();
+  const frozen = useFrozen();
+  const [moving, setMoving] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -93,6 +97,8 @@ function ModelItem({ item }) {
   const sample = item.owner === "samples";
   const locked = item.readOnly === true;
   const meta = [formatSize(item.size), relativeDate(item.uploadedAt)].filter(Boolean).join(" · ");
+  const canMove = !!library.folders && !sample && !locked;
+  const place = showPath && library.folders ? (item.folderId ? pathLabel(library.folders, item.folderId) : "Top level") : "";
 
   if (renaming) {
     return (
@@ -102,7 +108,12 @@ function ModelItem({ item }) {
     );
   }
   return (
-    <li className={`lib-row${loaded ? " lib-row--loaded" : ""}`}>
+    <li
+      className={`lib-row${loaded ? " lib-row--loaded" : ""}`}
+      draggable={canMove && !frozen ? true : undefined}
+      onDragStart={canMove && !frozen ? (e) => dragModel.start(e, item) : undefined}
+      onDragEnd={canMove && !frozen ? dragModel.end : undefined}
+    >
       <div className="lib-row__line">
         <button
           type="button"
@@ -117,6 +128,7 @@ function ModelItem({ item }) {
             {item.schema && <span className="lib-badge">{item.schema}</span>}
             {meta}
             {loaded && <span className="lib-badge lib-badge--open">Open</span>}
+            {place && <span className="lib-row__path" data-testid="lib-path">in {place}</span>}
           </span>
         </button>
         <button
@@ -169,6 +181,11 @@ function ModelItem({ item }) {
               Add to view
             </button>
           )}
+          {canMove && (
+            <button type="button" className="lib-btn" disabled={frozen} title={frozen ? "Your plan is read-only right now." : undefined} onClick={() => setMoving(true)}>
+              Move to...
+            </button>
+          )}
           {!sample && (
             <button type="button" className="lib-btn" onClick={() => library.copyLink(item)}>
               Copy link
@@ -181,6 +198,7 @@ function ModelItem({ item }) {
           )}
         </div>
       )}
+      {moving && <MovePicker title={`Move "${item.name}" to`} current={item.folderId ?? null} onPick={(target) => library.moveModel(item, target)} onClose={() => setMoving(false)} />}
       {confirming &&
         createPortal(
           <ConfirmDialog
@@ -234,15 +252,19 @@ export default function LibrarySection({ variant }) {
   const items = library?.items;
   const loadedNames = library?.loadedNames;
   const access = useAccess();
+  const folders = library?.folders ?? null;
+  const folderId = library?.folderId ?? null;
+  const searching = !!folders && state.query.trim() !== "";
+  const allOwn = useMemo(() => (items || []).filter((i) => i.owner !== "samples"), [items]);
   const result = useMemo(
     () =>
       applyOrganize({
-        own: (items || []).filter((i) => i.owner !== "samples"),
+        own: scopeModels(allOwn, { folderId, searching, enabled: !!folders }),
         samples: (items || []).filter((i) => i.owner === "samples"),
         state,
         loadedNames: loadedNames || new Set(),
       }),
-    [items, state, loadedNames],
+    [items, allOwn, state, loadedNames, folders, folderId, searching],
   );
   if (!library || !library.available || library.status === "loading") return null;
   const isSidebar = variant === "sidebar";
@@ -250,11 +272,13 @@ export default function LibrarySection({ variant }) {
   const listId = `lib-list-${variant}`;
   // In the drawer the list is part of the one scrolling column, so it shows a
   // few rows and a button for the rest, instead of scrolling inside the scroll.
-  const sampleRecords = result.samples;
+  const subfolders = folders && !searching ? childrenOf(folders, folderId) : [];
+  const sampleRecords = folders && folderId ? [] : result.samples;
   const own = result.own;
   const rows = isSidebar && !showAll ? own.slice(0, SIDEBAR_ROWS) : own;
   const hidden = own.length - rows.length;
   const clear = () => setState((p) => ({ ...p, query: "", formats: [], disciplines: [], openNow: false }));
+  const clearSearch = () => setState((p) => ({ ...p, query: "" }));
   const canOpenNow = (items || []).some((i) => i.owner !== "samples" && loadedNames.has(i.name));
   const body = (
     <>
@@ -267,18 +291,22 @@ export default function LibrarySection({ variant }) {
         </p>
       ) : (
         <>
-          {result.total > 1 && (
-            <OrganizeBar id={`lib-org-${variant}`} state={result.state} setState={setState} result={result} canOpenNow={canOpenNow} />
+          {(result.total > 1 || (folders && allOwn.length > 1)) && (
+            <OrganizeBar id={`lib-org-${variant}`} state={result.state} setState={setState} result={result} canOpenNow={canOpenNow} searchTotal={allOwn.length} />
           )}
+          {folders && <FolderBar searching={searching} onClear={clearSearch} />}
           <ul className="lib-list" id={listId} aria-labelledby={headingId}>
-            {access && <li className="lib__group" aria-hidden="true">{t("lib.samples")}</li>}
-            {result.builtIn && <SampleItem />}
+            {access && !(folders && folderId) && <li className="lib__group" aria-hidden="true">{t("lib.samples")}</li>}
+            {result.builtIn && !(folders && folderId) && <SampleItem />}
             {sampleRecords.map((item) => (
               <ModelItem key={item.id} item={item} />
             ))}
-            {access && own.length > 0 && <li className="lib__group" aria-hidden="true">{t("lib.mine")}</li>}
+            {access && (own.length > 0 || subfolders.length > 0) && <li className="lib__group" aria-hidden="true">{t("lib.mine")}</li>}
+            {subfolders.map((f) => (
+              <FolderRow key={f.id} folder={f} />
+            ))}
             {rows.map((item) => (
-              <ModelItem key={item.id} item={item} />
+              <ModelItem key={item.id} item={item} showPath={searching} />
             ))}
           </ul>
           {access && (
@@ -292,7 +320,12 @@ export default function LibrarySection({ variant }) {
               {showAll ? "Show fewer" : `Show all ${own.length} (${hidden} more)`}
             </button>
           )}
-          {result.total === 0 && <p className="lib-quiet">Save a model here to open it from any device.</p>}
+          {result.total === 0 && !folders && <p className="lib-quiet">Save a model here to open it from any device.</p>}
+          {folders && !searching && result.total === 0 && subfolders.length === 0 && (
+            <p className="lib-quiet" data-testid="lib-folder-empty">
+              {folderId ? "This folder is empty. Use Move to... on a model to put it here." : "Save a model here to open it from any device."}
+            </p>
+          )}
           {result.total > 0 && own.length === 0 && (
             <p className="lib-quiet" role="status">
               No models match.{" "}

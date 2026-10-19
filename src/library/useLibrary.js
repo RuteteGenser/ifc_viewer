@@ -11,10 +11,17 @@ import {
   extensionOf,
   getModel,
   linkFor,
+  listFolders,
+  createFolder as apiCreateFolder,
+  renameFolder as apiRenameFolder,
+  moveFolder as apiMoveFolder,
+  deleteFolder as apiDeleteFolder,
+  moveModel as apiMoveModel,
   listModels,
   renameModel,
   uploadModel,
 } from "./api";
+import { folderMessage, loadFolder, saveFolder, pathOf } from "./folders";
 
 const PREF_KEY = "ifcViewer.alsoSaveToLibrary";
 const readPref = () => {
@@ -36,6 +43,8 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const [upload, setUpload] = useState(null); // { name, percent, more }
   const [notice, setNotice] = useState(null); // { id, tone, text }
   const [alsoSave, setAlsoSaveState] = useState(readPref);
+  const [folderData, setFolderData] = useState(null); // null = this backend has no folders: no folder UI at all
+  const [folderId, setFolderIdState] = useState(loadFolder); // the folder being looked at, null = top level
 
   const abortDownloadRef = useRef(null);
   const waitingRecordsRef = useRef([]); // library models clicked while another downloads
@@ -65,6 +74,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     lastRefreshRef.current = Date.now();
     setListError("");
     try {
+      listFolders().then((fol) => seq === refreshSeqRef.current && setFolderData(fol));
       const data = await listModels();
       if (seq !== refreshSeqRef.current) return;
       setItems(data);
@@ -299,6 +309,57 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     [say],
   );
 
+  // ---- folders: each returns "" on success or a sentence about what went wrong ----
+  const folders = folderData?.folders ?? null;
+  const folderLimit = folderData?.limit ?? 0;
+  const setFolder = useCallback((id) => {
+    setFolderIdState(id || null);
+    saveFolder(id || null);
+  }, []);
+  // A folder that is gone (deleted on another device) sends the view back to the top.
+  useEffect(() => {
+    if (folders && folderId && !folders.some((f) => f.id === folderId)) setFolder(null);
+  }, [folders, folderId, setFolder]);
+  const reloadFolders = useCallback(async () => {
+    const fol = await listFolders();
+    if (fol) setFolderData(fol);
+  }, []);
+  const folderAction = useCallback(
+    async (run, after) => {
+      try {
+        const result = await run();
+        await reloadFolders();
+        await after?.(result);
+        return "";
+      } catch (err) {
+        return folderMessage(err, folderData?.limit);
+      }
+    },
+    [folderData?.limit, reloadFolders],
+  );
+  const createFolder = useCallback((name, parentId) => folderAction(() => apiCreateFolder(name.trim(), parentId)), [folderAction]);
+  const renameFolder = useCallback((id, name) => folderAction(() => apiRenameFolder(id, name.trim())), [folderAction]);
+  const moveFolder = useCallback((id, parentId) => folderAction(() => apiMoveFolder(id, parentId)), [folderAction]);
+  const deleteFolder = useCallback(
+    (id) =>
+      folderAction(
+        () => apiDeleteFolder(id),
+        async () => {
+          if (pathOf(folders || [], folderId).some((f) => f.id === id)) setFolder(pathOf(folders, id).at(-2)?.id ?? null);
+          await refresh();
+        },
+      ),
+    [folderAction, folders, folderId, refresh, setFolder],
+  );
+  const moveModel = useCallback(
+    (item, target) =>
+      folderAction(
+        () => apiMoveModel(item.id, target),
+        () => setItems((list) => list.map((m) => (m.id === item.id ? { ...m, folderId: target } : m))),
+      ),
+    [folderAction],
+  );
+
   const copyLink = useCallback(
     async (item) => {
       const ok = await copyText(linkFor(item.id));
@@ -334,5 +395,14 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     rename,
     remove,
     copyLink,
+    folders,
+    folderLimit,
+    folderId,
+    setFolder,
+    createFolder,
+    renameFolder,
+    moveFolder,
+    deleteFolder,
+    moveModel,
   };
 }

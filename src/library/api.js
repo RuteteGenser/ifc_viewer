@@ -347,3 +347,37 @@ export function uploadModel(file, onProgress) {
 export function linkFor(id) {
   return `${window.location.origin}${import.meta.env.BASE_URL}?model=${encodeURIComponent(id)}`;
 }
+
+// ---- Folders (only when the backend answers GET /folders with a JSON array) ----
+// listFolders resolves null for "no folders here" (404, 401, HTML, network): the UI then shows nothing.
+export async function listFolders(signal, retried = false) {
+  try {
+    const res = await fetch(`${API}/folders`, { signal, headers: { Accept: "application/json" }, credentials: "same-origin" });
+    // A first visit asks before the session cookie exists: ask once more shortly after.
+    if (res.status === 401 && !retried) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return listFolders(signal, true);
+    }
+    if (!res.ok || !(res.headers.get("content-type") || "").includes("json")) return null;
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data)) return null;
+    return { folders: data, limit: Number(res.headers.get("x-folder-limit")) || 0 };
+  } catch {
+    return null;
+  }
+}
+async function folderCall(path, method, body) {
+  const res = await request(path, {
+    method,
+    headers: { "Content-Type": "application/json", ...WRITE },
+    credentials: "same-origin",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) throw await problem(res);
+  return res.json().catch(() => ({}));
+}
+export const createFolder = (name, parentId = null) => folderCall("/folders", "POST", { name, parentId });
+export const renameFolder = (id, name) => folderCall(`/folders/${encodeURIComponent(id)}`, "PATCH", { name });
+export const moveFolder = (id, parentId) => folderCall(`/folders/${encodeURIComponent(id)}`, "PATCH", { parentId });
+export const deleteFolder = (id) => folderCall(`/folders/${encodeURIComponent(id)}`, "DELETE");
+export const moveModel = (id, folderId) => folderCall(`/models/${encodeURIComponent(id)}`, "PATCH", { folderId });

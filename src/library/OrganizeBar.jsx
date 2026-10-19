@@ -13,11 +13,11 @@ function Chip({ label, on, onClick }) {
 const toggle = (list, v) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
 // One slim, wrapping row: search, sort, direction, filter chips, count.
-export default function OrganizeBar({ id, state, setState, result, canOpenNow }) {
+export default function OrganizeBar({ id, state, setState, result, canOpenNow, searchTotal }) {
   const { options, total, count, filtering } = result;
   const s = state;
   const set = (patch) => setState((prev) => ({ ...prev, ...patch }));
-  const showSearch = total > SEARCH_MIN_MODELS;
+  const showSearch = (searchTotal ?? total) > SEARCH_MIN_MODELS;
   const chips = options.formats.length + options.disciplines.length > 0 || canOpenNow || s.openNow;
   return (
     <div className="lib-org" role="group" aria-label="Sort and filter my models">

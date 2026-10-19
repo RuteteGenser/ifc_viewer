@@ -523,3 +523,23 @@
   font-size: 12px;
   color: var(--text-faint);
 }
+
+/* Folders */
+.lib-folderbar { display: flex; flex-direction: column; gap: 6px; }
+.lib-folderbar__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lib-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0; font-size: 13px; color: var(--text-muted); }
+.lib-crumbs__part { display: inline-flex; align-items: center; gap: 4px; }
+.lib-crumbs__btn { min-height: 44px; padding: 0 6px; background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.lib-crumbs__here { font-weight: 600; color: var(--text); }
+.lib-folder__main { gap: 2px; }
+.lib-folder__title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lib-folder__chev { align-self: center; color: var(--text-muted); font-size: 20px; padding: 0 2px; }
+.lib-folder--over { border-color: var(--accent); background: var(--accent-soft); outline: 2px dashed var(--accent); outline-offset: -2px; }
+.lib-row[draggable="true"] { cursor: grab; }
+.lib-row__path { font-size: 11px; color: var(--text-muted); }
+.fpick { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; }
+.fpick__row { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.fpick__row:hover:not(:disabled) { background: var(--accent-soft); }
+.fpick__row:disabled { opacity: 0.5; cursor: not-allowed; }
+.fpick__row--current { border-color: var(--accent); font-weight: 600; }
+.fpick__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

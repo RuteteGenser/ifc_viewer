@@ -483,12 +483,10 @@ input[type="range"] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .empty-state__card {
-    border-style: dashed;
-    border-color: #c9bfad;
-  }
+  /* A drop zone only says so when the pointer is over it. */
   .empty-state__card:hover {
     background: var(--surface);
+    border-style: dashed;
     border-color: var(--accent);
   }
 }
@@ -2225,7 +2223,7 @@ select.acc-input {
   display: none;
 }
 
-.lib--sidebar .lib-folderbar__row .lib-btn {
+.lib .lib-folderbar__row .lib-btn {
   min-height: 32px;
   padding: 0 10px;
   font-size: var(--text-xs);
@@ -2236,14 +2234,14 @@ select.acc-input {
   box-shadow: none;
 }
 
-.lib--sidebar .lib-folderbar__row .lib-btn:hover:not(:disabled) {
+.lib .lib-folderbar__row .lib-btn:hover:not(:disabled) {
   background: var(--accent-wash);
   border-color: transparent;
   box-shadow: none;
 }
 
 @media (pointer: coarse) {
-  .lib--sidebar .lib-folderbar__row .lib-btn {
+  .lib .lib-folderbar__row .lib-btn {
     min-height: 44px;
   }
 }
@@ -2251,4 +2249,48 @@ select.acc-input {
 .lib-quiet {
   font-size: var(--text-xs);
   color: var(--ink-faint);
+}
+
+/* Touch screens keep :hover after a tap; tools must not look pressed afterwards. */
+@media (hover: none) {
+  .top-bar__icon-button:not(.top-bar__icon-button--active):hover:not(:disabled),
+  .top-bar__home-button:hover:not(:disabled) {
+    background: transparent;
+  }
+  .view-tools__button:not(.is-open):hover,
+  .history-buttons__button:hover:not(:disabled) {
+    background: rgba(255, 253, 249, 0.94);
+    box-shadow: var(--shadow-sm);
+  }
+}
+
+/* Panel rows keep their height; the panel scrolls instead of squeezing a row. */
+.view-tools__panel > * {
+  flex-shrink: 0;
+}
+
+/* Wide layouts: Home carries its icon like the tools beside it. */
+@media (pointer: fine) {
+  .toolbar .top-bar__home-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px 0 10px;
+  }
+  .toolbar .top-bar__home-button .top-bar__home-icon {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+  .toolbar .top-bar__icon-button svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* The legal tab row fades at the edge where it scrolls. */
+.legal-page__nav ul {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  padding-right: 24px;
 }

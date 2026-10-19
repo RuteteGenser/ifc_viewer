@@ -94,3 +94,20 @@ export function overwriteAscii(bytes, start, text) {
   for (let i = 0; i < text.length; i++) bytes[start + i] = text.charCodeAt(i);
   return before;
 }
+
+/**
+ * Does the DATA section (as far as the first 64 KB show it) hold IFC entities?
+ * true: an "#n=IFC...(" line was found; false: the section is there but holds
+ * none (only non-IFC entities, or nothing before ENDSEC;); null: cannot tell
+ * (no DATA; within the first 64 KB). Used only after the importer failed, to
+ * tell a file that is not IFC data from an error of Argus's own.
+ */
+export function hasIfcEntities(bytes) {
+  const clean = blankComments(headText(bytes));
+  const data = /\bDATA\s*;/i.exec(clean);
+  if (!data) return null;
+  const rest = clean.slice(data.index + data[0].length);
+  if (/#\d+\s*=\s*IFC[A-Z0-9_]*\s*\(/i.test(rest)) return true;
+  if (/#\d+\s*=/.test(rest) || /^\s*ENDSEC\s*;/i.test(rest)) return false;
+  return null;
+}

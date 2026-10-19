@@ -4,8 +4,8 @@
 // so the wasm heap is released and Cancel can simply kill it.
 import { IfcImporter } from "@thatopen/fragments";
 import { KNOWN_SCHEMAS, loadAllSchemas, loadSchema, loadSchemaFor } from "./ifcSchemas";
-import { overwriteAscii, schemaCaseFix } from "./stepHeader";
-import { classifyFailure } from "../reliability/importErrors";
+import { hasIfcEntities, overwriteAscii, schemaCaseFix } from "./stepHeader";
+import { KIND, classifyFailure } from "../reliability/importErrors";
 
 // Static imports above have loaded: the page tells a worker that never got
 // here (a file of Argus's own failed to load) from one that died later.
@@ -36,12 +36,13 @@ self.onmessage = async (event) => {
   const { file, bytes, wasm, webIfcSettings, doubleSidedMaterials, allSchemas } = event.data;
   // Where a failure happened decides what it means (see classifyFailure).
   let stage = "read";
+  let source = null;
   try {
     // A File is read here, in the worker, so the main thread never has to
     // allocate or copy the whole file. The bytes go back to the page at the
     // end (transferred, not copied): "Save as .ifcZIP" and the raw property
     // lookups need the original file.
-    const source = bytes ?? new Uint8Array(await file.arrayBuffer());
+    source = bytes ?? new Uint8Array(await file.arrayBuffer());
     // web-ifc's per-schema class tables are separate chunks (see ifcSchemas.js);
     // the one this file uses must be in before it is opened.
     stage = "schema";
@@ -75,6 +76,14 @@ self.onmessage = async (event) => {
     }
     self.postMessage({ type: "done", fragments, source }, [fragments.buffer, source.buffer]);
   } catch (err) {
-    self.postMessage({ type: "error", kind: classifyFailure(err, stage), stage, message: String(err?.message ?? err) });
+    let kind = classifyFailure(err, stage);
+    let message = String(err?.message ?? err);
+    // The importer tripped over content that is not IFC data at all (its DATA
+    // section holds no IFC entities): that is the file, not Argus.
+    if (kind === KIND.UNKNOWN && stage === "parse" && source && hasIfcEntities(source) === false) {
+      kind = KIND.INVALID_FILE;
+      message = `its DATA section contains no IFC entities (${message})`;
+    }
+    self.postMessage({ type: "error", kind, stage, message });
   }
 };

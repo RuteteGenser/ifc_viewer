@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blankComments, fileSchemaOf, hasStepHeader, isZip, overwriteAscii, schemaCaseFix } from "../../src/ifc/stepHeader.js";
+import { blankComments, fileSchemaOf, hasIfcEntities, hasStepHeader, isZip, overwriteAscii, schemaCaseFix } from "../../src/ifc/stepHeader.js";
 import { checkDownload, hasIfcOrZipMagic } from "../../src/reliability/integrity.js";
 
 const enc = (s) => new Uint8Array(Buffer.from(s, "latin1"));
@@ -86,4 +86,14 @@ test("the download check works without crypto.subtle (an insecure origin): size 
   } finally {
     Object.defineProperty(globalThis, "crypto", saved);
   }
+});
+
+test("a DATA section without IFC entities is told apart from one Argus failed on", () => {
+  assert.equal(hasIfcEntities(enc(header())), true);
+  assert.equal(hasIfcEntities(enc("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=GARBAGE(((;\nENDSEC;\n")), false);
+  assert.equal(hasIfcEntities(enc("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\n")), false);
+  // a commented-out entity does not count
+  assert.equal(hasIfcEntities(enc("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n/* #1=IFCWALL( */ #2=FOO();\nENDSEC;")), false);
+  // cannot tell: no DATA in what was read
+  assert.equal(hasIfcEntities(enc("ISO-10303-21;\nHEADER;\n/*" + "x".repeat(70000) + "*/ENDSEC;\nDATA;\n#1=IFCPROJECT(")), null);
 });

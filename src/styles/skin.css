@@ -774,3 +774,75 @@ input[type="range"] {
 .acc-account-btn--header {
   border-radius: var(--radius-pill);
 }
+
+.empty-state__title {
+  text-wrap: balance;
+}
+
+.empty-state__text {
+  text-wrap: pretty;
+}
+
+/* Small phones: the title and icon step down so the Samples list starts sooner. */
+@media (max-width: 360px) {
+  .empty-state__title {
+    font-size: 22px;
+  }
+  .empty-state__icon {
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+    border-radius: 14px;
+  }
+  .acc-welcome__title {
+    font-size: 26px;
+  }
+}
+
+.shortcuts-help__row dd {
+  font-weight: var(--weight-semibold);
+  border-radius: var(--radius-sm);
+  background: var(--paper-ivory);
+  border-color: var(--line-control);
+  box-shadow: 0 1px 0 var(--line-control);
+}
+
+/* Windows high contrast: state needs real borders (repeats App.css, which this file would override). */
+@media (forced-colors: active) {
+  .top-bar__icon-button--active,
+  .top-bar__home-button,
+  .lib-chip--on,
+  .element-panel__tab--active,
+  [aria-pressed="true"] {
+    border: 2px solid Highlight;
+  }
+  .toast,
+  .acc-toast {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ---------- Sidebar (wide layouts) ---------- */
+
+.model-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.lib__account {
+  justify-content: space-between;
+}
+
+.sidebar__hint {
+  color: var(--ink-faint);
+}
+
+@media (pointer: fine) {
+  .acc-account-btn,
+  .lib__account .acc-btn {
+    min-height: 36px;
+    padding: 0 14px;
+  }
+}

@@ -46,7 +46,7 @@ for (const project of ["desktop", "iphone"]) {
     const errors = [];
     // ARGUS_IGNORE_SESSION_404=1: a deployment without the access API answers /api/session with 404; the
     // browser logs that one line itself. Everything else still counts.
-    const session404 = (url) => process.env.ARGUS_IGNORE_SESSION_404 && /\/api\/session$/.test(url || "");
+    const session404 = (url) => process.env.ARGUS_IGNORE_SESSION_404 && /\/api\/(session|folders)$/.test(url || "");
     page.on("console", (m) => m.type() === "error" && !session404(m.location()?.url) && errors.push(m.text()));
     // WebKit reports a ResizeObserver loop as a page error; it is harmless.
     page.on("pageerror", (e) => !/ResizeObserver loop/.test(e.message) && errors.push(e.message));

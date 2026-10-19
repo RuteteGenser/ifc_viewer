@@ -6,6 +6,7 @@ import { deleteAccount, getAccount, logout, openPortal, resendVerify } from "./a
 import { downloadAccountData, downloadAllModels } from "./download";
 import { formatBytes as mb, formatDay as fmtDate, mapError, subscriptionLine } from "./state";
 import { t } from "./copy";
+import { LegalLinks } from "../legal/LegalPage";
 
 
 export function quotaText(session) {
@@ -101,6 +102,7 @@ export default function AccountPage() {
         {access.registered && <button type="button" className="acc-btn" disabled={!!busy} onClick={doLogout}>{t("action.logout")}</button>}
         <button type="button" className="acc-btn acc-btn--danger" onClick={() => setDeleting(true)}>{t("account.delete")}</button>
       </div>
+      <LegalLinks docs={["terms", "privacy", "purchase-info", "withdrawal-form", "cookies", "dpa"]} />
       {deleting && (
         <Dialog title={t("account.deleteTitle")} onClose={() => setDeleting(false)}>
           <p>{t("account.deleteConfirm")}</p>

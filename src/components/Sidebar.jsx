@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
+import { LegalLinks } from "../legal/LegalPage";
 import ModelInfo from "./ModelInfo";
 import ModelName from "./ModelName";
 import { disciplineOf, splitModelName } from "../ifc/modelLabel";
@@ -245,6 +246,8 @@ export default function Sidebar({
       <button type="button" className="sidebar__help-button" onClick={onOpenHelp}>
         Help: how to move around
       </button>
+
+      <LegalLinks docs={["terms", "privacy", "cookies"]} className="sidebar__legal" />
     </aside>
   );
 }

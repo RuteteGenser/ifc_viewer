@@ -17,6 +17,7 @@ import useLeaveGuard from "./hooks/useLeaveGuard";
 import Header from "./components/Header";
 import { AccessProvider, useAccess } from "./access/AccessProvider";
 import AccessUI from "./access/AccessUI";
+import LegalRoute from "./legal/LegalPage";
 import Toolbar from "./components/Toolbar";
 import ViewTools from "./components/ViewTools";
 import Compass from "./components/Compass";
@@ -581,6 +582,7 @@ function App() {
         }}
       />
       <AccessUI hasWork={models.length > 0} />
+      <LegalRoute />
 
       <div
         className={`app-body${sidebarCollapsed ? " app-body--no-sidebar" : ""}${panelCollapsed ? " app-body--no-panel" : ""}`}

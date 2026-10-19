@@ -10,6 +10,7 @@ import { FolderBar, FolderRow, MovePicker, dragModel, useFrozen } from "./Folder
 import { childrenOf, pathLabel, scopeModels } from "./folders";
 import { useAccess } from "../access/AccessProvider";
 import { AccountButton } from "../access/AccessUI";
+import { LegalLinks } from "../legal/LegalPage";
 import { quotaText } from "../access/AccountPage";
 import { t } from "../access/copy";
 import { useListSwap } from "../usePresence";
@@ -356,6 +357,7 @@ export default function LibrarySection({ variant }) {
             <div className="lib__account">
               <span className="lib__quota" data-testid="lib-quota">{quotaText(access.session)}</span>
               <AccountButton />
+              <LegalLinks docs={["terms", "privacy"]} />
             </div>
           )}
           {isSidebar && own.length > SIDEBAR_ROWS && (

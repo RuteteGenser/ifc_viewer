@@ -53,6 +53,45 @@ await suite("navigation", [
     },
   },
   {
+    name: "zoom limit cue fires once per contact: 80 wheel ticks = 1 toast, away and back = 2 (state hook)",
+    projects: ["desktop", "iphone13"],
+    timeout: 180000,
+    fn: async ({ page, skip }) => {
+      await openApp(page);
+      await loadSample(page);
+      await requireHook(page, skip);
+      await watchToasts(page);
+      const b = await canvasBox(page);
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      for (const [dir, name] of [[-1, "Closest zoom"], [1, "Furthest zoom"]]) {
+        await zoomToLimit(page, { touch: false, direction: dir, toast: name, extraMs: 0 });
+        for (let i = 0; i < 80; i++) {
+          await page.mouse.wheel(0, dir * 300);
+          await page.waitForTimeout(20);
+        }
+        await page.waitForTimeout(3000); // past the old 2.5 s timer: still the same contact
+        await page.mouse.wheel(0, dir * 300);
+        await page.waitForTimeout(100);
+        assert.equal(await toastsNamed(page, name), 1, `${name} toast count after a continuous push`);
+        for (let i = 0; i < 25; i++) {
+          await page.mouse.wheel(0, -dir * 300);
+          await page.waitForTimeout(40);
+        }
+        await page.waitForTimeout(600);
+        await zoomToLimit(page, { touch: false, direction: dir, toast: name, extraMs: 0 }).catch(() => {});
+        const t0 = Date.now();
+        while ((await toastsNamed(page, name)) < 2 && Date.now() - t0 < 60000) {
+          await page.mouse.wheel(0, dir * 300);
+          await page.waitForTimeout(30);
+        }
+        assert.equal(await toastsNamed(page, name), 2, `${name} toast fires again after moving away and back`);
+        // reset for the other limit
+        await page.getByRole("button", { name: /^Home/ }).click();
+        await page.waitForTimeout(1500);
+      }
+    },
+  },
+  {
     name: "zoom keeps the camera inside its limits (state hook)",
     projects: ["desktop", "iphone13"],
     timeout: 120000,

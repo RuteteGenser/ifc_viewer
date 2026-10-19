@@ -16,6 +16,7 @@ import {
   openRawIfcModel,
 } from "../ifc/rawIfcQuery";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
+import { cueStep } from "../ifc/zoomCue";
 import { importIfcInWorker, releaseImporterMemory } from "../ifc/ifcImportClient";
 import { KIND, ImportError, classifyFailure, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
 import { isStaleBuild, refreshFailedAssets, registerOpenWork, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
@@ -196,7 +197,6 @@ const ZOOM = {
   easeMs: 90, // time constant of the glide toward the zoom goal
   softNotches: 2, // the last 2 notches before a limit ease out ...
   softFloor: 0.35, // ... down to this fraction of a full step (never zero, so the limit is reached in finite time)
-  cueRepeatMs: 2500, // a limit cue shows once per contact; pushing again after this long without input counts as a new contact
 };
 
 function getSceneBox(entries) {
@@ -2299,21 +2299,24 @@ export function useIfcViewer() {
     const zoomRay = new THREE.Raycaster();
     const touchPointers = new Set();
     let zoomLimitKind = null;
-    let zoomLimitAt = 0;
-    // Shows "Closest zoom" / "Furthest zoom" once per contact with a limit;
-    // `null` (the camera moved away from the limit) re-arms it.
+    // Shows "Closest zoom" / "Furthest zoom" once per contact with a limit; it
+    // re-arms only once the camera has left the soft zone (see cueStep), never by time.
+    const stepCue = (reached) => {
+      const m = zoomMetrics();
+      if (!m) return;
+      // The camera glides toward the zoom goal: it only counts as "away" when the goal is away too.
+      const g = zoom.active && zoom.point;
+      const dist =
+        zoomLimitKind === "max"
+          ? Math.max(camera.position.distanceTo(m.center), zoom.active ? zoom.goal.distanceTo(m.center) : 0)
+          : Math.min(camera.position.distanceTo(controls.target), g ? zoomTmp.copy(zoom.point).sub(zoom.goal).dot(zoom.dir) : Infinity);
+      const r = cueStep(zoomLimitKind, reached, dist, m, ZOOM.softNotches * m.step);
+      zoomLimitKind = r.latched;
+      if (r.fire) showToastRef.current(reached === "min" ? "Closest zoom" : "Furthest zoom", 1400);
+    };
     const noteZoomLimit = (kind) => {
       setZoomLimit(kind || null);
-      if (!kind) {
-        zoomLimitKind = null;
-        return;
-      }
-      const now = performance.now();
-      if (kind !== zoomLimitKind || now - zoomLimitAt > ZOOM.cueRepeatMs) {
-        showToastRef.current(kind === "min" ? "Closest zoom" : "Furthest zoom", 1400);
-      }
-      zoomLimitKind = kind;
-      zoomLimitAt = now;
+      stepCue(kind || null);
     };
     // The one place the limits are derived (see ZOOM): L is the distance at
     // which the whole scene just fits the view at the current field of view.
@@ -2414,6 +2417,7 @@ export function useIfcViewer() {
       // lookAt is a no-op and only the distance changes.
       camera.getWorldDirection(zoomTmp);
       controls.target.copy(camera.position).addScaledVector(zoomTmp, dist);
+      if (zoomLimitKind) stepCue(null);
       requestRender();
     };
     const cancelZoom = () => {

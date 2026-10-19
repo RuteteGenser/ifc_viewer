@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import usePresence from "../usePresence";
 import { createPortal } from "react-dom";
 import ModelName from "./ModelName";
 import { disciplineOf } from "../ifc/modelLabel";
@@ -38,7 +39,7 @@ export function ModelsChip({ count, open, onClick, className = "" }) {
         <path d="M12 3 20 7.5v9L12 21 4 16.5v-9L12 3Z" />
         <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
       </svg>
-      <span>{countText(count)}</span>
+      <span key={count}>{countText(count)}</span>
     </button>
   );
 }
@@ -86,9 +87,11 @@ function SheetRow({ model, onToggleVisible, onSetColor, onRemove }) {
 
 // Every loaded model with a labelled Remove button. A bottom sheet on a phone,
 // a popover under the header on a wide screen.
-export default function ModelsSheet({ models, isLoading, onClose, onToggleVisible, onSetColor, onRemove, onRemoveAll, onAdd }) {
+function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetColor, onRemove, onRemoveAll, onAdd }) {
   const ref = useRef(null);
+  const closed = state === "closed";
   useEffect(() => {
+    if (closed) return undefined;
     const previous = document.activeElement;
     ref.current?.querySelector("button")?.focus();
     const onKey = (e) => {
@@ -102,12 +105,12 @@ export default function ModelsSheet({ models, isLoading, onClose, onToggleVisibl
       window.removeEventListener("keydown", onKey);
       if (previous && previous.isConnected && typeof previous.focus === "function") previous.focus();
     };
-  }, [onClose]);
+  }, [onClose, closed]);
 
   return createPortal(
     <>
-      <button type="button" className="models-sheet-backdrop" aria-label="Close models" tabIndex={-1} onClick={onClose} />
-      <div className="models-sheet" role="dialog" aria-label="Models" ref={ref}>
+      <button type="button" className="models-sheet-backdrop" data-state={state} aria-label="Close models" tabIndex={-1} onClick={onClose} />
+      <div className="models-sheet" data-state={state} role="dialog" aria-label="Models" ref={ref}>
         <div className="models-sheet__head">
           <h2 className="models-sheet__title">Models <span className="models-sheet__count">{countText(models.length)}</span></h2>
           <button type="button" className="models-sheet__close" onClick={onClose}>
@@ -134,4 +137,13 @@ export default function ModelsSheet({ models, isLoading, onClose, onToggleVisibl
     </>,
     document.body,
   );
+}
+
+// Stays mounted for the exit animation; `open` false plays it, then unmounts.
+export default function ModelsSheet({ open = true, ...props }) {
+  const { mounted, state } = usePresence(open, 160);
+  const last = useRef(props);
+  if (open) last.current = props;
+  if (!mounted) return null;
+  return <SheetBody state={state} {...(open ? props : last.current)} />;
 }

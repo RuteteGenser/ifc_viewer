@@ -23,6 +23,7 @@ import Compass from "./components/Compass";
 import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
 import ModelsSheet from "./components/ModelsSheet";
+import usePresence from "./usePresence";
 import ToolHint from "./components/ToolHint";
 import Hud from "./components/Hud";
 import { GestureSheet } from "./components/ShortcutsHelp";
@@ -169,6 +170,7 @@ function App() {
   const [dropShift, setDropShift] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const backdrop = usePresence(sidebarOpen, 160);
   const [multiNotice, setMultiNotice] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // On narrow screens the model list is a drawer over the view: while it is
@@ -532,10 +534,11 @@ function App() {
       >
         <div className="sheet-inset-probe" ref={insetProbeRef} aria-hidden="true" />
         <div className="panel-inset-probe" ref={insetProbeRightRef} aria-hidden="true" />
-        {sidebarOpen && (
+        {backdrop.mounted && (
           <button
             type="button"
             className="sidebar-backdrop"
+            data-state={backdrop.state}
             aria-label="Close menu"
             onClick={() => setSidebarOpen(false)}
           />
@@ -578,7 +581,7 @@ function App() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <Viewport containerRef={containerRef} />
+          <Viewport containerRef={containerRef} reveal={models.length > 0} />
           <DropOverlay visible={isDragging} hasModels={models.length > 0} shift={dropShift} />
           {models.length === 0 && !isLoading && <EmptyState onOpenFiles={openFilePicker} onLoadSample={handleLoadSample} />}
           <LoadingOverlay visible={isLoading && !confirmReplace} label={loadingLabel} onCancel={cancelLoad} />
@@ -752,8 +755,9 @@ function App() {
           />
         )}
 
-        {modelsOpen && models.length > 0 && (
+        {models.length > 0 && (
           <ModelsSheet
+            open={modelsOpen}
             models={models}
             isLoading={isLoading}
             onClose={() => setModelsOpen(false)}

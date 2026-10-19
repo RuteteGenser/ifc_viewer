@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import './motion.css' // after App so its rules win over component CSS
 import fragmentsWorkerUrl from '@thatopen/fragments/worker?url'
 import { startEngineDownloads } from './ifc/engineDownloads'
 import { prewarmIfcImporter } from './ifc/ifcImportClient'

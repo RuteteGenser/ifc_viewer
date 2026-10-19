@@ -25,6 +25,7 @@ import { HEAD_BYTES, hasStepHeader, isZip } from "../ifc/stepHeader";
 import { LoadQueue, buildLimitMs, fileKind, ifcEntries, mayRetryStall, queuedText } from "../reliability/loadPlan";
 import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
+import { createViewerAdapter } from "../cases/viewerAdapter";
 import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
 import { stackUp } from "../ifc/labelStack";
 
@@ -6003,7 +6004,21 @@ export function useIfcViewer() {
     renderForAWhile,
   });
 
+  // Cases (src/cases/viewerAdapter.js): capture/restore the view and the picture. Reads the latest refs lazily.
+  const casesDepsRef = useRef(null);
+  casesDepsRef.current = {
+    cameraRef, controlsRef, modelsGroupRef, modelsRef, rendererRef, sceneRef, requestRenderRef, clipPlaneManagerRef, setClipPlanes,
+    hiddenCategoriesRef, isolatedKeysRef, setIsolatedKeys, applyIsolation, setCategoryHidden, cancelCameraAnim, cameraAnimRef, autoFramedRef, applyPose,
+    clearSelection, pipelineRef, invalidateGroupSphereRef, setFlat: viewFeatures.setFlat,
+    models: () => models,
+    spacesShown: () => spaces.shown,
+    levelSel: () => viewFeatures.levels.find((l) => l.id === viewFeatures.levelSel?.id) || null,
+  };
+  const casesAdapterRef = useRef(null);
+  casesAdapterRef.current ||= createViewerAdapter(() => casesDepsRef.current);
+
   return {
+    cases: casesAdapterRef.current,
     viewFeatures,
     spaceControl,
     browser,

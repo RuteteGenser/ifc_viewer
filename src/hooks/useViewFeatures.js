@@ -436,6 +436,7 @@ export function useViewFeatures(ctx) {
     hasModels: models.length > 0,
     isolating: isolatedKeys.size > 0,
     flat,
+    setFlat,
     setFlatProjection,
     goToView,
     levels,

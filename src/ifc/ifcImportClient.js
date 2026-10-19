@@ -110,7 +110,7 @@ export function importIfcInWorker(input, options) {
       worker.terminate();
       prewarmIfcImporter();
       if (msg.type === "done") resolve({ fragments: msg.fragments, source: msg.source });
-      else reject(new ImportError(msg.kind ?? KIND.UNKNOWN, msg.message, { stage: msg.stage }));
+      else reject(new ImportError(msg.kind ?? KIND.UNKNOWN, msg.message, { stage: msg.stage, diag: msg.diag }));
     };
     worker.onerror = (event) => {
       const message = event.message || (worker.alive ? "The import worker crashed." : "The import worker could not start.");

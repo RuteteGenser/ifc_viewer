@@ -3,7 +3,7 @@
 // big file loads. One import per worker; the client terminates it afterwards
 // so the wasm heap is released and Cancel can simply kill it.
 import { IfcImporter } from "@thatopen/fragments";
-import { KNOWN_SCHEMAS, loadAllSchemas, loadSchema, loadSchemaFor } from "./ifcSchemas";
+import { KNOWN_SCHEMAS, ensureSchemaFor, loadSchema, registeredSchemas, schemaIdOf } from "./ifcSchemas";
 import { hasIfcEntities, overwriteAscii, schemaCaseFix } from "./stepHeader";
 import { KIND, classifyFailure } from "../reliability/importErrors";
 
@@ -43,10 +43,11 @@ self.onmessage = async (event) => {
     // end (transferred, not copied): "Save as .ifcZIP" and the raw property
     // lookups need the original file.
     source = bytes ?? new Uint8Array(await file.arrayBuffer());
-    // web-ifc's per-schema class tables are separate chunks (see ifcSchemas.js);
-    // the one this file uses must be in before it is opened.
+    // The schema tables this file uses must be in web-ifc before it is opened.
+    // This worker's build has all of them inside (see vite.config.js); the
+    // check makes sure, and loads them again if not (see ifcSchemas.js).
     stage = "schema";
-    await (allSchemas ? loadAllSchemas() : loadSchemaFor(source));
+    await ensureSchemaFor(source, { all: allSchemas });
     stage = "parse";
     // A known schema written in lower case ('ifc4') is read by web-ifc but
     // rejected by the fragments converter: upper-case the name for the
@@ -84,6 +85,13 @@ self.onmessage = async (event) => {
       kind = KIND.INVALID_FILE;
       message = `its DATA section contains no IFC entities (${message})`;
     }
-    self.postMessage({ type: "error", kind, stage, message });
+    // For the error report: which schema the file names and which tables web-ifc had.
+    let diag = "worker";
+    try {
+      diag = `worker; file schema ${source ? schemaIdOf(source) : "?"}; tables [${registeredSchemas()}]${allSchemas ? "; all schemas" : ""}`;
+    } catch {
+      // keep the short form
+    }
+    self.postMessage({ type: "error", kind, stage, message, diag });
   }
 };

@@ -168,7 +168,31 @@ function sharedNames(main, regions) {
   return { perSchema, exported, missing: [...missing].sort() }
 }
 
-export function slimWebIfc() {
+// Trims web-ifc's multithreaded glue and write-only tables but leaves every
+// schema's tables where they are (no split, nothing lazy).
+function trimWebIfc(code, fileName) {
+  const fail = (what) => {
+    throw new Error(`slim-web-ifc: ${what} not found in ${fileName}; web-ifc changed, update scripts/vite-trim-plugins.mjs`)
+  }
+  if (!MT_GLUE.test(code)) fail('multithreaded glue')
+  let writeTables = 0
+  const main = code
+    .replace(MT_GLUE, 'var require_web_ifc_mt = () => {\n  throw new Error("multithreaded web-ifc is not bundled");\n};\n')
+    .replace(WRITE_TABLES, () => {
+      writeTables++
+      return ''
+    })
+  if (writeTables !== 6) fail(`6 write tables (found ${writeTables})`)
+  return main
+}
+
+// split: false keeps every schema inside web-ifc (the virtual schema modules
+// are then empty). The import worker is built that way: WebKit (Safari, every
+// iOS browser) evaluates a module worker's entry script a SECOND time when a
+// chunk imports it, so a lazily loaded schema chunk filled the tables of a
+// second, unused copy of web-ifc and every model failed with "undefined is
+// not an object (evaluating 'Object.keys(LD[this.modelSchemaList[e]])')".
+export function slimWebIfc({ split = true } = {}) {
   let command = 'build'
   let root = process.cwd()
   return {
@@ -184,7 +208,7 @@ export function slimWebIfc() {
     async load(id) {
       if (!id.startsWith(`\0${SCHEMA_VIRTUAL}`)) return null
       // The dev server serves web-ifc untouched, with every schema inside.
-      if (command !== 'build') return 'export {}\n'
+      if (command !== 'build' || !split) return 'export {}\n'
       const resolved = await this.resolve('web-ifc', `${root}/index.html`, { skipSelf: true })
       if (!resolved) this.error('slim-web-ifc: cannot resolve web-ifc')
       const file = resolved.id.split('?')[0]
@@ -205,10 +229,43 @@ export function slimWebIfc() {
     },
     transform(code, id) {
       if (command !== 'build' || !WEB_IFC_FILE.test(id)) return null
+      if (!split) return { code: trimWebIfc(code, id), map: null }
       let { main, regions } = splitWebIfc(code, id)
       const { missing } = sharedNames(main, regions)
       if (missing.length) main += `\nexport { ${missing.join(', ')} };\n`
       return { code: main, map: null }
+    },
+  }
+}
+
+// A module worker's chunks must never import the worker's entry file: WebKit
+// does not reuse the running entry for that import but evaluates the file
+// again, so the chunk talks to a second copy of every module in it (see
+// slimWebIfc). Fails the worker build if any chunk does, statically or by
+// import(). A one-file build lists itself among its own dynamic imports (the
+// inlined ones); that only counts when its code really names its own file.
+// Exported for the regression test.
+export function entryImportsIn(bundle) {
+  const chunks = Object.values(bundle).filter((f) => f.type === 'chunk')
+  const entries = new Set(chunks.filter((c) => c.isEntry).map((c) => c.fileName))
+  const found = []
+  for (const c of chunks) {
+    for (const target of new Set([...(c.imports ?? []), ...(c.dynamicImports ?? [])])) {
+      if (!entries.has(target)) continue
+      if (target === c.fileName && !String(c.code ?? '').includes(target.split('/').pop())) continue
+      found.push(`${c.fileName} -> ${target}`)
+    }
+  }
+  return found
+}
+
+export function noWorkerEntryImports() {
+  return {
+    name: 'no-worker-entry-imports',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const found = entryImportsIn(bundle)
+      if (found.length) this.error(`a worker chunk imports the worker entry, which WebKit evaluates twice: ${found.join(', ')}`)
     },
   }
 }

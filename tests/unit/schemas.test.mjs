@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SchemaNames } from "web-ifc";
-import { schemaIdOf } from "../../src/ifc/ifcSchemas.js";
+import { registeredSchemas, schemaIdOf, schemaTablesReady } from "../../src/ifc/ifcSchemas.js";
 import { fixtureBytes } from "./helpers/fixtures.mjs";
 
 const head = (schema) => new TextEncoder().encode(`ISO-10303-21;\nHEADER;\nFILE_SCHEMA((${schema}));\nENDSEC;\nDATA;\n`);
@@ -55,4 +55,10 @@ test("a header beyond the first 64 KB is not read", () => {
   all.set(pad);
   all.set(tail, pad.length);
   assert.equal(schemaIdOf(all), null);
+});
+
+test("the tables check reads web-ifc's own lookup table (unsplit here, so every schema is in)", () => {
+  assert.deepEqual(registeredSchemas(), [1, 2, 3]);
+  assert.equal(schemaTablesReady(2), true);
+  assert.equal(schemaTablesReady(7), false);
 });

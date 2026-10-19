@@ -17,11 +17,13 @@ export const KIND = Object.freeze({
 });
 
 export class ImportError extends Error {
-  constructor(kind, message, { stage, cause } = {}) {
+  constructor(kind, message, { stage, cause, diag } = {}) {
     super(message);
     this.name = "ImportError";
     this.kind = kind;
     this.stage = stage;
+    // Where the import ran and which schema tables it had (see ifcImportWorker.js).
+    if (diag) this.diag = diag;
     if (cause) this.cause = cause;
   }
 }
@@ -123,6 +125,7 @@ export function failureDetails(error, { name, buildId, userAgent } = {}) {
     error.stage ? `stage: ${error.stage}` : null,
     `file: ${name ?? "?"}`,
     `message: ${oneLine(error.message, 400)}`,
+    error.diag ? `import: ${oneLine(error.diag, 200)}` : null,
     `build: ${buildId ?? "unknown"}`,
     `agent: ${userAgent ?? "unknown"}`,
   ]

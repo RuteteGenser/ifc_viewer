@@ -43,10 +43,11 @@ export function isEligibleCategoryName(category) {
 // a failure after that is reported to the caller, never by reloading the page.
 export async function openRawIfcModel(sourceBytes) {
   WEBIFC = await importRetrying(() => import("web-ifc"));
-  // Production builds keep web-ifc's per-schema tables in separate chunks
-  // (see ifcSchemas.js); this thread loads the one this file needs.
-  const { loadSchemaFor } = await importRetrying(() => import("./ifcSchemas"));
-  await loadSchemaFor(sourceBytes);
+  // The page's production build keeps web-ifc's per-schema tables in separate
+  // chunks (see ifcSchemas.js); this loads the one this file needs and checks
+  // it really reached web-ifc before the file is opened.
+  const { ensureSchemaFor } = await importRetrying(() => import("./ifcSchemas"));
+  await ensureSchemaFor(sourceBytes);
   const api = new WEBIFC.IfcAPI();
   api.SetWasmPath(`${import.meta.env.BASE_URL}wasm/`, true);
   await api.Init();

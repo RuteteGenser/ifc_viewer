@@ -101,8 +101,11 @@ async function until(page, ok, ms = 60000) {
 }
 const settled = (v) => v.models.length > 0 || v.banner;
 // Opens the app, optionally installs a page-side patch before it boots, then starts the action.
-async function scenario(name, { patch, action }, run) {
+// before: faults in place before the page loads (the import worker is started
+// ahead of the first file, so a fault on its file must be there from the start).
+async function scenario(name, { patch, action, before = [] }, run) {
   faults = [];
+  for (const f of before) fault(...f);
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
   if (patch) await ctx.addInitScript(patch);
   const page = await ctx.newPage();
@@ -159,13 +162,13 @@ const patchOom = () => {
 };
 
 // ---- transient: the model must open with no button ----
-await scenario("schema chunk 404 once", {}, async (page) => {
-  fault(/web-ifc-schema/, 404);
+// The import worker is one file with every schema inside (see vite.config.js),
+// so the file of Argus's own an import needs is the worker itself.
+await scenario("import worker file 404 once", { before: [[/ifcImportWorker-/, 404]] }, async (page) => {
   await pickLocal(page);
   await loadedWithoutHelp(page);
 });
-await scenario("schema chunk 404 twice (needs a fresh worker)", {}, async (page) => {
-  fault(/iw-_virtual_web-ifc-schema/, 404, 2);
+await scenario("import worker file 404 twice (needs a fresh worker)", { before: [[/ifcImportWorker-/, 404, 2]] }, async (page) => {
   await pickLocal(page);
   await loadedWithoutHelp(page);
 });
@@ -237,8 +240,7 @@ await scenario("worker silently dead, no Web Locks: the progress watchdog restar
 });
 
 // ---- permanent: accurate message, buttons only now ----
-await scenario("schema chunk permanently missing: accurate message, then Retry/Reload and Details", {}, async (page) => {
-  fault(/iw-_virtual_web-ifc-schema/, 404, 99);
+await scenario("import worker file permanently missing: accurate message, then Retry/Reload and Details", { before: [[/ifcImportWorker-/, 404, 99]] }, async (page) => {
   await pickLocal(page);
   const v = await until(page, (x) => x.banner, 60000);
   accurate(v);

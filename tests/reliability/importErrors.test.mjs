@@ -118,3 +118,9 @@ test("details carry kind, message, build and agent", () => {
   const t = failureDetails(new ImportError(KIND.APP_ASSET_FAILED, "404", { stage: "schema" }), { name: "a.ifc", buildId: "abc", userAgent: "UA" });
   for (const part of ["kind: APP_ASSET_FAILED", "stage: schema", "file: a.ifc", "message: 404", "build: abc", "agent: UA"]) assert.ok(t.includes(part), part);
 });
+
+test("Details name where the import ran and which schema tables it had", () => {
+  const t = failureDetails(new ImportError(KIND.UNKNOWN, "boom", { stage: "parse", diag: "worker; file schema 2; tables []" }), { name: "a.ifc" });
+  assert.ok(t.includes("import: worker; file schema 2; tables []"));
+  assert.ok(!failureDetails(new ImportError(KIND.UNKNOWN, "boom"), {}).includes("import:"));
+});

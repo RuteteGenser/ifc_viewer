@@ -279,8 +279,20 @@ await scenario("F6 the replace question: Cancel keeps the old model and removes 
 });
 
 // ---- F7: Retry opens only what failed ----
-await scenario("F7 one of two files fails for good: Retry reopens only that one, no Replace question", {}, async (page) => {
-  fault(/iw-_virtual_web-ifc-schema-1/, 404, 999); // the IFC2X3 tables never arrive
+// The import of one named file fails as if a file of Argus's own never arrived.
+const patchFailOldSchema = () => {
+  const W = window.Worker;
+  window.Worker = class extends W {
+    postMessage(m, t) {
+      if (m?.file?.name === "old-schema.ifc") {
+        setTimeout(() => this.dispatchEvent(new MessageEvent("message", { data: { type: "error", kind: "APP_ASSET_FAILED", stage: "schema", message: "Failed to fetch dynamically imported module" } })), 50);
+        return;
+      }
+      super.postMessage(m, t);
+    }
+  };
+};
+await scenario("F7 one of two files fails for good: Retry reopens only that one, no Replace question", { patch: patchFailOldSchema }, async (page) => {
   await pick(page, F.a, F.x2);
   let v = await until(page, (x) => idle(x) && x.banner, 90000);
   assert.deepEqual(v.models, ["alpha"]);

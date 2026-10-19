@@ -1,11 +1,12 @@
-import { SchemaNames } from "web-ifc";
+import { FromRawLineData, SchemaNames } from "web-ifc";
 import { fileSchemaOf } from "./stepHeader";
 import { importRetrying } from "../reliability/retry";
 
-// web-ifc keeps a class and lookup tables for each IFC schema; production
-// builds split them into one chunk per schema (see slimWebIfc in
+// web-ifc keeps a class and lookup tables for each IFC schema; the page's
+// production build splits them into one chunk per schema (see slimWebIfc in
 // scripts/vite-trim-plugins.mjs) and a file's schema must be loaded before the
-// file is opened. In the dev server nothing is split and these imports are empty.
+// file is opened. The import worker's build and the dev server split nothing,
+// and there these imports are empty.
 const chunks = {
   1: () => import("virtual:web-ifc-schema-1"), // IFC2X3
   2: () => import("virtual:web-ifc-schema-2"), // IFC4
@@ -52,4 +53,35 @@ export async function loadSchemaFor(bytes) {
   const id = schemaIdOf(bytes);
   if (id && chunks[id]) await loadSchema(id);
   else await loadAllSchemas();
+}
+
+const ALL_IDS = Object.keys(chunks).map(Number);
+
+// True when web-ifc's own lookup table for schema `id` is filled in: this
+// reads the very binding web-ifc's IfcAPI reads (`Object.keys(LD[schema])`),
+// so it is true exactly when opening a file of that schema can work.
+export const schemaTablesReady = (id) => FromRawLineData[id] != null && typeof FromRawLineData[id] === "object";
+
+// The schema ids whose tables are in, e.g. [2].
+export const registeredSchemas = () => ALL_IDS.filter(schemaTablesReady);
+
+// Loads the tables opening `bytes` needs (all of them with `all`, or when the
+// header names no known schema) and checks they really arrived where web-ifc
+// reads them. If not, loads every schema again from scratch and checks once
+// more; still missing throws, with what was and was not registered, instead
+// of letting web-ifc fail later with "undefined is not an object".
+// Returns { schema, registered } for error reports.
+export async function ensureSchemaFor(bytes, { all = false } = {}) {
+  const schema = schemaIdOf(bytes);
+  const known = !!(schema && chunks[schema]);
+  await (all || !known ? loadAllSchemas() : loadSchema(schema));
+  const needed = known ? [schema] : ALL_IDS;
+  if (!needed.every(schemaTablesReady)) {
+    requested.clear();
+    await loadAllSchemas();
+    if (!needed.every(schemaTablesReady)) {
+      throw new Error(`web-ifc schema tables missing after loading: needed [${needed}], registered [${registeredSchemas()}]`);
+    }
+  }
+  return { schema, registered: registeredSchemas() };
 }

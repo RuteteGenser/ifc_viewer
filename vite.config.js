@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
-import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, emptyWebIfcForFragments, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
+import { cutFragmentsWorkerFallback, dropUnminifiedFragmentsWorker, emptyWebIfcForFragments, noWorkerEntryImports, slimWebIfc } from './scripts/vite-trim-plugins.mjs'
 import { buildIdMeta, precompress, serviceWorkerManifest } from './scripts/vite-perf-plugins.mjs'
 
 // https://vite.dev/config/
@@ -23,15 +23,20 @@ export default defineConfig(({ command }) => ({
     ],
   },
   plugins: [dropUnminifiedFragmentsWorker(), emptyWebIfcForFragments(), slimWebIfc(), react(), buildIdMeta(), serviceWorkerManifest(), precompress()],
-  // The IFC import worker is a separate bundle: it needs the same web-ifc
-  // trimming (one slim parser, lazy per-schema chunks) as the page.
+  // The IFC import worker is a separate bundle, and ONE file: every schema's
+  // tables are inside it (no lazy schema chunks, no import() at all). WebKit
+  // (Safari and every iOS browser) evaluates a module worker's entry file a
+  // second time when one of its chunks imports it, so the lazily loaded
+  // schema tables went into a second copy of web-ifc and no model could open
+  // on an iPhone. All three schemas cost about 160 kB of gzip more than one;
+  // the page keeps its lazy per-schema chunks (they import the web-ifc chunk,
+  // not an entry). noWorkerEntryImports fails the build if the pattern returns.
   worker: {
     format: 'es',
-    plugins: () => [slimWebIfc(), cutFragmentsWorkerFallback()],
+    plugins: () => [slimWebIfc({ split: false }), cutFragmentsWorkerFallback(), noWorkerEntryImports()],
     rollupOptions: {
       output: {
-        // Own prefix so the import worker's copy of the per-schema chunks
-        // (the page keeps another, for raw property lookups) is told apart.
+        codeSplitting: false,
         chunkFileNames: 'assets/iw-[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
       },

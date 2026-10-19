@@ -149,7 +149,6 @@ function App() {
     canRedo,
     hideSelectedElement,
     setViewInsets,
-    focusSelection,
     clipMoveMode,
     setClipMoveMode,
     toast,
@@ -272,15 +271,6 @@ function App() {
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, [panelOpen, panelExpanded, hasNoModels, setViewInsets, panelCollapsed, panelWidth]);
-
-  // Bring a newly selected element into the middle of the visible area once
-  // the sheet has taken its size (after the inset effect above has run).
-  const selectedGuid = selectedElement?.guid ?? null;
-  useEffect(() => {
-    if (!selectedGuid) return undefined;
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => focusSelection()));
-    return () => cancelAnimationFrame(id);
-  }, [selectedGuid, focusSelection]);
 
   const handleClosePanel = useCallback(() => {
     clearSelection();

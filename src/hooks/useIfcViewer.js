@@ -408,6 +408,7 @@ export function useIfcViewer() {
   const showToastRef = useRef(() => {});
   const clipMoveModeRef = useRef(false);
   const refitModelRef = useRef(() => {});
+  const selectionTouchedRef = useRef(false); // an element has been selected: the info sheet never moves the camera after that
   const fitByFocusRef = useRef(false); // the last focus re-fitted the whole model; re-fit again when the sheet size changes
   const selectionAnchorRef = useRef(null); // selected point in modelsGroup-local coordinates
   const viewInsetRightRef = useRef(0);
@@ -3173,6 +3174,7 @@ export function useIfcViewer() {
         }
         clearHighlight();
         modelsGroup.updateMatrixWorld(true);
+        selectionTouchedRef.current = true;
         selectionAnchorRef.current = modelsGroup.worldToLocal(hit.point.clone());
         showHighlightFill(hit).catch((err) => console.error("Highlight fill failed", err));
         selectedHitRef.current = { modelId: hit.fragments.modelId, localId: hit.localId };
@@ -4690,6 +4692,7 @@ export function useIfcViewer() {
       const controls = controlsRef.current;
       if (!camera || !controls) return;
       cancelCameraAnim();
+      applyViewInsetRef.current();
       if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
         applyPose(camera, controls, pose);
         requestRenderRef.current();
@@ -4729,79 +4732,16 @@ export function useIfcViewer() {
       dir.normalize();
       const pose = computeFit(camera, box, getVisibleFrac(), dir);
       if (animate) easeToPose(pose);
-      else applyPose(camera, controls, pose);
+      else {
+        applyViewInsetRef.current();
+        applyPose(camera, controls, pose);
+      }
       requestRenderRef.current();
     },
     [easeToPose, getVisibleFrac],
   );
 
   refitModelRef.current = refitModel;
-
-  // Pans (no zoom) so the selected point sits in the middle of the visible
-  // area, then nudges the whole model back inside that area if it fits.
-  const focusSelection = useCallback(() => {
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    const group = modelsGroupRef.current;
-    const anchor = selectionAnchorRef.current;
-    if (!camera || !controls || !group || !anchor) return;
-    // A docked side panel on a mouse layout never covers the view unexpectedly,
-    // so only sheets and touch drawers re-centre.
-    if (viewInsetBottomRef.current <= 0 && !(TOUCH_UI && viewInsetRightRef.current > 0)) return;
-    group.updateMatrixWorld(true);
-    camera.updateMatrixWorld(true);
-    const pose = withoutViewOffset(camera, () => {
-    const frac = getVisibleFrac();
-    const world = anchor.clone().applyMatrix4(group.matrixWorld);
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-    const fwd = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).negate();
-    const depthOf = (pt) => Math.max(pt.clone().sub(camera.position).dot(fwd), 0.01);
-    const p = world.clone().project(camera);
-    // Offset needed, in NDC; pan the camera by the same world amount.
-    let dx = p.x;
-    let dy = p.y;
-    const box = getSceneBox(modelsRef.current.values());
-    if (box) {
-      const corners = boxCorners(box);
-      const b = ndcBounds(camera, corners);
-      const fits = (b.maxX - b.minX) <= 2 * frac.x * 0.98 && (b.maxY - b.minY) <= 2 * frac.y * 0.98;
-      // Whole model currently framed (not zoomed into a detail) but too big
-      // for the space the sheet left: ease it back to fit instead of
-      // leaving parts of it hidden behind the sheet.
-      const framedWhole = (b.maxX - b.minX) <= 2.05 && (b.maxY - b.minY) <= 2.05;
-      if (!fits && framedWhole) {
-        const dir = camera.position.clone().sub(controls.target).normalize();
-        fitByFocusRef.current = true;
-        return computeFitRaw(camera, box, frac, dir, FIT_MARGIN);
-      }
-      if (fits) {
-        // After the pan, keep the model's bounds inside the visible rectangle.
-        const lim = 0.98;
-        const clampD = (d, lo, hi, flo, fhi) => {
-          // moving content by -d: bounds become lo-d..hi-d
-          const maxD = lo + fhi * lim; // d must be <= lo + lim*f (keep lo-d >= -lim*f)
-          const minD = hi - fhi * lim; // d must be >= hi - lim*f
-          return Math.min(Math.max(d, minD), maxD);
-        };
-        dx = clampD(dx, b.minX, b.maxX, 0, frac.x);
-        dy = clampD(dy, b.minY, b.maxY, 0, frac.y);
-      }
-    }
-    const depth = depthOf(world);
-    const delta = new THREE.Vector3()
-      .addScaledVector(right, dx * tanHalf * camera.aspect * depth)
-      .addScaledVector(up, dy * tanHalf * depth);
-    if (delta.length() < 1e-4) return null;
-    const pose = {
-      position: camera.position.clone().add(delta),
-      target: controls.target.clone().add(delta),
-    };
-    return pose;
-    });
-    if (pose) easeToPose(pose);
-  }, [easeToPose, getVisibleFrac]);
 
   // Eases the camera so `box` (world space) fills the visible area, keeping
   // the current viewing direction.
@@ -5839,6 +5779,7 @@ export function useIfcViewer() {
     const controls = controlsRef.current;
     if (!camera || !controls) return;
     cancelCameraAnim();
+    applyViewInsetRef.current();
     autoFramedRef.current = true;
     const startQuat = modelsGroup ? modelsGroup.quaternion.clone() : null;
     const startPos = modelsGroup ? modelsGroup.position.clone() : null;
@@ -5922,6 +5863,9 @@ export function useIfcViewer() {
     ({ bottom = 0, right = 0 }) => {
       viewInsetBottomRef.current = Math.max(0, bottom || 0);
       viewInsetRightRef.current = Math.max(0, right || 0);
+      // Once something has been selected the sheet opening and closing must not move the camera at all:
+      // the insets are only remembered, and the next explicit camera move (Home, zoom to, views) applies them.
+      if (selectionTouchedRef.current) return;
       applyViewInset();
       if (autoFramedRef.current || fitByFocusRef.current || wholeModelInView()) refitModel(true);
     },
@@ -5998,7 +5942,6 @@ export function useIfcViewer() {
     selectedHitRef,
     clearSelection,
     selectElementFromRef,
-    zoomToHit,
     pushUndo,
     renderForAWhile,
   });
@@ -6078,7 +6021,6 @@ export function useIfcViewer() {
     canRedo: historyCounts.redo > 0,
     hideSelectedElement,
     setViewInsets,
-    focusSelection,
     clipMoveMode,
     setClipMoveMode,
     toast,

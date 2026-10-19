@@ -198,7 +198,8 @@
   cursor: not-allowed;
 }
 
-.top-bar__icon-button--active {
+.top-bar__icon-button--active,
+.top-bar__icon-button--active:hover:not(:disabled) {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
@@ -1433,7 +1434,7 @@
   border-radius: 50%;
   background: var(--bg);
   border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1447,12 +1448,12 @@
   align-items: center;
   gap: 4px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 2px 6px;
   font-size: 11px;
   color: var(--text-muted);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .compass__offset input {
@@ -1809,7 +1810,7 @@
 
   .compass__offset input {
     font-size: 16px;
-    width: 52px;
+    width: 40px;
     padding: 6px 0;
   }
 
@@ -2615,8 +2616,8 @@
     z-index: 15;
   }
   .history-buttons__button {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2624,13 +2625,13 @@
     color: var(--text);
     border: 1px solid var(--border-strong);
     border-radius: 50%;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
     padding: 0;
     cursor: pointer;
   }
   .history-buttons__button svg {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
   }
   .history-buttons__button:disabled {
     opacity: 0.35;
@@ -3025,8 +3026,8 @@
     z-index: 15;
   }
   .history-buttons__button {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3034,13 +3035,13 @@
     color: var(--text);
     border: 1px solid var(--border-strong);
     border-radius: 50%;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
     padding: 0;
     cursor: pointer;
   }
   .history-buttons__button svg {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
   }
   .history-buttons__button:disabled {
     opacity: 0.35;
@@ -3657,6 +3658,8 @@
 .model-row:not(:has(.model-row__meta)) .model-row__actions {
   grid-row: 2;
   grid-column: 2 / 4;
+  justify-content: flex-start;
+  gap: 8px;
 }
 /* The checkbox lines up with the name, not with the middle of the two lines. */
 .model-row:not(:has(.model-row__meta)) .model-row__label input {

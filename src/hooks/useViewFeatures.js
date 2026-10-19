@@ -25,6 +25,14 @@ function isTyping() {
  * Everything here reads the viewer through the refs/helpers handed in by
  * useIfcViewer, so the big hook only gains one call.
  */
+// Above this many meshes a first section cut is slow enough (shader relink) to need a "Cutting..." cue.
+const HEAVY_MESH_COUNT = 100;
+const countMeshes = (models) => {
+  let n = 0;
+  for (const entry of models.values()) entry.object?.traverse((o) => { if (o.isMesh) n++; });
+  return n;
+};
+
 export function useViewFeatures(ctx) {
   const { models, isLoading, isolatedKeys, isolateKeys, showToast } = ctx;
   const ctxRef = useRef(ctx);
@@ -181,6 +189,7 @@ export function useViewFeatures(ctx) {
   // The plane a Plan/Side/Front button made. Choosing another preset moves it
   // instead of stacking a second plane, and choosing the same one again takes it away.
   const presetRef = useRef({ id: null, kind: null });
+  const cutPendingRef = useRef(false);
 
   const addSection = useCallback(
     (kind) => {
@@ -220,8 +229,26 @@ export function useViewFeatures(ctx) {
         }
         setClipPlanes(manager.list());
       };
-      apply();
-      pushUndo({ undo: revert, redo: apply });
+      const run = () => {
+        apply();
+        pushUndo({ undo: revert, redo: apply });
+      };
+      // The first clipped frame relinks a shader for every material, which on a model
+      // with many meshes freezes the page for a second or more. Say so first, and start
+      // the work after that has been painted (next frame, then a task).
+      if (!sameKind && countMeshes(ctxRef.current.modelsRef.current) >= HEAVY_MESH_COUNT) {
+        if (cutPendingRef.current) return;
+        cutPendingRef.current = true;
+        ctxRef.current.showToast("Cutting...", 4000);
+        requestAnimationFrame(() =>
+          setTimeout(() => {
+            cutPendingRef.current = false;
+            run();
+          }, 0),
+        );
+        return;
+      }
+      run();
     },
     [],
   );

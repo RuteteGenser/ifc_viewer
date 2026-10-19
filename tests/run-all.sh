@@ -41,7 +41,12 @@ run_e2e_file() { # file url label
   grep -E "^(PASS|FAIL|KNOWN-FAIL|SKIP)" "$LOG/e2e-$name$label.log" | cut -c1-200
   grep -E "^    " "$LOG/e2e-$name$label.log" | grep -B0 -A0 "known bug" | head -5
   local last; last="$(grep -E "^(PASS|FAIL) $name:" "$LOG/e2e-$name$label.log" | tail -1)"
-  [ -z "$last" ] && last="FAIL $name: crashed (see $LOG/e2e-$name$label.log)" && e=1
+  # Scripts with their own runner (stale-build, auto-recovery, load-queue,
+  # sw-navigation) end with exit code 0 and no summary line: that is a pass.
+  if [ -z "$last" ]; then
+    if [ $e -eq 0 ]; then last="PASS $name: exit 0 (own runner, see $LOG/e2e-$name$label.log)"
+    else last="FAIL $name: crashed (see $LOG/e2e-$name$label.log)"; fi
+  fi
   note "$last $label"; [ $e -ne 0 ] && rc=1
 }
 

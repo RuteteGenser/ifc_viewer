@@ -5,7 +5,7 @@ import { suite, openApp, setFile, loadFile, waitForBanner, fx, DEMO_FILE, canvas
 const cases = [
   ["empty file", "empty.ifc", /"empty\.ifc" is empty\./, false],
   ["text file named .ifc", "not-ifc.ifc", /not a valid IFC file \(no ISO-10303-21 header\)/, false],
-  ["plain .txt", "not-ifc.txt", /"not-ifc\.txt" is not an \.ifc or \.ifcZIP file/, false],
+  ["plain .txt", "not-ifc.txt", /"not-ifc\.txt" is not an \.ifc, \.ifcZIP or \.zip file/, false],
   ["truncated IFC", "truncated.ifc", /Could not read "truncated\.ifc"|no 3D geometry/, true],
   ["IFC without geometry", "no-geometry-ifc4.ifc", /"no-geometry-ifc4\.ifc" has no 3D geometry to show\./, true],
 ];

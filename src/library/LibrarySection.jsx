@@ -93,6 +93,13 @@ function ModelItem({ item, showPath }) {
   const [expanded, setExpanded] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Esc folds the actions away and a finished rename both leave focus on the row's More button, not on the page start.
+  const moreRef = useRef(null);
+  const wasRenaming = useRef(false);
+  useEffect(() => {
+    if (wasRenaming.current && !renaming) moreRef.current?.focus();
+    wasRenaming.current = renaming;
+  }, [renaming]);
   const loaded = library.loadedNames.has(item.name);
   const busy = !!library.download;
   const sample = item.owner === "samples";
@@ -134,6 +141,7 @@ function ModelItem({ item, showPath }) {
         </button>
         <button
           type="button"
+          ref={moreRef}
           className="lib-icon-btn"
           aria-label={`More actions for ${item.name}`}
           aria-expanded={expanded}
@@ -143,7 +151,15 @@ function ModelItem({ item, showPath }) {
         </button>
       </div>
       {expanded && (
-        <div className="lib-row__actions">
+        <div
+          className="lib-row__actions"
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.nativeEvent.stopPropagation();
+            setExpanded(false);
+            moreRef.current?.focus();
+          }}
+        >
           {!loaded && (
             <button
               type="button"

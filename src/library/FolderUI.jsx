@@ -183,6 +183,12 @@ export function FolderRow({ folder }) {
   const frozen = useFrozen();
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState(""); // "" | rename | move | delete
+  const moreRef = useRef(null);
+  const wasRenaming = useRef(false);
+  useEffect(() => {
+    if (wasRenaming.current && mode !== "rename") moreRef.current?.focus();
+    wasRenaming.current = mode === "rename";
+  }, [mode]);
   const [over, setOver] = useState(false);
   const [dropError, setDropError] = useState("");
   const close = () => setMode("");
@@ -220,13 +226,21 @@ export function FolderRow({ folder }) {
           <span className="lib-row__meta">{countText(folder.modelCount ?? 0)}</span>
         </button>
         <span className="lib-folder__chev" aria-hidden="true">›</span>
-        <button type="button" className="lib-icon-btn" aria-label={`More actions for folder ${folder.name}`} aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+        <button type="button" ref={moreRef} className="lib-icon-btn" aria-label={`More actions for folder ${folder.name}`} aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           <MoreIcon />
         </button>
       </div>
       {dropError && <p className="lib-rename__error" role="alert">{dropError}</p>}
       {expanded && (
-        <div className="lib-row__actions">
+        <div
+          className="lib-row__actions"
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.nativeEvent.stopPropagation();
+            setExpanded(false);
+            moreRef.current?.focus();
+          }}
+        >
           <button type="button" className="lib-btn" disabled={frozen} title={frozen ? READ_ONLY : undefined} onClick={() => { setMode("rename"); setExpanded(false); }}>Rename</button>
           <button type="button" className="lib-btn" disabled={frozen} title={frozen ? READ_ONLY : undefined} onClick={() => setMode("move")}>Move to...</button>
           <button type="button" className="lib-btn lib-btn--danger" disabled={frozen} title={frozen ? READ_ONLY : undefined} onClick={() => setMode("delete")}>Delete</button>

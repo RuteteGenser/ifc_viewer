@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useExitGhost } from "../usePresence";
+import { nextIndex } from "../a11y";
 
 export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, onHideElement, onZoomTo, onIsolate, onCopyGuid, onClose }) {
   const menuRef = useRef(null);
@@ -19,6 +20,21 @@ export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, on
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
+
+  // Keyboard: focus enters the menu once it is placed, Up/Down/Home/End move, Esc closes and focus goes back.
+  useEffect(() => {
+    const previous = document.activeElement;
+    return () => {
+      if (previous && previous.isConnected && previous !== document.body && document.activeElement?.closest?.(".context-menu")) previous.focus?.({ preventScroll: true });
+    };
+  }, []);
+  const onMenuKeys = (e) => {
+    const items = [...menuRef.current.querySelectorAll('[role="menuitem"]')];
+    const next = nextIndex(e.key, items.indexOf(document.activeElement), items.length, false);
+    if (next < 0) return;
+    e.preventDefault();
+    items[next].focus();
+  };
 
   // Placed from the menu's measured size so it always lands fully inside
   // the window. A mouse menu opens at the pointer, flipping left/up at the
@@ -50,10 +66,15 @@ export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, on
     }
     setPosition({ left, top });
   }, [x, y, touch]);
+  // Focus goes in once the menu is visible (a hidden element cannot take focus).
+  const placed = position !== null;
+  useEffect(() => {
+    if (placed) menuRef.current?.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+  }, [placed]);
   const style = position ?? { left: 0, top: 0, visibility: "hidden" };
 
   return (
-    <ul ref={menuRef} className="context-menu" style={style} role="menu">
+    <ul ref={menuRef} className="context-menu" style={style} role="menu" aria-label="Element actions" onKeyDown={onMenuKeys}>
       <li>
         <button type="button" role="menuitem" onClick={onZoomTo}>
           Zoom to element <kbd>F</kbd>

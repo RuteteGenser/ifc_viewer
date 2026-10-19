@@ -8,7 +8,7 @@ export default function Toast({ toast }) {
   const shown = toast || last.current;
   if (!mounted || !shown) return null;
   return (
-    <div className="toast" role="status" aria-live="polite" key={shown.id} data-state={state}>
+    <div className="toast" role="status" key={shown.id} data-state={state}>
       {shown.text}
     </div>
   );

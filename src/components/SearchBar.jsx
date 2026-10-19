@@ -159,7 +159,9 @@ export default function SearchBar({
 
   const goTo = (r) => {
     browser?.selectElement(r.modelId, r.localId);
-    inputRef.current?.blur();
+    // A touch screen drops its keyboard; with a keyboard, focus stays in the field so the next search is one key away.
+    if (window.matchMedia?.("(pointer: coarse)").matches) inputRef.current?.blur();
+    else setOpen(false);
   };
 
   const move = (delta) => {
@@ -220,6 +222,7 @@ export default function SearchBar({
         autoComplete="off"
         onChange={(e) => {
           onQueryChange(e.target.value);
+          setOpen(true);
           setActive(0);
         }}
         onFocus={() => setOpen(true)}

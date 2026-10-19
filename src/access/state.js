@@ -41,17 +41,37 @@ export function currentState(session, nowMs) {
   return state;
 }
 
+// "first": a declined FIRST payment (never paid, nothing was granted); "renewal": a paid account whose renewal failed.
+export function paymentFailure(session) {
+  if (!session) return null;
+  const b = session.billing || {};
+  if (b.paymentFailureReason === "first_payment_failed") return "first";
+  if (b.paymentFailureReason === "renewal_failed") return "renewal";
+  if (b.lastPaymentFailed || session.entitlement?.flags?.paymentFailed) return "renewal";
+  return null;
+}
+
+// This device's network used up today's free trials: the viewer and samples stay open, no paywall.
+export const isTrialLimit = (session) => !!session && session.entitlement.state === "expired" && session.entitlement.reason === "trial_limit";
+
+// Where a grace period came from, for the wording: "code" for an access code, else "trial".
+export const graceSource = (session) => (/code/.test(session?.entitlement?.reason || "") || session?.entitlement?.planKey === "code_trial" ? "code" : "trial");
+
 export function bannerFor(session, nowMs) {
   if (!session) return null;
   const e = session.entitlement;
   const state = currentState(session, nowMs);
+  if (isTrialLimit(session)) return { kind: "trial_limit", tone: "warning", dismissible: false };
+  if (paymentFailure(session) === "first" && state !== "active" && state !== "expired" && state !== "blocked") {
+    return { kind: "first_payment_failed", tone: "warning", dismissible: false };
+  }
   const kind = state !== e.state ? state : session.ui.banner;
   if (kind === "trial" || state === "anonymous_trial") return { kind: "trial", tone: "quiet", target: e.endsAt, dismissible: true };
   if (kind === "code_trial" || state === "code_trial") {
     const urgent = Date.parse(e.endsAt) - nowMs < 3 * 86400000;
     return { kind: "code_trial", tone: urgent ? "urgent" : "quiet", target: e.endsAt, dismissible: true };
   }
-  if (kind === "grace" || state === "grace") return { kind: "grace", tone: "warning", target: e.graceEndsAt, dismissible: false };
+  if (kind === "grace" || state === "grace") return { kind: "grace", tone: "warning", target: e.graceEndsAt, dismissible: false, source: graceSource(session) };
   if (kind === "payment_failed") return { kind, tone: "warning", target: e.graceEndsAt || e.endsAt, dismissible: false };
   if (kind === "plan_ending") return { kind, tone: "quiet", target: e.endsAt, dismissible: true };
   if (kind === "demo_http") return { kind, tone: "info", dismissible: true };
@@ -60,15 +80,19 @@ export function bannerFor(session, nowMs) {
 
 export const paywallNow = (session, nowMs) => {
   if (!session) return false;
+  if (isTrialLimit(session) && session.ui.canUseSamples !== false) return false;
   const state = currentState(session, nowMs);
   return state === "expired" || state === "blocked" || session.ui.paywall === true;
 };
 
-export function mapError(status, code) {
+export function mapError(status, code, message = "") {
   if (status === 429) return "rate";
   if (code === "invalid_credentials") return "auth.error.credentials";
   if (code === "email_taken") return "auth.error.taken";
-  if (code === "weak_password") return "auth.error.weak";
+  if (code === "weak_password") return /common/i.test(message) ? "auth.error.common" : "auth.error.weak";
+  if (code === "invalid_name") return "folder.error.invalid";
+  if (code === "name_taken") return "folder.error.taken";
+  if (code === "quota_folders") return "folder.error.quota";
   if (code === "invalid_email") return "auth.error.email";
   if (code === "terms_required") return "auth.error.terms";
   if (code === "signups_closed") return "auth.error.closed";
@@ -82,3 +106,23 @@ export function mapError(status, code) {
   if (status === 0) return "error.network";
   return "error.generic";
 }
+
+// Sizes for people: MB under 1 GB, else GB with at most one decimal ("10 GB", "0.5 GB").
+export function formatBytes(n) {
+  const v = Number(n) || 0;
+  if (v >= 1073741824) return `${(Math.round((v / 1073741824) * 10) / 10).toString()} GB`;
+  return `${Math.round(v / 1048576)} MB`;
+}
+
+// The one extra "subscription" line the Account panel may add under the plan line, or null when it would repeat it.
+export function subscriptionLine(session, sub, state) {
+  const failure = paymentFailure(session);
+  if (failure === "first") return "pay.firstFailed";
+  const e = session.entitlement;
+  if (sub?.status === "canceled" && !(state === "active" && e.flags?.cancelAtPeriodEnd)) return "account.sub.canceled";
+  if (sub?.status === "past_due" && !(state === "active" && e.flags?.paymentFailed)) return "account.sub.past_due";
+  return null;
+}
+
+// "2026-11-02T..." -> "2 November" (the same words everywhere a date is shown).
+export const formatDay = (iso) => (iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");

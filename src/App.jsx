@@ -310,15 +310,17 @@ function App() {
     setPanelExpanded(false);
   }, [measurements.length]);
 
-  // Soft gate: while access is expired, opening a new model shows the paywall instead.
+  // Soft gate: while access is expired, files from this device (and the sample) still open;
+  // only opening a model from the server library shows the paywall instead.
   const loadFiles = useCallback(
-    (...args) => {
+    (files, options) => {
       const a = accessRef.current;
-      if (a?.expired) {
+      if (a?.expired && options?.fromLibrary) {
         a.setOverlayHidden(false);
         return undefined;
       }
-      return rawLoadFiles(...args);
+      const { fromLibrary, ...rest } = options || {};
+      return rawLoadFiles(files, rest);
     },
     [rawLoadFiles],
   );
@@ -362,7 +364,7 @@ function App() {
     }
   }, [loadFiles, setError, showToast]);
 
-  const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false), onRenamed: renameLoadedModel });
+  const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false), onRenamed: renameLoadedModel, canSave: () => !accessRef.current?.expired });
 
   const autoSampleRef = useRef(false);
   useEffect(() => {

@@ -84,7 +84,8 @@ export async function loadSample(page) {
   // "Sample building" row exists everywhere and opens the same file.
   const link = page.getByRole("button", { name: /try a sample building/i });
   const row = page.getByRole("button", { name: "Open Sample building" });
-  await waitForModelAfter(page, async () => ((await link.isVisible()) ? link.click() : row.click()));
+  // The link can vanish between the check and the click (the library list arrives and takes over on phones).
+  await waitForModelAfter(page, async () => ((await link.isVisible()) ? link.click({ timeout: 2500 }).catch(() => row.click()) : row.click()));
 }
 
 // Opens a local file through the file chooser input; resolves when the model shows.

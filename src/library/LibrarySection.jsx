@@ -206,6 +206,7 @@ function ModelItem({ item, showPath }) {
             title="Delete this model?"
             message={`"${item.name}" will be removed from my models on every device. Files on your devices are not affected.`}
             confirmLabel="Delete"
+            initialFocus="cancel"
             onCancel={() => setConfirming(false)}
             onConfirm={() => {
               setConfirming(false);

@@ -2,6 +2,7 @@
 // throws a LibraryError; `hidden` means "this deployment has no library".
 import { checkDownload, expectedSha } from "../reliability/integrity";
 import { withBackoff } from "../reliability/retry";
+import { t } from "../access/copy";
 
 const API = import.meta.env.VITE_LIBRARY_API || "/api";
 export const MAX_BYTES = 250 * 1024 * 1024;
@@ -34,8 +35,10 @@ function sentence(text) {
 
 // Tell the access layer (if the new backend is present) that a plan is needed.
 function upgrade(status, body) {
-  if (status !== 402 || typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("argus:upgrade", { detail: { code: body?.code, message: body?.error, entitlement: body?.entitlement } }));
+  // A full folder list is explained next to the folder, not with the plans sheet.
+  if (status !== 402 || body?.code === "quota_folders" || typeof window === "undefined") return false;
+  // true when the access layer took it (it cancels the event): then it explains, not this layer
+  return !window.dispatchEvent(new CustomEvent("argus:upgrade", { cancelable: true, detail: { code: body?.code, message: body?.error, entitlement: body?.entitlement } }));
 }
 const changed = () => typeof window !== "undefined" && window.dispatchEvent(new Event("argus:library-changed"));
 const WRITE = { "X-Argus-Client": "1" };
@@ -49,11 +52,14 @@ async function problem(res) {
   } catch {
     // not JSON
   }
-  upgrade(res.status, body);
+  const handled = upgrade(res.status, body);
+  const friendly = { invalid_name: "folder.error.invalid", name_taken: "folder.error.taken", quota_folders: "folder.error.quota" }[body?.code];
+  if (friendly) return Object.assign(new LibraryError(t(friendly), { status: res.status, body }), { retryAfter: 0 });
   const base = STATUS_TEXT[res.status] || "Something went wrong. Try again.";
   // The server's own text is clearest for a rejected file (wrong type, not IFC).
   const err = new LibraryError((res.status === 400 || res.status === 402) && detail ? sentence(detail) : base, { status: res.status, body });
   err.retryAfter = Number(res.headers.get("retry-after")) || 0;
+  err.handled = handled;
   return err;
 }
 

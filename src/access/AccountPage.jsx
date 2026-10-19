@@ -4,11 +4,9 @@ import CodeEntry from "./CodeEntry";
 import { useAccess } from "./AccessProvider";
 import { deleteAccount, getAccount, logout, openPortal, resendVerify } from "./api";
 import { downloadAccountData, downloadAllModels } from "./download";
-import { mapError } from "./state";
+import { formatBytes as mb, formatDay as fmtDate, mapError, subscriptionLine } from "./state";
 import { t } from "./copy";
 
-const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
-const mb = (n) => `${Math.round(n / 1048576)} MB`;
 
 export function quotaText(session) {
   const { limits = {} } = session.entitlement;
@@ -39,6 +37,8 @@ export default function AccountPage() {
   const [pw, setPw] = useState("");
   const [sub, setSub] = useState(null);
   useEffect(() => { if (access.registered) getAccount().then((r) => setSub(r?.subscription || null), () => {}); }, [access.registered, s.entitlement.state]);
+
+  const subKey = subscriptionLine(s, sub, access.state);
 
   const run = (name, fn) => async () => {
     setError("");
@@ -82,7 +82,7 @@ export default function AccountPage() {
       <section className="acc-box">
         <h3 className="acc-h3">{t("account.plan")}: {s.entitlement.planName}</h3>
         <p data-testid="acc-state">{stateLine(access)}</p>
-        {sub && <p className="acc-hint" data-testid="acc-sub">{sub.status === "canceled" ? t("account.sub.canceled") : t(`account.sub.${sub.status === "past_due" ? "past_due" : "active"}`)}</p>}
+        {subKey && <p className="acc-hint" data-testid="acc-sub">{t(subKey)}</p>}
         <p className="acc-hint">{quotaText(s)}</p>
         <div className="acc-row">
           {access.registered && s.entitlement.state === "active" && <button type="button" className="acc-btn" disabled={!!busy} onClick={portal}>{label("portal", t("action.manageBilling"))}</button>}

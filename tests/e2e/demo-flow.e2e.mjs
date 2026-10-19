@@ -24,7 +24,7 @@ for (let i = 0; i < 100; i++) { try { if ((await fetch(`http://127.0.0.1:${WEB_P
 const { suite, openApp, loadSample, OUT } = await import("./lib.mjs");
 const SHOTS = process.env.ARGUS_SHOTS || `${OUT}/demo`;
 mkdirSync(SHOTS, { recursive: true });
-const shot = (page, project, name) => page.screenshot({ path: `${SHOTS}/${name}-${project}.png` });
+const shot = async (page, project, name) => { await page.waitForTimeout(450); return page.screenshot({ path: `${SHOTS}/${name}-${project}.png` }); }
 const NOISE = [/Failed to load resource/, /api\//];
 let n = 0;
 const email = () => `demo${Date.now()}${n++}@example.com`;
@@ -111,14 +111,15 @@ await suite("demo-flow", [
       const acct = dlg(page, "Account");
       await acct.getByTestId("verified-badge").filter({ hasText: "Verified" }).waitFor();
       await acct.getByText("Your plan is active", { exact: false }).waitFor();
-      await acct.getByTestId("acc-sub").filter({ hasText: "active" }).waitFor();
+      await acct.getByTestId("acc-state").filter({ hasText: "Your plan is active" }).waitFor();
+      assert.equal(await acct.getByText(/Subscription:/).count(), 0, "one plan line, no repeated Subscription line");
       await shot(page, project, "6-active");
       await noOverflow(page);
       if (touch) assert.deepEqual(await smallTargets(page), []);
     },
   },
   {
-    name: "declined card: past_due, payment failed banner, pay again fixes it",
+    name: "declined first card: nothing granted, 'did not go through' copy (never 'last payment'), another card fixes it",
     allowErrors: NOISE, timeout: 120000,
     fn: async ({ page, project }) => {
       await signupApi(page, email());
@@ -130,17 +131,27 @@ await suite("demo-flow", [
       await dlg(page, "Payment failed").waitFor();
       await shot(page, project, "7-declined");
       await page.getByRole("button", { name: "Try again" }).click();
-      await dlg(page, "Your last payment failed").waitFor();
+      const sheet = dlg(page, "Payment did not go through");
+      await sheet.waitFor();
+      await sheet.getByText("Your payment did not go through. Try another card.").waitFor();
+      assert.equal(await page.getByText(/last payment/i).count(), 0, "a never-paid account is not told about a last payment");
+      await shot(page, project, "7-first-payment-failed");
       await page.keyboard.press("Escape");
-      await page.locator('[data-kind="payment_failed"]').waitFor();
+      const bar = page.locator('[data-kind="first_payment_failed"]');
+      await bar.waitFor();
+      assert.match(await bar.innerText(), /Your payment did not go through\. Try another card\./);
+      assert.equal(await page.locator('[data-kind="payment_failed"]').count(), 0);
+      const s = await page.evaluate(() => fetch("/api/session").then((r) => r.json()));
+      assert.equal(s.billing.paymentFailureReason, "first_payment_failed");
+      assert.notEqual(s.entitlement.state, "active", "a declined first payment grants nothing");
       await openAccount(page);
-      await dlg(page, "Account").getByText("payment failed", { exact: false }).first().waitFor();
+      await dlg(page, "Account").getByTestId("acc-sub").getByText("Your payment did not go through. Try another card.").waitFor();
       await shot(page, project, "8-past-due");
-      await dlg(page, "Account").getByRole("button", { name: "Pay again" }).click();
+      await dlg(page, "Account").getByRole("button", { name: "See plans" }).click();
       await subscribe(page);
       await page.getByRole("button", { name: "Pay", exact: true }).click();
       await page.getByText("You are all set.").waitFor();
-      assert.equal(await page.locator('[data-kind="payment_failed"]').count(), 0);
+      assert.equal(await page.locator('[data-kind="first_payment_failed"]').count(), 0);
     },
   },
   {
@@ -201,7 +212,7 @@ await suite("demo-flow", [
   },
   {
     name: "legacy mode (no /api/session) shows no demo or access UI",
-    allowErrors: [/api\/session/, /Failed to load resource/], timeout: 60000,
+    allowErrors: [/api\/(session|folders)/, /Failed to load resource/], timeout: 60000,
     fn: async ({ page }) => {
       await page.route("**/api/session", (r) => r.fulfill({ status: 404, body: "not found", contentType: "text/plain" }));
       await openApp(page);

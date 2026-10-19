@@ -8,15 +8,19 @@ export default function Dialog({ title, onClose, children, wide, sheet }) {
   const ref = useRef(null);
   const backdropRef = useRef(null);
   useExitGhost(backdropRef, "fade", ".acc-dialog");
+  // Latest handler without re-running the focus setup (a parent re-render must not pull focus back).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const closable = !!onClose;
   useEffect(() => {
     const previous = document.activeElement;
     const box = ref.current;
     const focusable = () => [...box.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !el.disabled);
     (box.querySelector("[data-autofocus]") || focusable()[0] || box).focus();
     const onKey = (e) => {
-      if (e.key === "Escape" && onClose && !document.querySelector(".confirm-dialog-backdrop")) {
+      if (e.key === "Escape" && closeRef.current && !document.querySelector(".confirm-dialog-backdrop")) {
         e.stopPropagation();
-        onClose();
+        closeRef.current();
       }
       if (e.key === "Tab") {
         const els = focusable();
@@ -32,7 +36,7 @@ export default function Dialog({ title, onClose, children, wide, sheet }) {
       box.removeEventListener("keydown", onKey);
       if (previous && previous.isConnected) previous.focus?.();
     };
-  }, [onClose]);
+  }, [closable]);
   return createPortal(
     <div className="acc-backdrop" ref={backdropRef} onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={`acc-dialog${wide ? " acc-dialog--wide" : ""}${sheet ? " acc-dialog--sheet" : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>

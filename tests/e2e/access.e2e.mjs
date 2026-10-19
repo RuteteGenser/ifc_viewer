@@ -5,14 +5,14 @@
 // The legacy cases fake the missing endpoint with a route and need no backend.
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { suite, openApp, loadSample, APP, DEMO_FILE, OUT } from "./lib.mjs";
+import { suite, openApp, loadSample, loadFile, APP, DEMO_FILE, OUT } from "./lib.mjs";
 
 const ADMIN = process.env.ARGUS_ADMIN || "http://127.0.0.1:4195";
 const SHOTS = process.env.ARGUS_SHOTS || `${OUT}/access`;
 mkdirSync(SHOTS, { recursive: true });
 const H = 3600000;
 const REAL = !!process.env.ARGUS_ADMIN && !!process.env.ARGUS_CLOCK;
-const IGNORE_404 = [/api\/session/, /Failed to load resource/];
+const IGNORE_404 = [/api\/(session|folders)/, /Failed to load resource/];
 // A wrong access code is answered with 404 on purpose.
 const WRONG_CODE = [/api\/redeem-code/, /Failed to load resource/];
 const WRONG_FORM = [/api\/(auth\/(signup|login)|billing\/checkout)/, /Failed to load resource/];
@@ -48,10 +48,11 @@ const viaMenu = async (page, name) => {
 };
 const noOverflow = async (page) => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "horizontal overflow");
 const smallTargets = async (page, scope) => {
+  await page.waitForTimeout(450); // dialogs scale in: measure once they have settled
   const bad = await page.evaluate((sel) => [...document.querySelectorAll(`${sel} button, ${sel} input:not([type=checkbox]), ${sel} a`)].filter((e) => e.offsetParent).map((e) => ({ t: (e.textContent || e.getAttribute("aria-label") || e.id).trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44), scope);
   assert.deepEqual(bad, [], `targets under 44px in ${scope}`);
 };
-const shot = (page, project, name) => page.screenshot({ path: `${SHOTS}/${name}-${project}.png` });
+const shot = async (page, project, name) => { await page.waitForTimeout(450); return page.screenshot({ path: `${SHOTS}/${name}-${project}.png` }); }
 const requireReal = (skip) => { if (!REAL) skip("set ARGUS_ADMIN and ARGUS_CLOCK (scratch backend) to run"); };
 const signup = async (page, email) => {
   await page.getByLabel("Email").fill(email);
@@ -159,6 +160,7 @@ await suite("access", [
       await openApp(page);
       await banner(page).waitFor();
       assert.match(await banner(page).innerText(), /Your trial has ended\. You can still open and download your models until/);
+      assert.equal(await page.getByRole("button", { name: "Keep my work" }).count(), 0, "no sign-up nudge in the grace banner");
       await shot(page, project, "grace-banner");
       await setEnds(page, 10 * 24 * H);
       await page.reload();
@@ -179,6 +181,119 @@ await suite("access", [
       await dlg.waitFor({ state: "detached", timeout: 8000 });
       await banner(page).waitFor();
       assert.match(await banner(page).innerText(), /Access code active/);
+    },
+  },
+  {
+    name: "first visit: the library waits for the session, so no 401 on /api/folders or /api/models",
+    projects: ["desktop"],
+    fn: async ({ page, skip }) => {
+      requireReal(skip);
+      await fresh(page);
+      const bad = [];
+      page.on("response", (r) => /\/api\/(folders|models)/.test(r.url()) && r.status() >= 400 && bad.push(`${r.status()} ${r.url()}`));
+      await openApp(page);
+      await page.locator(".lib--empty").waitFor();
+      await page.waitForTimeout(2200); // the old client retried after 1.5 s
+      assert.deepEqual(bad, []);
+    },
+  },
+  {
+    name: "desktop: the banner stays clickable with the Properties panel open (1440, 1180, 1024)",
+    projects: ["desktop"],
+    fn: async ({ page, skip, project }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      await loadSample(page);
+      for (const [w, h] of [[1440, 900], [1180, 820], [1024, 768]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(400);
+        const box = await page.locator("canvas").first().boundingBox();
+        await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.5);
+        await page.locator(".element-panel--open").waitFor();
+        await page.waitForTimeout(500);
+        const geo = await page.evaluate(() => ({ b: document.querySelector('[data-testid="acc-banner"]').getBoundingClientRect().bottom, p: document.querySelector(".element-panel").getBoundingClientRect().top }));
+        assert.ok(geo.p >= geo.b - 1, `${w}px: panel top ${geo.p} must be under the banner bottom ${geo.b}`);
+        for (const name of ["Keep my work", "Have an access code?"]) {
+          const hit = await banner(page).getByRole("button", { name }).evaluate((el) => { const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return el === top || el.contains(top); });
+          assert.ok(hit, `${w}px: "${name}" is covered`);
+        }
+        if (w === 1440) await shot(page, project, "banner-with-panel-1440");
+        await banner(page).getByRole("button", { name: "Keep my work" }).click();
+        await page.getByRole("dialog", { name: "Create account" }).waitFor();
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog", { name: "Create account" }).waitFor({ state: "detached" });
+      }
+    },
+  },
+  {
+    name: "expired: Delete my models (confirm focuses Cancel), download stays, local files still open, never a dead end",
+    allowErrors: [/api\/models/, /Failed to load resource/],
+    fn: async ({ page, project, skip, touch }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      const bytes = readFileSync(DEMO_FILE).toString("base64");
+      const up = await page.evaluate((b64) => fetch("/api/models?name=del-me.ifc", { method: "POST", headers: { "X-Argus-Client": "1" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) }).then((r) => r.status), bytes);
+      assert.ok(up === 200 || up === 201, `upload ${up}`);
+      await setEnds(page, 10 * 24 * H);
+      await page.reload();
+      const dlg = page.getByRole("dialog", { name: "Your free time has ended" });
+      await dlg.waitFor();
+      assert.ok(await dlg.getByRole("button", { name: "Download my models" }).count(), "download stays");
+      const mine = () => page.evaluate(() => fetch("/api/models").then((r) => r.json()).then((l) => l.filter((m) => m.owner === "me").length));
+      await dlg.getByRole("button", { name: "Delete my models" }).click();
+      const confirm = page.getByRole("dialog", { name: "Delete all your saved models?" });
+      await confirm.waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Cancel", "confirm focuses Cancel");
+      if (touch) await smallTargets(page, ".acc-dialog");
+      await shot(page, project, "expired-delete-confirm");
+      await confirm.getByRole("button", { name: "Cancel" }).click();
+      await confirm.waitFor({ state: "detached" });
+      assert.equal(await mine(), 1, "Cancel keeps the model");
+      await shot(page, project, "expired-paywall-delete");
+      await dlg.getByRole("button", { name: "Delete my models" }).click();
+      await confirm.getByRole("button", { name: "Delete my models" }).click();
+      await page.getByText("Your saved models are deleted.").waitFor();
+      assert.equal(await mine(), 0, "models deleted");
+      assert.equal(await dlg.getByRole("button", { name: "Delete my models" }).count(), 0, "nothing left to delete");
+      // never a dead end: set the paywall aside, open a file from this device, it stays visible
+      await dlg.getByRole("button", { name: "Open a file from this device" }).click();
+      await dlg.waitFor({ state: "detached" });
+      await loadFile(page, DEMO_FILE);
+      await page.waitForTimeout(500);
+      assert.equal(await page.locator(".acc-dialog").count(), 0, "a local file opens without the paywall");
+      assert.ok(await page.locator("canvas").count());
+    },
+  },
+  {
+    name: "trial_limit: own message, viewer and samples stay usable, no paywall",
+    projects: ["desktop"],
+    fn: async ({ page, skip, project }) => {
+      requireReal(skip);
+      await admin("PUT", "/settings/trial_new_devices_per_ip_per_day", { value: 0 });
+      try {
+        await fresh(page);
+        await openApp(page);
+        const s = await session(page);
+        assert.equal(s.entitlement.reason, "trial_limit");
+        assert.equal(s.ui.canUseSamples, true);
+        await banner(page).waitFor();
+        assert.equal(await banner(page).getAttribute("data-kind"), "trial_limit");
+        assert.match(await banner(page).innerText(), /Free trials from this network are used up today\. Enter an access code or log in\./);
+        assert.equal(await page.getByRole("dialog").count(), 0, "no paywall");
+        assert.equal(await page.getByText("Your free time has ended").count(), 0);
+        await loadSample(page);
+        await shot(page, project, "trial-limit");
+        await banner(page).getByRole("button", { name: "Have an access code?" }).click();
+        await page.getByRole("dialog").getByLabel("Access code").fill("123");
+        await page.getByRole("dialog").getByRole("button", { name: "Apply" }).click();
+        await page.waitForFunction(() => /Access code active/.test(document.querySelector('[data-testid="acc-banner"]')?.textContent || ""), null, { timeout: 8000 });
+      } finally {
+        await admin("PUT", "/settings/trial_new_devices_per_ip_per_day", { value: 20 });
+      }
     },
   },
   {
@@ -213,6 +328,9 @@ await suite("access", [
       await page.getByRole("button", { name: "Create account" }).last().click();
       await page.getByRole("alert").waitFor();
       assert.match(await page.getByRole("alert").innerText(), /longer password/);
+      await page.getByLabel("Password", { exact: true }).fill("qwertyuiop12");
+      await page.getByRole("button", { name: "Create account" }).last().click();
+      await page.getByRole("alert").filter({ hasText: "Choose a less common password." }).waitFor();
       const email = `t${Date.now()}${n}@example.com`;
       await signup(page, email);
       await page.getByRole("dialog", { name: "Create account" }).waitFor({ state: "detached", timeout: 8000 });

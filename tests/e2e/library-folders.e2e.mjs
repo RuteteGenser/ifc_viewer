@@ -68,6 +68,7 @@ await suite("library-folders", [
       await L.getByRole("button", { name: "Open folder Project A, 0 models" }).waitFor();
       await newFolder(L, "project a");
       await L.getByRole("alert").filter({ hasText: "already exists" }).waitFor();
+      assert.match(await L.getByRole("alert").first().innerText(), /^A folder with that name already exists here\.$/, "friendly name_taken text");
       await L.getByLabel("Name of the new folder").press("Escape");
       assert.equal(await L.getByLabel("Name of the new folder").count(), 0, "Escape cancels");
       assert.equal(await L.locator(".lib-folder").count(), 1);
@@ -130,11 +131,17 @@ await suite("library-folders", [
       await folderRow(L, "Plans").getByRole("button", { name: "Delete" }).click();
       const confirm = page.getByRole("dialog");
       await confirm.getByText(/Models inside move up one level/).waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Cancel", "folder delete confirm focuses Cancel");
       await confirm.getByRole("button", { name: "Delete folder" }).click();
       await folderRow(L, "Deep").waitFor();
       await L.getByRole("button", { name: /alpha\.ifc/ }).first().waitFor();
       assert.equal(await folderRow(L, "Plans").count(), 0);
       assert.equal((await models(page)).filter((m) => MINE.test(m.name.replace(/\.ifc$/, ""))).length, 6, "no model deleted");
+      // names are unique ignoring case, also for non-ASCII letters (backend 409 name_taken, friendly text)
+      await newFolder(L, "Ærlig");
+      await folderRow(L, "Ærlig").waitFor();
+      await newFolder(L, "ærlig");
+      await L.getByRole("alert").filter({ hasText: "already exists here" }).waitFor();
       await noOverflow(page);
     },
   },
@@ -169,6 +176,7 @@ await suite("library-folders", [
       const dlg = page.getByRole("dialog");
       assert.equal(await dlg.getByRole("button", { name: "B" }).isDisabled(), true, "not into its own child");
       assert.equal(await dlg.getByRole("button", { name: /^A/ }).isDisabled(), true, "not into itself");
+      await page.waitForTimeout(450); // the picker scales in: measure once it has settled
       const small = await page.evaluate(() => [...document.querySelectorAll(".lib--empty button, .fpick button")].filter((e) => e.offsetParent).map((e) => ({ t: (e.textContent || e.getAttribute("aria-label")).trim().slice(0, 24), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44));
       assert.deepEqual(small, [], "targets under 44px");
       if (phone) {

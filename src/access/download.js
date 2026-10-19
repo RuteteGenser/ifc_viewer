@@ -1,4 +1,5 @@
 import { exportAccount } from "./api";
+import { deleteModel, listModels } from "../library/api";
 
 function save(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -27,4 +28,11 @@ export async function downloadAllModels(onProgress) {
 export async function downloadAccountData() {
   const data = await exportAccount();
   save(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "argus-account-data.json");
+}
+
+// Deletes every saved model of the account (not folders, not files on the device). Returns how many.
+export async function deleteAllModels() {
+  const list = (await listModels()).filter((m) => m.owner === "me"); // samples are not the account's
+  for (const m of list) await deleteModel(m.id);
+  return list.length;
 }

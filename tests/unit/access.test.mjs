@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseSession, timeLeft, currentState, bannerFor, paywallNow, mapError } from "../../src/access/state.js";
+import { parseSession, timeLeft, currentState, bannerFor, paywallNow, mapError, paymentFailure, isTrialLimit, formatBytes, subscriptionLine } from "../../src/access/state.js";
 import { bootstrapRaw } from "../../src/access/api.js";
 import { t, setLocale } from "../../src/access/copy.js";
 import { renameModel, uploadModel, downloadModel, LibraryError } from "../../src/library/api.js";
@@ -119,4 +119,85 @@ test("demo flag is carried from the session; copy has the demo strings without d
   for (const k of ["banner.demo", "demo.checkBody", "pay.declinedBody", "verify.bad", "magic.bad", "demo.moved"]) {
     assert.ok(!/[–—]/.test(t(k)), k);
   }
+});
+
+// ---- QA3 frontend fixes
+test("trial_limit: own banner, no paywall while samples are usable, still a paywall without them", () => {
+  const limited = parseSession(raw("expired", { reason: "trial_limit", planKey: "none" }, { paywall: true, canUseSamples: true, banner: "expired" }));
+  assert.equal(isTrialLimit(limited), true);
+  assert.equal(paywallNow(limited, NOW), false);
+  assert.deepEqual((({ kind, tone, dismissible }) => ({ kind, tone, dismissible }))(bannerFor(limited, NOW)), { kind: "trial_limit", tone: "warning", dismissible: false });
+  setLocale("en");
+  assert.equal(t("banner.trial_limit"), "Free trials from this network are used up today. Enter an access code or log in.");
+  // an ordinary expired account still gets the paywall and no banner
+  const ended = parseSession(raw("expired", { reason: "trial_ended" }, { paywall: true, canUseSamples: true, banner: "expired" }));
+  assert.equal(isTrialLimit(ended), false);
+  assert.equal(paywallNow(ended, NOW), true);
+  assert.equal(bannerFor(ended, NOW), null);
+  assert.equal(paywallNow(parseSession(raw("expired", { reason: "trial_limit" }, { paywall: true, canUseSamples: false })), NOW), true);
+});
+
+test("payment failure: first vs renewal, with the exact copy", () => {
+  const first = parseSession({ ...raw("anonymous_trial"), billing: { lastPaymentFailed: true, paymentFailureReason: "first_payment_failed" } });
+  assert.equal(paymentFailure(first), "first");
+  assert.equal(bannerFor(first, NOW).kind, "first_payment_failed");
+  setLocale("en");
+  assert.equal(t("banner.first_payment_failed"), "Your payment did not go through. Try another card.");
+  assert.equal(t("pay.firstFailed"), "Your payment did not go through. Try another card.");
+  assert.ok(!/last payment/i.test(t("banner.first_payment_failed") + t("pay.firstFailed") + t("paywall.title.firstFailed")));
+  const renewal = parseSession({ ...raw("active", { flags: { paymentFailed: true } }, { banner: "payment_failed" }), billing: { lastPaymentFailed: true, paymentFailureReason: "renewal_failed" } });
+  assert.equal(paymentFailure(renewal), "renewal");
+  assert.equal(bannerFor(renewal, NOW).kind, "payment_failed");
+  assert.equal(t("banner.payment_failed", { date: "2 November" }), "We could not take your last payment. Update your card by 2 November to keep saving models.");
+  assert.equal(paymentFailure(parseSession(raw("anonymous_trial"))), null);
+});
+
+test("grace banner names an access code", () => {
+  const code = bannerFor(parseSession(raw("grace", { reason: "invite_code_ended" }, { banner: "grace" })), NOW);
+  assert.equal(code.source, "code");
+  assert.equal(bannerFor(parseSession(raw("grace", { reason: "anonymous_trial_ended" }, { banner: "grace" })), NOW).source, "trial");
+  assert.match(t("banner.grace.code", { date: "2 November" }), /^Your access code has ended\./);
+});
+
+test("mapError: friendly keys for the new backend codes", () => {
+  assert.equal(mapError(400, "weak_password", "Choose a less common password."), "auth.error.common");
+  assert.equal(mapError(400, "weak_password", "password must be at least 10 characters"), "auth.error.weak");
+  assert.equal(mapError(400, "invalid_name"), "folder.error.invalid");
+  assert.equal(mapError(409, "name_taken"), "folder.error.taken");
+  assert.equal(mapError(402, "quota_folders"), "folder.error.quota");
+  assert.equal(t("auth.error.common"), "Choose a less common password.");
+});
+
+test("formatBytes: MB under 1 GB, GB above", () => {
+  assert.equal(formatBytes(0), "0 MB");
+  assert.equal(formatBytes(2570803), "2 MB");
+  assert.equal(formatBytes(2048 * 1048576), "2 GB");
+  assert.equal(formatBytes(10240 * 1048576), "10 GB");
+  assert.equal(formatBytes(1.5 * 1073741824), "1.5 GB");
+});
+
+test("Account panel: one subscription line, never a repeat of the plan line", () => {
+  const active = parseSession(raw("active"));
+  assert.equal(subscriptionLine(active, { status: "active" }, "active"), null);
+  assert.equal(subscriptionLine(parseSession(raw("active", { flags: { paymentFailed: true } })), { status: "past_due" }, "active"), null);
+  assert.equal(subscriptionLine(parseSession(raw("active", { flags: { cancelAtPeriodEnd: true } })), { status: "canceled" }, "active"), null);
+  assert.equal(subscriptionLine(parseSession(raw("expired")), { status: "canceled" }, "expired"), "account.sub.canceled");
+  const first = parseSession({ ...raw("anonymous_trial"), billing: { paymentFailureReason: "first_payment_failed" } });
+  assert.equal(subscriptionLine(first, { status: "past_due" }, "anonymous_trial"), "pay.firstFailed");
+});
+
+test("library: friendly folder errors and the plans sheet takes over a 402 without a duplicate toast", async () => {
+  const { createFolder } = await import("../../src/library/api.js");
+  for (const [status, code, expected] of [[400, "invalid_name", /folder name does not work/], [409, "name_taken", /already exists here/], [402, "quota_folders", /folder limit/]]) {
+    globalThis.fetch = async () => res(status, { error: "raw server text", code });
+    await assert.rejects(createFolder("x"), (err) => expected.test(err.message) && !/raw server text/.test(err.message));
+  }
+  // a 402 for a model: the access layer cancels the event => err.handled
+  const seen = [];
+  globalThis.window = { dispatchEvent: (e) => { seen.push(e.type); e.preventDefault(); return !e.defaultPrevented; }, location: { origin: "x" } };
+  globalThis.fetch = async () => res(402, { error: "limit", code: "quota_models" });
+  try {
+    await assert.rejects(renameModel("a", "b.ifc"), (err) => err.handled === true);
+    assert.deepEqual(seen, ["argus:upgrade"]);
+  } finally { delete globalThis.window; }
 });

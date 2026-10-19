@@ -2,6 +2,8 @@
 // usage: node serve-access.mjs <dist-dir> <port> [upstream-port]
 // With an upstream port, /api/ is piped to it (cookies pass through both ways).
 // Without one, /api/ answers 404, like a deployment that predates the access system.
+// env HIDE_SESSION=1: /api/session answers 404 and everything else goes upstream (the old live API).
+// env SPREAD_IP=1: every request gets its own X-Real-IP so a long test run never hits the per-IP caps.
 import http from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -13,8 +15,10 @@ http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
   if (url.pathname.startsWith("/api/")) {
     if (!upPort) { res.writeHead(404, { "Content-Type": "text/plain" }); return res.end("not found"); }
+    if (process.env.HIDE_SESSION && url.pathname === "/api/session") { res.writeHead(404, { "Content-Type": "text/plain" }); return res.end("not found"); }
     const headers = { ...req.headers, host: `127.0.0.1:${port}` };
     delete headers["x-forwarded-proto"];
+    if (process.env.SPREAD_IP) headers["x-real-ip"] = `10.${(Math.random() * 250) | 0}.${(Math.random() * 250) | 0}.${(Math.random() * 250) | 0}`;
     // The backend's fake checkout pages send Referrer-Policy: no-referrer, so Chrome posts their
     // forms with "Origin: null" and the backend answers 403 csrf. This stands in for the fix there
     // (Referrer-Policy: same-origin on those two pages) so the frontend flow can be tested.

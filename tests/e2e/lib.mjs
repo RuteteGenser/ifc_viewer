@@ -234,12 +234,15 @@ export async function suite(title, cases) {
       const errors = [];
       const ctx = await browser.newContext({ ...PROJECTS[project], httpCredentials: { username: USER, password: PASS }, ...(c.context ?? {}) });
       const page = await ctx.newPage();
-      page.on("console", (m) => m.type() === "error" && errors.push(`console.error: ${m.text()}`));
+      // ARGUS_IGNORE_SESSION_404=1: a deployment without the access API answers /api/session with 404; the
+      // browser logs that one line itself. Everything else still counts.
+      const session404 = (url) => process.env.ARGUS_IGNORE_SESSION_404 && /\/api\/session$/.test(url || "");
+      page.on("console", (m) => m.type() === "error" && !session404(m.location()?.url) && errors.push(`console.error: ${m.text()}`));
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
       // ERR_ABORTED is a request the browser itself cancelled (a navigation left the page, an
       // image scrolled away): not an app error. Real failures have other error texts.
       page.on("requestfailed", (r) => r.failure()?.errorText !== "net::ERR_ABORTED" && errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`));
-      page.on("response", (r) => r.status() >= 400 && errors.push(`http ${r.status()}: ${r.url()}`));
+      page.on("response", (r) => r.status() >= 400 && !(r.status() === 404 && session404(r.url())) && errors.push(`http ${r.status()}: ${r.url()}`));
       let outcome = "PASS";
       let detail = "";
       let timer;

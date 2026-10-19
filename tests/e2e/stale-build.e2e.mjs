@@ -131,9 +131,10 @@ await scenario("stale tab opens a library model: reloads once and the model open
   await ready(page);
   root = siteB; // deploy
   await openLibraryItem(page);
-  const v = await until(page, (x) => x.models.includes(record.name) || x.banner);
+  const shown = record.name.replace(/\.ifc$/i, ""); // the model list shows names without the extension
+  const v = await until(page, (x) => x.models.includes(shown) || x.banner);
   noMisleading(v);
-  assert.deepEqual(v.models, [record.name], `banner: ${v.banner}`);
+  assert.deepEqual(v.models, [shown], `banner: ${v.banner}`);
   assert.equal(page.loads, 2, "one automatic reload");
 });
 

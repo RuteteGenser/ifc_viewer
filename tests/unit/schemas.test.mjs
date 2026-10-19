@@ -21,7 +21,12 @@ test("IFC2X3, IFC4 and IFC4X3 map to schema ids 1, 2 and 3", () => {
 
 test("case and spacing in the header do not matter", () => {
   assert.equal(schemaIdOf(head("'ifc4'")), 2);
-  assert.equal(schemaIdOf(new TextEncoder().encode("FILE_SCHEMA ( ( 'IFC2X3' ) );")), 1);
+  assert.equal(schemaIdOf(new TextEncoder().encode("ISO-10303-21;\nHEADER;FILE_SCHEMA ( ( 'IFC2X3' ) );ENDSEC;")), 1);
+});
+
+test("only the real header counts: FILE_SCHEMA in a comment or outside HEADER; ... ENDSEC; is ignored", () => {
+  assert.equal(schemaIdOf(new TextEncoder().encode("ISO-10303-21;\n/* FILE_SCHEMA(('IFC2X3')) */\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;")), 2);
+  assert.equal(schemaIdOf(new TextEncoder().encode("FILE_SCHEMA ( ( 'IFC2X3' ) );")), null);
 });
 
 test("only the first schema name counts", () => {

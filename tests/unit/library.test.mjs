@@ -75,21 +75,36 @@ test("deleteModel: ok resolves, failure throws", async () => {
   await assert.rejects(deleteModel("a"), (e) => e.status === 404);
 });
 
+// downloadModel checks what arrived before the importer sees it (size, an IFC
+// or ZIP header, sha256 when available), so the body must look like an IFC file.
+const IFC_BYTES = new TextEncoder().encode("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n");
 test("downloadModel streams, reports progress up to 1 and returns a File with the model's name", async () => {
-  mockFetch(() => new Response(new Uint8Array([1, 2, 3, 4, 5, 6]), { status: 200, headers: { "content-length": "6" } }));
+  mockFetch(() => new Response(IFC_BYTES, { status: 200, headers: { "content-length": String(IFC_BYTES.length) } }));
   const seen = [];
-  const file = await downloadModel({ id: "a", name: "m.ifc", size: 6 }, { onProgress: (p) => seen.push(p) });
+  const file = await downloadModel({ id: "a", name: "m.ifc", size: IFC_BYTES.length }, { onProgress: (p) => seen.push(p) });
   assert.equal(file.name, "m.ifc");
-  assert.equal(file.size, 6);
+  assert.equal(file.size, IFC_BYTES.length);
   assert.equal(seen.at(-1), 1);
   assert.ok(seen.every((p) => p >= 0 && p <= 1));
   assert.equal(calls[0].url, "/api/models/a/file");
+  assert.equal(calls.length, 1, "a good download is fetched once");
 });
 
-test("downloadModel: a broken stream is reported as interrupted", async () => {
-  const body = new ReadableStream({ pull() { throw new Error("reset"); } });
-  mockFetch(() => new Response(body, { status: 200 }));
-  await assert.rejects(downloadModel({ id: "a", name: "m.ifc", size: 1 }, {}), (e) => /interrupted/.test(e.message));
+test("downloadModel: bytes that are not an IFC (or ZIP) file are refused, after the automatic attempts", async () => {
+  mockFetch(() => new Response(new Uint8Array([1, 2, 3, 4, 5, 6]), { status: 200, headers: { "content-length": "6" } }));
+  await assert.rejects(downloadModel({ id: "b", name: "m.ifc", size: 6 }, {}), (e) => e.retryable === true && /incomplete/.test(e.message));
+  assert.equal(calls.length, 3);
+});
+
+test("downloadModel: a broken stream is tried again by itself (3 attempts), then reported as incomplete", async () => {
+  mockFetch(() => new Response(new ReadableStream({ pull() { throw new Error("reset"); } }), { status: 200 }));
+  const attempts = [];
+  await assert.rejects(
+    downloadModel({ id: "c", name: "m.ifc", size: 1 }, { onAttempt: (n, total) => attempts.push(`${n}/${total}`) }),
+    (e) => e.retryable === true && /keeps arriving incomplete/.test(e.message),
+  );
+  assert.equal(calls.length, 3);
+  assert.deepEqual(attempts, ["2/3", "3/3"]);
 });
 
 test("extensionOf and limits", () => {

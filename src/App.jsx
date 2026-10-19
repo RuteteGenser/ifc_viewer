@@ -481,6 +481,16 @@ function App() {
     else if (tagToolActive) toggleTagTool();
     else if (categoryHideModeActive) toggleCategoryHideMode();
   }, [armedTool, setClipMoveMode, measureModeActive, tagToolActive, categoryHideModeActive, toggleMeasureMode, toggleTagTool, toggleCategoryHideMode]);
+  // The manager keeps one tool armed and never one beside a sheet; overlays are what Back closes first.
+  useSurfaceMirror("tool", "measure", measureModeActive, toggleMeasureMode);
+  useSurfaceMirror("tool", "tag", tagToolActive, toggleTagTool);
+  useSurfaceMirror("tool", "category", categoryHideModeActive, toggleCategoryHideMode);
+  useSurfaceMirror("tool", "sectionMove", clipMoveMode, useCallback(() => setClipMoveMode(false), [setClipMoveMode]));
+  useSurfaceMirror("tool", "cameraClip", cameraClipEnabled, useCallback(() => setCameraClipEnabled(false), [setCameraClipEnabled]));
+  useSurfaceMirror("overlay", "context", !!contextMenu, closeContextMenu);
+  useSurfaceMirror("overlay", "legEdit", !!measureLegEditPopup, closeMeasureLegEditPopup);
+  useSurfaceMirror("overlay", "measureDelete", !!measureDeletePopup, closeMeasureDeletePopup);
+  useSurfaceMirror("overlay", "replace", !!confirmReplace, useCallback(() => confirmReplaceAnswer(false), [confirmReplaceAnswer]));
   // Arming a tool closes any open popover.
   useEffect(() => {
     if (armedTool) announcePopover("tool");

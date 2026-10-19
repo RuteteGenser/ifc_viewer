@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { redeemCode } from "./api";
 import { useAccess } from "./AccessProvider";
-import { mapError } from "./state";
+import { durationParts, mapError } from "./state";
 import { t } from "./copy";
 
 const longDate = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" });
 
-export default function CodeEntry({ onDone, initial = "" }) {
+export default function CodeEntry({ onDone, initial = "", showDuration = false }) {
   const access = useAccess();
   const [code, setCode] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,10 @@ export default function CodeEntry({ onDone, initial = "" }) {
     setError("");
     try {
       const res = await redeemCode(code.trim());
-      setOk(t("code.ok", { date: longDate(res.entitlement?.endsAt || res.grant?.endsAt) }));
+      const ends = res.entitlement?.endsAt || res.grant?.endsAt;
+      const date = longDate(ends);
+      const d = durationParts(Date.parse(ends) - access.nowMs);
+      setOk(showDuration && Number.isFinite(Date.parse(ends)) ? t("code.okFor", { duration: t(d.key, { n: d.n }), date }) : t("code.ok", { date }));
       access.applyEntitlement(res.entitlement);
       setTimeout(() => onDone?.(), 1800);
     } catch (err) {

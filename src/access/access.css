@@ -56,3 +56,18 @@
 .acc-slim__pop { position: absolute; right: 8px; top: 100%; z-index: 80; width: min(260px, calc(100vw - 16px)); display: flex; flex-direction: column; background: var(--paper-white, #fbfaf6); border: 1px solid var(--line-strong, #2a2622); border-radius: var(--radius, 6px); box-shadow: var(--shadow-lg); }
 .acc-slim__item { min-height: 44px; padding: 0 14px; border: 0; background: none; color: var(--ink, #2a2622); font: inherit; text-align: left; cursor: pointer; }
 .acc-slim__item + .acc-slim__item { border-top: 1px solid var(--line, #ddd6c7); }
+/* Welcome: the first screen. Full screen on a phone, a centred card from 600 px. */
+.acc-welcome { position: fixed; inset: 0; z-index: 85; display: flex; align-items: center; justify-content: center; padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px); box-sizing: border-box; overflow-y: auto; background: var(--paper, #f4efe4); color: var(--ink, #2a2622); animation: acc-welcome-in var(--dur-3, 240ms) var(--ease-out, ease-out) backwards; }
+.acc-welcome__card { width: min(420px, 100%); margin: auto; padding: 24px 0; display: flex; flex-direction: column; gap: 16px; }
+.acc-welcome__title { margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: 28px; line-height: 1.2; font-weight: 600; overflow-wrap: anywhere; }
+.acc-welcome__lead, .acc-welcome__included { margin: 0; font-size: 15px; line-height: 1.45; }
+.acc-welcome__included { font-size: 14px; color: var(--ink-faint, #72685a); }
+.acc-welcome__actions { display: flex; flex-direction: column; gap: 10px; }
+.acc-welcome__actions .acc-btn { width: 100%; }
+.acc-welcome__legal { display: flex; flex-wrap: wrap; gap: 0 12px; margin: 0 -8px; }
+.acc-welcome__legal .acc-link { display: inline-flex; align-items: center; font-size: 14px; }
+@media (min-width: 600px) {
+  .acc-welcome { background: rgba(42, 38, 34, 0.5); }
+  .acc-welcome__card { background: var(--paper-white, #fbfaf6); border-radius: var(--radius-lg, 12px); padding: 28px 28px 20px; box-shadow: var(--shadow-lg); }
+}
+@keyframes acc-welcome-in { from { opacity: 0; translate: 0 8px; } }

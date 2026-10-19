@@ -61,6 +61,7 @@ export const en = {
   "code.label": "Access code",
   "code.checking": "Checking...",
   "code.ok": "Access code active until {date}.",
+  "code.okFor": "{duration} of access added. It is active until {date}.",
   "code.invalid": "That code does not work. Check it and try again.",
   "code.used": "You have already used this code.",
   "code.needsAccount": "This code needs an account. Create one first.",
@@ -165,6 +166,22 @@ export const en = {
   "lib.quota": "{used} of {max} models, {bytes} of {maxBytes}",
   "lib.readOnlyUntil": "Read-only until {date}",
   "lib.intro": "Your files stay on your device unless you save them to My models.",
+  "dur.minutes": "{n} minutes",
+  "dur.hours": "{n} hours",
+  "dur.days": "{n} days",
+  "dur.minutes.1": "1 minute",
+  "dur.hours.1": "1 hour",
+  "dur.days.1": "1 day",
+  "welcome.title": "Try Argus free for {duration}",
+  "welcome.started": "Your free time started when you opened Argus. No account or card needed.",
+  "welcome.start": "Start free trial",
+  "welcome.code": "I have an access code",
+  "welcome.login": "Log in",
+  "welcome.included": "Open IFC models in your browser. Your files stay on your device unless you save them.",
+  "welcome.terms": "Terms",
+  "welcome.privacy": "Privacy",
+  "welcome.label": "Welcome to Argus",
+  "welcome.links": "Legal",
   "error.generic": "Something went wrong. Try again.",
   "error.reload": "Please reload the page.",
   "error.rate": "Too many tries. Wait {minutes} minutes and try again.",
@@ -181,6 +198,7 @@ export function setLocale(locale) {
   table = locale === "nb" ? { ...en, ...nb } : en;
 }
 export function t(key, vars = {}) {
+  if (vars.n === 1 && key.startsWith("dur.")) key += ".1";
   const s = table[key] ?? en[key] ?? key;
   return s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
 }

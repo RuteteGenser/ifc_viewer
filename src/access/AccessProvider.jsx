@@ -29,7 +29,7 @@ export function AccessProvider({ children }) {
       if (whoRef.current && whoRef.current !== who) window.dispatchEvent(new Event("argus:library-refresh"));
       whoRef.current = who;
       setSession(s);
-      setLocale(s.account.locale);
+      setLocale(s.account.locale || (/^(nb|nn|no)\b/i.test(globalThis.navigator?.language || "") ? "nb" : null));
     }
     return s;
   }, []);

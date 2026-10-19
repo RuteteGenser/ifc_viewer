@@ -6,6 +6,7 @@ import AuthForms from "./AuthForms";
 import AccountPage from "./AccountPage";
 import CodeEntry from "./CodeEntry";
 import Dialog from "./Dialog";
+import Welcome from "./Welcome";
 import { DemoBar, useNarrow, DemoTools, DemoInbox, CheckEmail } from "./Demo";
 import "./access.css";
 
@@ -107,6 +108,7 @@ export default function AccessUI({ hasWork }) {
         <Banner />
         {narrow && <SlimBar />}
       </Bars>
+      <Welcome hasWork={hasWork} />
       {a.expired && d?.kind !== "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "auth" && <AuthForms mode={d.mode} token={d.token} />}
@@ -122,7 +124,7 @@ export default function AccessUI({ hasWork }) {
       )}
       {d?.kind === "code" && (
         <Dialog title={t("action.haveCode")} onClose={a.close}>
-          <CodeEntry onDone={a.close} initial={a.prefillCode} />
+          <CodeEntry onDone={a.close} initial={a.prefillCode} showDuration={d.from === "welcome"} />
         </Dialog>
       )}
       {a.toast && <div className="acc-toast" role="status">{a.toast}</div>}

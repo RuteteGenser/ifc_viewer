@@ -2,7 +2,7 @@ import { colorCss } from "../ifc/sectionPlanes";
 
 function FlipIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3v18" strokeDasharray="3 3" />
       <path d="M7 8 4 12 7 16" />
       <path d="M17 8 20 12 17 16" />

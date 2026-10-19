@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { bootstrapRaw, verifyEmail, verifyMagic } from "./api";
 import { bannerFor, currentState, paywallNow, parseSession } from "./state";
 import { setLocale, t } from "./copy";
+import { setLegalDefault } from "../legal/strings";
 
 const AccessContext = createContext(null);
 // null in legacy mode (no new backend): every access component renders nothing.
@@ -29,8 +30,11 @@ export function AccessProvider({ children }) {
       if (whoRef.current && whoRef.current !== who) window.dispatchEvent(new Event("argus:library-refresh"));
       whoRef.current = who;
       setSession(s);
-      // A visitor without an account has only the backend's default "en": the browser language decides.
-      setLocale(s.account.kind === "registered" ? s.account.locale : /^(nb|nn|no)\b/i.test(globalThis.navigator?.language || "") ? "nb" : "en");
+      // English unless a registered account explicitly chose another language that the copy
+      // deck covers in full (setLocale falls back to English otherwise). The browser language
+      // does not decide: a half-translated screen is worse than an English one.
+      const locale = setLocale(s.account.kind === "registered" ? s.account.locale : "en");
+      setLegalDefault(locale);
     }
     return s;
   }, []);

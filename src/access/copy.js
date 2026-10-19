@@ -193,10 +193,18 @@ export const en = {
   "toast.loggedOut": "You are logged out.",
 };
 
+// One language per screen: a locale is used only when its table has every English key.
+// copy.nb.js is a partial draft, so today the whole UI is English for everyone.
+const TABLES = { nb };
+export const isComplete = (locale) => !!TABLES[locale] && Object.keys(en).every((k) => k in TABLES[locale]);
 let table = en;
+let current = "en";
 export function setLocale(locale) {
-  table = locale === "nb" ? { ...en, ...nb } : en;
+  current = locale !== "en" && isComplete(locale) ? locale : "en";
+  table = current === "en" ? en : { ...en, ...TABLES[current] };
+  return current;
 }
+export const getLocale = () => current;
 export function t(key, vars = {}) {
   if (vars.n === 1 && key.startsWith("dur.")) key += ".1";
   const s = table[key] ?? en[key] ?? key;

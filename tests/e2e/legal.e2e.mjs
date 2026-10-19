@@ -212,19 +212,19 @@ await suite("legal", [
     },
   },
   {
-    name: "Norwegian browser: consent, price line and legal page in bokmål",
+    name: "Norwegian browser: the app stays English (one language), the legal page offers Norsk",
     projects: ["desktop", "iphone13"],
     context: { locale: "nb-NO" },
     fn: async ({ page, project }) => {
       await mockApi(page, session(GRACE));
       const dlg = await openPaywall(page);
-      assert.equal(await dlg.getByTestId("price-summary").innerText(), "99 kr per måned inkl. 25 % mva. Fornyes automatisk. Si opp når som helst under Konto.");
-      await dlg.getByRole("checkbox", { name: "Jeg godtar Brukervilkårene og har lest Personvernerklæringen" }).waitFor();
-      await dlg.getByRole("checkbox", { name: "Jeg ber om at tjenesten leveres umiddelbart og forstår at angreretten bortfaller når tjenesten er levert fullt ut. Hvis jeg angrer før det, betaler jeg forholdsmessig for tiden jeg har brukt." }).waitFor();
-      await shot(page, project, "paywall-nb");
-      await dlg.getByRole("link", { name: "Brukervilkår", exact: true }).click();
-      await legal(page).getByRole("heading", { level: 1, name: "Brukervilkår for Argus" }).waitFor();
-      assert.equal(await legal(page).getAttribute("lang"), "nb");
+      assert.equal(await dlg.getByTestId("price-summary").innerText(), "NOK 99 per month incl. 25% VAT. Renews automatically. Cancel any time under Account.");
+      await dlg.getByRole("checkbox", { name: "I accept the Terms of Service and have read the Privacy Policy" }).waitFor();
+      await shot(page, project, "paywall-nb-browser");
+      await dlg.getByRole("link", { name: "Terms of Service", exact: true }).click();
+      await legal(page).getByRole("heading", { level: 1, name: "Terms of Service for Argus" }).waitFor();
+      assert.equal(await legal(page).getAttribute("lang"), "en");
+      await legal(page).getByRole("link", { name: "Les på norsk" }).waitFor();
     },
   },
   {

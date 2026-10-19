@@ -68,7 +68,9 @@ function SlimBar() {
     <div ref={ref} className={`acc-slim ${warn ? "acc-slim--warn" : ""}`} role="status" data-testid="acc-banner" data-kind={b?.kind || "demo"}>
       {a.session.demo && <span className="acc-slim__demo" data-testid="demo-bar">{t("banner.demoShort")}</span>}
       <span className="acc-slim__text" title={text}>{text}</span>
-      <button type="button" className="acc-slim__menu" aria-label={t("banner.menu")} aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
+      <button type="button" className="acc-slim__menu" aria-label={t("banner.menu")} aria-expanded={menu} onClick={() => setMenu(!menu)}>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18.5" cy="12" r="1.6" /></svg>
+      </button>
       {menu && (
         <div className="acc-slim__pop" role="group" aria-label={t("banner.menu")}>
           {items.map(([label, d]) => <button key={label} type="button" className="acc-slim__item" onClick={() => { setMenu(false); a.open(d); }}>{label}</button>)}

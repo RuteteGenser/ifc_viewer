@@ -11,7 +11,7 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
   return (
     <div className="empty-state">
       <div className="empty-state__card" onClick={onOpenFiles}>
-        <svg className="empty-state__icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+        <svg className="empty-state__icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" aria-hidden="true">
           <path d="M24 5 41 14v20L24 43 7 34V14L24 5Z" />
           <path d="M7 14l17 9 17-9M24 23v20" />
         </svg>

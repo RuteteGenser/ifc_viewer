@@ -62,9 +62,8 @@ test("copy: wording and variables", () => {
   setLocale("en");
   assert.equal(t("banner.trial", { timeLeft: "23 h" }), "Free trial. 23 h left.");
   assert.equal(t("banner.code_trial", { timeLeft: "29 days" }), "Access code active. 29 days left.");
-  setLocale("nb");
-  assert.match(t("action.login"), /Logg inn/);
-  assert.match(t("code.empty"), /code/); // falls back to English
+  setLocale("nb"); // the nb deck is partial, so the UI stays English (tests/unit/language.test.mjs)
+  assert.equal(t("action.login"), "Log in");
   setLocale("en");
   for (const key of ["banner.trial", "banner.grace", "auth.error.terms"]) assert.ok(!/[–—]/.test(t(key)));
 });

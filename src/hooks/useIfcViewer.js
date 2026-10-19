@@ -25,7 +25,8 @@ import { HEAD_BYTES, hasStepHeader, isZip } from "../ifc/stepHeader";
 import { LoadQueue, buildLimitMs, fileKind, ifcEntries, mayRetryStall, queuedText } from "../reliability/loadPlan";
 import { useViewFeatures } from "./useViewFeatures";
 import useSpaceVisibility from "./useSpaceVisibility";
-import { robustUnion, planeSheetFor } from "../ifc/modelBounds";
+import { robustUnion } from "../ifc/modelBounds";
+import { sheetRect, PLANE_COLORS, SHEET_OPACITY, planesToDrop, activeAfterRemove, axisOf, KIND_BY_AXIS, miniSlab } from "../ifc/sectionPlanes";
 import { stackUp } from "../ifc/labelStack";
 
 const IFC_EXTENSION = /\.ifc$/i;
@@ -237,7 +238,11 @@ async function computeModelLocalBox(model, group) {
   const { box: world } = robustUnion(all);
   if (!world) return null;
   group.updateMatrixWorld(true);
-  return world.applyMatrix4(group.matrixWorld.clone().invert());
+  const inverse = group.matrixWorld.clone().invert();
+  // The section sheet must cover everything, strays included.
+  const full = new THREE.Box3();
+  for (const b of all) full.union(b);
+  return { box: world.applyMatrix4(inverse), full: full.applyMatrix4(inverse) };
 }
 
 const TOUCH_UI = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
@@ -914,6 +919,33 @@ export function useIfcViewer() {
       requestRender();
     };
 
+    // Every loaded model's full bounds (strays included), in modelsGroup's frame.
+    const fullSceneBox = () => {
+      const box = new THREE.Box3();
+      for (const e of modelsRef.current.values()) {
+        const b = e.fullLocalBox ?? e.localBox;
+        if (b) box.union(b);
+      }
+      return box.isEmpty() ? null : box;
+    };
+    const isPhoneUi = () => TOUCH_UI || window.innerWidth <= 768;
+    let activeClipId = null;
+    const notifyClipPlanes = () => setClipPlanes(clipPlaneManager.list());
+    // Plane 1 and 2 get their own hue; the active one is darker and more opaque.
+    const restyleSheets = () => {
+      const many = clipPlanesRuntime.length > 1;
+      clipPlanesRuntime.forEach((p, i) => {
+        const active = p.id === activeClipId;
+        const base = new THREE.Color(PLANE_COLORS[i % PLANE_COLORS.length]);
+        const col = active && many ? base.clone().multiplyScalar(0.72) : base;
+        p.mesh.material.color.copy(col);
+        p.mesh.material.opacity = many ? (active ? SHEET_OPACITY.active : SHEET_OPACITY.inactive) : TOUCH_UI ? 0.1 : 0.16;
+        p.outline.material.color.copy(col);
+        p.outline.material.opacity = many && !active ? 0.45 : 0.9;
+      });
+      requestRender();
+    };
+
     // Repositions/reorients/rescales a plane's gizmo mesh from its local
     // plane definition. Only needs to run when the local plane itself
     // changes (creation, flip, drag) or the model's overall scale
@@ -921,15 +953,16 @@ export function useIfcViewer() {
     // under modelsGroup and inherits its rotation automatically.
     const syncGizmoMesh = (entry) => {
       const { localPlane, mesh } = entry;
-      // Sized to the model (see planeSheetFor), centred on the model rather
-      // than on the world origin; falls back to the bounding sphere while a
-      // model's own bounds are not measured yet.
-      const sheet = planeSheetFor(localPlane, [...modelsRef.current.values()]);
+      // A rectangle on the plane that covers the whole scene's cross-section
+      // (see sheetRect); falls back to the bounding sphere while no model's
+      // bounds are measured yet.
+      const rect = sheetRect(localPlane, fullSceneBox());
+      entry.rect = rect;
       const sphere = getGroupSphere();
-      // A finger-sized screen can't spare a sheet 2.6x the model's radius
-      // (it would cover everything), so on touch the gizmo is smaller.
-      const scale = sheet ? sheet.side : sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
-      const pointOnPlaneLocal = sheet ? sheet.centre : localPlane.normal.clone().multiplyScalar(-localPlane.constant);
+      const fallback = sphere ? Math.max(sphere.radius * (TOUCH_UI ? 1.3 : 2.6), 0.1) : 10;
+      const sheetW = rect ? rect.halfU * 2 : fallback;
+      const sheetH = rect ? rect.halfV * 2 : fallback;
+      const pointOnPlaneLocal = rect ? rect.centre : localPlane.normal.clone().multiplyScalar(-localPlane.constant);
       // The gizmo sits exactly at the clip plane's own boundary — which
       // this very plane also clips against — so at that exact distance,
       // GPU floating-point clip-distance evaluation is right at the
@@ -951,23 +984,30 @@ export function useIfcViewer() {
       const cameraDistance = camera.position.distanceTo(pointOnPlaneWorld);
       const KEPT_SIDE_EPSILON = cameraDistance * 0.002;
       mesh.position.copy(pointOnPlaneLocal).addScaledVector(localPlane.normal, KEPT_SIDE_EPSILON);
-      mesh.quaternion.setFromUnitVectors(GIZMO_UP, localPlane.normal);
+      if (rect) mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(rect.u, rect.v, rect.n));
+      else mesh.quaternion.setFromUnitVectors(GIZMO_UP, localPlane.normal);
       // The box's 1x1 face is a unit square (half-width 0.5), so scale by
       // ~2x the radius to get a comparable span to what a radius-1.3x
       // circle would have covered. Uniform scaling also grows the thin
       // GIZMO_THICKNESS dimension proportionally, which is fine — it
       // just keeps the raycast hit-target a constant fraction of the
       // gizmo's own (now scale-dependent) visual size.
-      mesh.scale.setScalar(scale);
+      mesh.scale.set(sheetW, sheetH, Math.max(sheetW, sheetH));
       if (entry.outline) {
         entry.outline.position.copy(mesh.position);
         entry.outline.quaternion.copy(mesh.quaternion);
-        entry.outline.scale.setScalar(scale);
+        entry.outline.scale.set(sheetW, sheetH, 1);
       }
     };
 
     const clipPlaneManager = {
       add: (localNormal, localPoint) => {
+        // A phone keeps two planes at most: the oldest makes room.
+        const drop = planesToDrop(clipPlanesRuntime.length, isPhoneUi());
+        for (let k = 0; k < drop; k++) {
+          clipPlaneManager.remove(clipPlanesRuntime[0].id);
+          showToastRef.current?.("Two sections at most on a phone. Replaced the oldest.");
+        }
         const id = `clip-${++clipPlaneUid}`;
         const localPlane = new THREE.Plane();
         localPlane.normal.copy(localNormal);
@@ -1009,19 +1049,31 @@ export function useIfcViewer() {
         };
         syncGizmoMesh(entry);
         clipPlanesRuntime.push(entry);
+        activeClipId = id;
+        restyleSheets();
         refreshClippingPlanes();
         return id;
       },
       remove: (id) => {
         const index = clipPlanesRuntime.findIndex((p) => p.id === id);
         if (index === -1) return;
+        const ids = clipPlanesRuntime.map((p) => p.id);
         const [entry] = clipPlanesRuntime.splice(index, 1);
+        activeClipId = activeAfterRemove(ids, activeClipId, id);
         modelsGroup.remove(entry.mesh);
         entry.mesh.material.dispose();
         modelsGroup.remove(entry.outline);
         entry.outline.material.dispose();
+        restyleSheets();
         refreshClippingPlanes();
       },
+      setActive: (id) => {
+        if (!clipPlanesRuntime.some((p) => p.id === id) || activeClipId === id) return;
+        activeClipId = id;
+        restyleSheets();
+        notifyClipPlanes();
+      },
+      activeId: () => activeClipId,
       flip: (id) => {
         const entry = clipPlanesRuntime.find((p) => p.id === id);
         if (!entry) return;
@@ -1029,6 +1081,7 @@ export function useIfcViewer() {
         entry.localPlane.constant *= -1;
         syncGizmoMesh(entry);
         requestRender();
+        notifyClipPlanes();
       },
       // Slides a plane along its own normal (used by the section slider).
       setConstant: (id, constant) => {
@@ -1037,6 +1090,7 @@ export function useIfcViewer() {
         entry.localPlane.constant = constant;
         syncGizmoMesh(entry);
         requestRender();
+        notifyClipPlanes();
       },
       setEnabled: (id, enabled) => {
         const entry = clipPlanesRuntime.find((p) => p.id === id);
@@ -1061,8 +1115,22 @@ export function useIfcViewer() {
         entry.outline.material.visible = visible;
         requestRender();
       },
-      list: () =>
-        clipPlanesRuntime.map((p) => ({ id: p.id, enabled: p.enabled, gizmoVisible: p.gizmoVisible })),
+      list: () => {
+        const box = fullSceneBox();
+        return clipPlanesRuntime.map((p, i) => {
+          const axis = axisOf(p.localPlane.normal);
+          return {
+            id: p.id,
+            enabled: p.enabled,
+            gizmoVisible: p.gizmoVisible,
+            active: p.id === activeClipId,
+            index: i,
+            color: PLANE_COLORS[i % PLANE_COLORS.length],
+            kind: axis ? KIND_BY_AXIS[axis] : "tilted",
+            slab: box ? miniSlab(p.localPlane, box) : null,
+          };
+        });
+      },
       refreshClippingPlanes,
       // For undo: enough to recreate an equivalent plane via `add` after
       // it's been removed. The original localPoint isn't retained on the
@@ -1080,6 +1148,17 @@ export function useIfcViewer() {
       },
     };
     clipPlaneManagerRef.current = clipPlaneManager;
+    if (import.meta.env.VITE_TEST_HOOK) {
+      window.__ifcDebug.clip = clipPlaneManager;
+      window.__ifcDebug.sections = () => ({
+        box: (() => { const b = fullSceneBox(); return b && { min: b.min.toArray(), max: b.max.toArray() }; })(),
+        planes: clipPlanesRuntime.map((p) => ({
+          id: p.id, active: p.id === activeClipId, normal: p.localPlane.normal.toArray(), constant: p.localPlane.constant,
+          rect: p.rect && { centre: p.rect.centre.toArray(), u: p.rect.u.toArray(), v: p.rect.v.toArray(), halfU: p.rect.halfU, halfV: p.rect.halfV },
+          meshScale: p.mesh.scale.toArray(), opacity: p.mesh.material.opacity, color: p.mesh.material.color.getHex(),
+        })),
+      });
+    }
 
     // Converts a world-space direction (e.g. a raycast hit's face normal)
     // into modelsGroup's local frame, matching how measurement points
@@ -3667,6 +3746,7 @@ export function useIfcViewer() {
       requestRender();
     };
     const onClipPlaneDragEnd = () => {
+      if (draggingClipPlaneId) notifyClipPlanes();
       draggingClipPlaneId = null;
       dragAxisWorld = null;
       dragAxisPointWorld = null;
@@ -3688,8 +3768,12 @@ export function useIfcViewer() {
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObjects(hittable, false);
       if (hits.length === 0) return false;
-      const entry = clipPlanesRuntime.find((p) => p.mesh === hits[0].object);
+      let entry = clipPlanesRuntime.find((p) => p.mesh === hits[0].object);
       if (!entry) return false;
+      // A finger moves the ACTIVE plane, whichever sheet it landed on; a
+      // mouse moves the sheet under the cursor and makes it the active one.
+      if (event.pointerType === "touch") entry = clipPlanesRuntime.find((p) => p.id === activeClipId) ?? entry;
+      else clipPlaneManager.setActive(entry.id);
 
       event.preventDefault();
       event.stopPropagation();
@@ -3778,6 +3862,27 @@ export function useIfcViewer() {
     // shift+scroll above, which requires a visible handle).
     const tryMiddleScrollClipPlane = (event) =>
       moveClipPlaneUnderCursor(event, clipPlanesRuntime.map((p) => p.mesh));
+
+    // A tap (no travel) on a sheet makes that plane the active one. Listens
+    // beside the other gestures and never swallows the event.
+    let sheetTap = null;
+    const onSheetTapDown = (event) => {
+      sheetTap = clipPlanesRuntime.length > 1 && event.isPrimary && event.button === 0
+        ? { id: event.pointerId, x: event.clientX, y: event.clientY, t: performance.now() }
+        : null;
+    };
+    const onSheetTapUp = (event) => {
+      const tap = sheetTap;
+      sheetTap = null;
+      if (!tap || tap.id !== event.pointerId) return;
+      if (performance.now() - tap.t > 500 || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) return;
+      raycaster.setFromCamera(getNdc(event), camera);
+      const hit = raycaster.intersectObjects(clipPlanesRuntime.filter((p) => p.gizmoVisible).map((p) => p.mesh), false)[0];
+      const entry = hit && clipPlanesRuntime.find((p) => p.mesh === hit.object);
+      if (entry) clipPlaneManager.setActive(entry.id);
+    };
+    renderer.domElement.addEventListener("pointerdown", onSheetTapDown, true);
+    window.addEventListener("pointerup", onSheetTapUp, true);
 
     const onRotateStart = (event) => {
       if (tryStartMeasureMarkerDrag(event)) return;
@@ -4233,6 +4338,8 @@ export function useIfcViewer() {
       disposed = true;
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onSheetTapDown, true);
+      window.removeEventListener("pointerup", onSheetTapUp, true);
       renderer.domElement.removeEventListener("pointerdown", onRotateStart);
       renderer.domElement.removeEventListener("pointerdown", onLongPressDown);
       renderer.domElement.removeEventListener("pointermove", onLongPressMove);
@@ -5670,7 +5777,9 @@ export function useIfcViewer() {
         for (const [id, entry] of modelsRef.current.entries()) {
           if (entry.localBox !== undefined) continue;
           try {
-            entry.localBox = await computeModelLocalBox(entry.model, modelsGroup);
+            const measured = await computeModelLocalBox(entry.model, modelsGroup);
+            entry.localBox = measured ? measured.box : null;
+            entry.fullLocalBox = measured ? measured.full : null;
             if (entry.localBox === null) geometryless.push([id, entry.fileName]);
           } catch (err) {
             console.error("Could not measure model bounds", err);

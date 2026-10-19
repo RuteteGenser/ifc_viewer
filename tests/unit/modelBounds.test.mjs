@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { robustUnion, planeSheetFor } from "../../src/ifc/modelBounds.js";
+import { robustUnion } from "../../src/ifc/modelBounds.js";
 
 const box = (cx, cy, cz, s = 1) =>
   new THREE.Box3(new THREE.Vector3(cx - s / 2, cy - s / 2, cz - s / 2), new THREE.Vector3(cx + s / 2, cy + s / 2, cz + s / 2));
@@ -41,13 +41,4 @@ test("a well-behaved model is returned whole", () => {
   assert.equal(dropped, 0);
   assert.equal(b.min.x, -0.5);
   assert.equal(b.max.x, 90.5);
-});
-
-test("planeSheetFor: no bounds -> null; floor plane is centred and 1.1x the longer side", () => {
-  assert.equal(planeSheetFor({ normal: new THREE.Vector3(0, 1, 0), constant: 0 }, [{ localBox: null }]), null);
-  const entries = [{ localBox: new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(20, 10, 10)) }];
-  const sheet = planeSheetFor({ normal: new THREE.Vector3(0, 1, 0), constant: -4 }, entries);
-  assert.equal(sheet.centre.y, 4);
-  assert.equal(sheet.centre.x, 10);
-  assert.ok(Math.abs(sheet.side - 22) < 1e-9);
 });

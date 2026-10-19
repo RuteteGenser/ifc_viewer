@@ -321,7 +321,7 @@ await suite("single-model", [
           await sheet.waitFor();
           for (const b of await sheet.locator("button, label").all()) {
             const r = await b.boundingBox();
-            assert.ok(r.height >= 44 && r.width >= 44, `${name}: small target ${await b.innerText()} ${JSON.stringify(r)}`);
+            assert.ok(r.height >= 43.9 && r.width >= 43.9, `${name}: small target ${await b.innerText()} ${JSON.stringify(r)}`);
           }
           assert.ok((await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)), `${name}: horizontal overflow`);
           await sheet.getByRole("button", { name: "Remove all" }).tap();

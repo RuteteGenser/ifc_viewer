@@ -189,13 +189,13 @@ suite("a11y", [
       await share.focus();
       await press(page, "Enter");
       await page.getByRole("menu", { name: "Save and share" }).waitFor();
-      assert.match(await focusDesc(page), /^button\|Save image/, "focus enters the menu on the first item");
+      assert.match(await focusDesc(page), /^button\|Save snapshot to case/, "focus enters the menu on the first item");
       await press(page, "ArrowDown");
-      assert.match(await focusDesc(page), /Copy view link/);
-      await press(page, "ArrowDown"); // wraps
-      assert.match(await focusDesc(page), /Save image/);
+      assert.match(await focusDesc(page), /Download image/);
       await press(page, "End");
-      assert.match(await focusDesc(page), /Copy view link/);
+      assert.match(await focusDesc(page), /Open Cases/);
+      await press(page, "ArrowDown"); // wraps
+      assert.match(await focusDesc(page), /Save snapshot to case/);
       await press(page, "Escape");
       await page.waitForFunction(() => !document.querySelector(".view-tools__panel"));
       assert.equal(await focusDesc(page), "button|Save image or copy view link");

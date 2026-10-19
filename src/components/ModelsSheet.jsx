@@ -88,7 +88,7 @@ function SheetRow({ model, onToggleVisible, onSetColor, onRemove }) {
 
 // Every loaded model with a labelled Remove button. A bottom sheet on a phone,
 // a popover under the header on a wide screen.
-function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetColor, onRemove, onRemoveAll, onAdd }) {
+function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetColor, onRemove, onRemoveAll, onAdd, onOpenCases }) {
   const ref = useRef(null);
   const [haptics, setHaptics] = useState(hapticsEnabled);
   const closed = state === "closed";
@@ -128,6 +128,9 @@ function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetCo
         <div className="models-sheet__actions">
           <button type="button" className="models-sheet__add" onClick={onAdd} disabled={isLoading}>
             Add another model
+          </button>
+          <button type="button" className="models-sheet__remove-all models-sheet__cases" onClick={onOpenCases}>
+            Cases
           </button>
           {models.length > 1 && (
             <button type="button" className="models-sheet__remove-all" onClick={onRemoveAll}>

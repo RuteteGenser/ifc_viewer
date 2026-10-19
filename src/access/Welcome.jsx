@@ -16,25 +16,25 @@ const deepLink = () => {
   const q = new URLSearchParams(window.location.search);
   return !!(q.get("model") || q.get("demo") === "1" || startupIntent());
 };
+// Read when the module loads: the library removes ?model= from the address bar a moment later.
+const SKIP = deepLink();
 const onLegal = () => /^#\/legal/.test(window.location.hash);
 
 export default function Welcome({ hasWork }) {
   const a = useAccess();
-  const [skip] = useState(deepLink);
+  const skip = SKIP;
   const [acked, setAcked] = useState(seen);
   const [legal, setLegal] = useState(onLegal);
-  const [frozen, setFrozen] = useState(null); // { ms }: the length shown, fixed at the first render
+  const frozenRef = useRef(null); // { ms }: the length shown, fixed at the first render that shows it
   const startRef = useRef(null);
   const show = !!a && a.state === "anonymous_trial" && !acked && !skip && !hasWork && !legal;
 
+  if (show && !frozenRef.current) frozenRef.current = { ms: Date.parse(a.session.entitlement.endsAt) - a.nowMs };
   useEffect(() => {
     const f = () => setLegal(onLegal());
     window.addEventListener("hashchange", f);
     return () => window.removeEventListener("hashchange", f);
   }, []);
-  useEffect(() => {
-    if (show && !frozen) setFrozen({ ms: Date.parse(a.session.entitlement.endsAt) - a.nowMs });
-  }, [show, frozen, a]);
   // The viewer behind is not reachable while the welcome is up (the legal pages and dialogs live elsewhere).
   useEffect(() => {
     if (!show) return undefined;
@@ -47,8 +47,8 @@ export default function Welcome({ hasWork }) {
     if (show && !a.dialog) startRef.current?.focus({ preventScroll: true });
   }, [show, !!a?.dialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!show || !frozen) return null;
-  const d = durationParts(frozen.ms);
+  if (!show) return null;
+  const d = durationParts(frozenRef.current.ms);
   const start = () => { remember(); setAcked(true); };
   const open = (dialog) => a.open({ ...dialog, from: "welcome" });
   return createPortal(
@@ -56,10 +56,10 @@ export default function Welcome({ hasWork }) {
       <div className="acc-welcome__card">
         <h1 id="acc-welcome-title" className="acc-welcome__title">{t("welcome.title", { duration: t(d.key, { n: d.n }) })}</h1>
         <p className="acc-welcome__lead">{t("welcome.started")}</p>
-        <div className="acc-welcome__actions">
-          <button type="button" ref={startRef} className="acc-btn acc-btn--primary" onClick={start}>{t("welcome.start")}</button>
-          <button type="button" className="acc-btn" onClick={() => open({ kind: "code" })}>{t("welcome.code")}</button>
-          <button type="button" className="acc-btn" onClick={() => open({ kind: "auth", mode: "login" })}>{t("welcome.login")}</button>
+        <button type="button" ref={startRef} className="acc-btn acc-btn--primary acc-welcome__open" onClick={start}>{t("welcome.start")}</button>
+        <div className="acc-welcome__secondary">
+          <button type="button" className="acc-link" onClick={() => open({ kind: "code" })}>{t("welcome.code")}</button>
+          <button type="button" className="acc-link" onClick={() => open({ kind: "auth", mode: "login" })}>{t("welcome.login")}</button>
         </div>
         <p className="acc-welcome__included">{t("welcome.included")}</p>
         <nav className="acc-welcome__legal" aria-label={t("welcome.links")}>

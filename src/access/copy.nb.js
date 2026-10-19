@@ -12,7 +12,7 @@ export default {
   "dur.days.1": "1 dag",
   "welcome.title": "Prøv Argus gratis i {duration}",
   "welcome.started": "Den gratis tiden startet da du åpnet Argus. Du trenger ingen konto eller kort.",
-  "welcome.start": "Start gratis prøve",
+  "welcome.start": "Åpne viewer",
   "welcome.code": "Jeg har en tilgangskode",
   "welcome.login": "Logg inn",
   "welcome.included": "Åpne IFC-modeller i nettleseren. Filene dine blir på enheten din hvis du ikke lagrer dem.",

@@ -62,8 +62,8 @@
 .acc-welcome__title { margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: 28px; line-height: 1.2; font-weight: 600; overflow-wrap: anywhere; }
 .acc-welcome__lead, .acc-welcome__included { margin: 0; font-size: 15px; line-height: 1.45; }
 .acc-welcome__included { font-size: 14px; color: var(--ink-faint, #72685a); }
-.acc-welcome__actions { display: flex; flex-direction: column; gap: 10px; }
-.acc-welcome__actions .acc-btn { width: 100%; }
+.acc-welcome__open { width: 100%; }
+.acc-welcome__secondary { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 16px; margin-top: -8px; }
 .acc-welcome__legal { display: flex; flex-wrap: wrap; gap: 0 12px; margin: 0 -8px; }
 .acc-welcome__legal .acc-link { display: inline-flex; align-items: center; font-size: 14px; }
 @media (min-width: 600px) {

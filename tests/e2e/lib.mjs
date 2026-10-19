@@ -82,12 +82,9 @@ export async function settle(page, ms = 600) {
 }
 
 export async function loadSample(page) {
-  // The "or try a sample building" link is hidden on phones; the library's own
-  // "Sample building" row exists everywhere and opens the same file.
-  const link = page.getByRole("button", { name: /try a sample building/i });
+  // The sample building is a row in the Samples list (the library's, or one built-in row without a library).
   const row = page.getByRole("button", { name: "Open Sample building" });
-  // The link can vanish between the check and the click (the library list arrives and takes over on phones).
-  await waitForModelAfter(page, async () => ((await link.isVisible()) ? link.click({ timeout: 2500 }).catch(() => row.click()) : row.click()));
+  await waitForModelAfter(page, () => row.click());
 }
 
 // Opens a local file through the file chooser input; resolves when the model shows.
@@ -236,6 +233,9 @@ export async function suite(title, cases) {
       const t0 = Date.now();
       const errors = [];
       const ctx = await browser.newContext({ ...PROJECTS[project], httpCredentials: { username: USER, password: PASS }, ...(c.context ?? {}) });
+      // The welcome screen (src/access/Welcome.jsx) is the first screen on a device that has not seen it; every
+      // suite except "welcome" starts as a device that has, so its flows begin at the viewer.
+      if (title !== "welcome") await ctx.addInitScript(() => { try { localStorage.setItem("argus.welcome.v1", "1"); } catch { /* ignore */ } });
       const page = await ctx.newPage();
       // ARGUS_IGNORE_SESSION_404=1: a deployment without the access API answers /api/session with 404; the
       // browser logs that one line itself. Everything else still counts.

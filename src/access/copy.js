@@ -174,7 +174,7 @@ export const en = {
   "dur.days.1": "1 day",
   "welcome.title": "Try Argus free for {duration}",
   "welcome.started": "Your free time started when you opened Argus. No account or card needed.",
-  "welcome.start": "Start free trial",
+  "welcome.start": "Open the viewer",
   "welcome.code": "I have an access code",
   "welcome.login": "Log in",
   "welcome.included": "Open IFC models in your browser. Your files stay on your device unless you save them.",

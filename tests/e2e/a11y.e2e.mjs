@@ -92,7 +92,7 @@ suite("a11y", [
     projects: desktop,
     fn: async ({ page }) => {
       await openApp(page);
-      await tabTo(page, () => document.activeElement?.textContent.trim() === "or try a sample building");
+      await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Open Sample building");
       await page.keyboard.press("Enter");
       await page.locator(".loading-overlay").waitFor({ state: "detached", timeout: 60000 }).catch(() => {});
       await page.waitForSelector(".toolbar", { state: "visible" });

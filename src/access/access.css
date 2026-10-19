@@ -46,3 +46,4 @@
 .acc-demobar .acc-link { color: #fff; min-height: 28px; }
 @media (pointer: coarse) { .acc-demobar .acc-link { min-height: 44px; } }
 .acc-mail-link { display: flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box; }
+.acc-toast { pointer-events: none; }

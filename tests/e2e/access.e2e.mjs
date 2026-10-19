@@ -206,7 +206,7 @@ await suite("access", [
       // checkout
       await page.getByRole("dialog", { name: "Your free time has ended" }).getByLabel(/I want my plan to start now/).check();
       await page.getByRole("dialog", { name: "Your free time has ended" }).getByRole("button", { name: "Subscribe" }).click();
-      await page.getByRole("button", { name: /^Pay \(test\)/ }).click();
+      await page.getByRole("button", { name: "Pay", exact: true }).click();
       await page.waitForURL(/\/app\//);
       await page.getByRole("dialog", { name: "Your free time has ended" }).waitFor({ state: "detached", timeout: 10000 });
       assert.equal(await banner(page).count(), 0, "no banner when active");

@@ -35,10 +35,10 @@ else {
 }
 const siteB = join(work, "B");
 console.log("next deploy renamed", rehashSite(siteA, siteB), "assets");
-// A whose lazily loaded schema chunks are gone for good: a deploy that never settles.
+// A whose import worker and lazily loaded schema chunks are gone for good: a deploy that never settles.
 const siteBroken = join(work, "broken");
 cpSync(siteA, siteBroken, { recursive: true });
-for (const f of readdirSync(join(siteBroken, "app/assets"))) if (/schema/.test(f)) rmSync(join(siteBroken, "app/assets", f));
+for (const f of readdirSync(join(siteBroken, "app/assets"))) if (/schema|ifcImportWorker/.test(f)) rmSync(join(siteBroken, "app/assets", f));
 
 // ---- server ----
 const DEMO = readFileSync(join(repo, "public/demo/demo-building.ifc"));
@@ -126,8 +126,38 @@ const openLibraryItem = async (page) => {
 };
 const noMisleading = (v) => assert.ok(!/valid IFC|doesn't look like/i.test(v.banner), `misleading text shown: ${v.banner}`);
 
+// The import worker is one file with everything inside, started when the page
+// boots, so a tab older than the deploy usually opens a file with what it has.
+// The reload path is for a tab that still needs a file of its own: here the
+// worker started at boot is refused, so the import asks for its (gone) file.
+const noPrewarm = () => {
+  const W = window.Worker;
+  let first = true;
+  window.Worker = class extends W {
+    constructor(url, options) {
+      if (first && String(url).includes("ifcImportWorker")) {
+        first = false;
+        throw new Error("no prewarmed import worker (test)");
+      }
+      super(url, options);
+    }
+  };
+};
+
 // ---- scenarios ----
-await scenario("stale tab opens a library model: reloads once and the model opens by itself", async (page) => {
+await scenario("stale tab whose importer already started: the model opens with no reload", async (page) => {
+  await ready(page);
+  root = siteB; // deploy
+  await openLibraryItem(page);
+  const shown = record.name.replace(/\.ifc$/i, "");
+  const v = await until(page, (x) => x.models.includes(shown) || x.banner);
+  noMisleading(v);
+  assert.deepEqual(v.models, [shown], `banner: ${v.banner}`);
+  assert.equal(page.loads, 1, "no reload");
+});
+
+await scenario("stale tab opens a library model: reloads once and the model opens by itself", async (page, ctx) => {
+  await ctx.addInitScript(noPrewarm);
   await ready(page);
   root = siteB; // deploy
   await openLibraryItem(page);
@@ -138,7 +168,8 @@ await scenario("stale tab opens a library model: reloads once and the model open
   assert.equal(page.loads, 2, "one automatic reload");
 });
 
-await scenario("stale tab, file from this device: reloads once and asks to pick it again (no 'invalid IFC')", async (page) => {
+await scenario("stale tab, file from this device: reloads once and asks to pick it again (no 'invalid IFC')", async (page, ctx) => {
+  await ctx.addInitScript(noPrewarm);
   await ready(page);
   root = siteB;
   await page.setInputFiles("input[type=file]", join(repo, "public/demo/demo-building.ifc"));
@@ -158,7 +189,8 @@ await scenario("new version found while idle: banner, no automatic reload", asyn
   assert.deepEqual(v.models, []);
 });
 
-await scenario("reload loop guard: a broken deploy gives one reload, then a Reload button", async (page) => {
+await scenario("reload loop guard: a broken deploy gives one reload, then a Reload button", async (page, ctx) => {
+  await ctx.addInitScript(noPrewarm);
   await ready(page);
   root = siteBroken;
   randomBuildCheck = true; // every check says "newer build", every reload meets the same missing chunk

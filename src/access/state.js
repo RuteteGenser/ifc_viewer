@@ -15,6 +15,7 @@ export function parseSession(body) {
     ui: body.ui || {},
     billing: body.billing || {},
     public: body.public || {},
+    demo: body.demo === true,
     deviceModels: body.ui?.deviceModels || 0,
     offsetMs: Number.isFinite(Date.parse(body.serverTime)) ? Date.parse(body.serverTime) - Date.now() : 0,
   };
@@ -72,6 +73,7 @@ export function mapError(status, code) {
   if (code === "terms_required") return "auth.error.terms";
   if (code === "signups_closed") return "auth.error.closed";
   if (code === "token_invalid") return "auth.error.token";
+  if (code === "email_required") return "demo.needEmail";
   if (code === "blocked") return "error.blocked";
   if (code === "code_invalid" || code === "invalid_format") return "code.invalid";
   if (code === "code_already_used") return "code.used";

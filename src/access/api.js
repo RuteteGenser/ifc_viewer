@@ -55,3 +55,11 @@ export const claimDeviceModels = () => call("POST", "/account/claim-device-model
 export const startCheckout = (priceLookupKey, termsVersion) =>
   call("POST", "/billing/checkout", { priceLookupKey, consent: { startNow: true, termsVersion } });
 export const openPortal = (flow = "manage") => call("POST", "/billing/portal", { flow });
+export const verifyEmail = (token) => call("POST", "/auth/verify-email", { token });
+export const resendVerify = () => call("POST", "/auth/verify-email/resend", {});
+export const requestMagic = (email) => call("POST", "/auth/magic-link/request", { email });
+export const verifyMagic = (token) => call("POST", "/auth/magic-link/verify", { token });
+// Demo mode only (the backend answers 404 otherwise).
+export const demoOutbox = (to) => call("GET", `/demo/outbox${to ? `?to=${encodeURIComponent(to)}` : ""}`);
+export const demoTravel = (hours) => call("POST", "/demo/time-travel", { hours });
+export const demoReset = () => call("POST", "/demo/reset", {});

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Dialog from "./Dialog";
 import CodeEntry from "./CodeEntry";
 import { useAccess } from "./AccessProvider";
-import { deleteAccount, logout, openPortal } from "./api";
+import { deleteAccount, getAccount, logout, openPortal, resendVerify } from "./api";
 import { downloadAccountData, downloadAllModels } from "./download";
 import { mapError } from "./state";
 import { t } from "./copy";
@@ -22,6 +22,8 @@ function stateLine(access) {
   const e = access.session.entitlement;
   const s = access.state;
   if (s === "anonymous_trial" || s === "code_trial") return t(`account.state.${s}`, { date: fmtDate(e.endsAt) });
+  if (s === "active" && e.flags?.paymentFailed) return t("account.sub.past_due");
+  if (s === "active" && e.flags?.cancelAtPeriodEnd) return t("account.sub.ending", { date: fmtDate(e.endsAt) });
   if (s === "active") return e.endsAt ? t("account.state.activeEnds", { date: fmtDate(e.endsAt) }) : t("account.state.active");
   return t(`account.state.${s}`, { date: fmtDate(e.graceEndsAt) });
 }
@@ -35,6 +37,8 @@ export default function AccountPage() {
   const [deleting, setDeleting] = useState(false);
   const [word, setWord] = useState("");
   const [pw, setPw] = useState("");
+  const [sub, setSub] = useState(null);
+  useEffect(() => { if (access.registered) getAccount().then((r) => setSub(r?.subscription || null), () => {}); }, [access.registered, s.entitlement.state]);
 
   const run = (name, fn) => async () => {
     setError("");
@@ -63,7 +67,11 @@ export default function AccountPage() {
   return (
     <Dialog title={t("account.title")} onClose={access.close} wide>
       <section className="acc-box">
-        <p><strong>{access.registered ? s.account.email : t("account.notSignedIn")}</strong></p>
+        <p><strong>{access.registered ? s.account.email : t("account.notSignedIn")}</strong>
+          {access.registered && <span className="acc-chip" data-testid="verified-badge">{s.account.emailVerified ? t("verify.badge") : t("verify.not")}</span>}</p>
+        {access.registered && !s.account.emailVerified && (
+          <button type="button" className="acc-link" onClick={run("verify", async () => { await resendVerify(); access.say(t("verify.resent")); })}>{t("verify.resend")}</button>
+        )}
         {!access.registered && (
           <div className="acc-row">
             <button type="button" className="acc-btn acc-btn--primary" onClick={() => access.open({ kind: "auth", mode: "signup" })}>{t("action.signup")}</button>
@@ -74,9 +82,11 @@ export default function AccountPage() {
       <section className="acc-box">
         <h3 className="acc-h3">{t("account.plan")}: {s.entitlement.planName}</h3>
         <p data-testid="acc-state">{stateLine(access)}</p>
+        {sub && <p className="acc-hint" data-testid="acc-sub">{sub.status === "canceled" ? t("account.sub.canceled") : t(`account.sub.${sub.status === "past_due" ? "past_due" : "active"}`)}</p>}
         <p className="acc-hint">{quotaText(s)}</p>
         <div className="acc-row">
           {access.registered && s.entitlement.state === "active" && <button type="button" className="acc-btn" disabled={!!busy} onClick={portal}>{label("portal", t("action.manageBilling"))}</button>}
+          {s.entitlement.flags?.paymentFailed && <button type="button" className="acc-btn acc-btn--primary" onClick={() => access.open({ kind: "paywall", sheet: true })}>{t("action.payAgain")}</button>}
           {access.state !== "active" && <button type="button" className="acc-btn" onClick={() => access.open({ kind: "paywall", sheet: true })}>{t("action.seePlans")}</button>}
         </div>
         {codeOpen ? <CodeEntry onDone={() => setCodeOpen(false)} /> : <button type="button" className="acc-link" onClick={() => setCodeOpen(true)}>{t("action.haveCode")}</button>}
@@ -86,6 +96,7 @@ export default function AccountPage() {
         <button type="button" className="acc-btn acc-btn--full" disabled={!!busy} onClick={run("export", downloadAccountData)}>{t("account.exportData")}</button>
       </section>
       {error && <p className="acc-error" role="alert">{error}</p>}
+      {s.demo && <button type="button" className="acc-btn acc-btn--full" onClick={() => access.open({ kind: "demo" })}>{t("action.demoTools")}</button>}
       <div className="acc-links">
         {access.registered && <button type="button" className="acc-btn" disabled={!!busy} onClick={doLogout}>{t("action.logout")}</button>}
         <button type="button" className="acc-btn acc-btn--danger" onClick={() => setDeleting(true)}>{t("account.delete")}</button>

@@ -5,6 +5,7 @@ import AuthForms from "./AuthForms";
 import AccountPage from "./AccountPage";
 import CodeEntry from "./CodeEntry";
 import Dialog from "./Dialog";
+import { DemoBar, DemoTools, DemoInbox, CheckEmail } from "./Demo";
 import "./access.css";
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
@@ -23,6 +24,7 @@ function Banner() {
       <span className="acc-banner__actions">
         {(b.kind === "trial") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "auth", mode: "signup" })}>{t("action.keepWork")}</button>}
         {(b.kind === "trial" || b.kind === "grace") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "code" })}>{t("action.haveCode")}</button>}
+        {b.kind === "payment_failed" && <button type="button" className="acc-link" onClick={() => a.open({ kind: "paywall", sheet: true })}>{t("action.payAgain")}</button>}
         {(b.kind === "grace" || b.kind === "code_trial") && <button type="button" className="acc-link" onClick={() => a.open({ kind: "paywall", sheet: true })}>{t("action.seePlans")}</button>}
         {b.dismissible && <button type="button" className="acc-link" aria-label={t("banner.dismiss")} onClick={() => a.dismiss(b.kind)}>×</button>}
       </span>
@@ -37,11 +39,21 @@ export default function AccessUI({ hasWork }) {
   const d = a.dialog;
   return (
     <>
+      <DemoBar />
       <Banner />
       {a.expired && d?.kind !== "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "paywall" && <Paywall hasWork={hasWork} />}
       {d?.kind === "auth" && <AuthForms mode={d.mode} token={d.token} />}
       {d?.kind === "account" && <AccountPage />}
+      {d?.kind === "demo" && <DemoTools />}
+      {d?.kind === "inbox" && <DemoInbox email={d.email} />}
+      {d?.kind === "checkemail" && <CheckEmail email={d.email} />}
+      {d?.kind === "declined" && (
+        <Dialog title={t("pay.declinedTitle")} onClose={a.close}>
+          <p role="alert">{t("pay.declinedBody")}</p>
+          <button type="button" className="acc-btn acc-btn--primary acc-btn--full" data-autofocus onClick={() => a.open({ kind: "paywall", sheet: true })}>{t("pay.tryAgain")}</button>
+        </Dialog>
+      )}
       {d?.kind === "code" && (
         <Dialog title={t("action.haveCode")} onClose={a.close}>
           <CodeEntry onDone={a.close} initial={a.prefillCode} />

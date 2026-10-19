@@ -38,7 +38,8 @@ export default function Paywall({ hasWork }) {
   const limits = plan?.limits || {};
   const closable = sheet || (hasWork && e.state !== "blocked");
   const close = sheet ? access.close : () => access.setOverlayHidden(true);
-  const title = access.state === "expired" || access.state === "blocked" ? t("paywall.title.expired") : d?.code?.startsWith("quota") ? t("paywall.title.quota") : t("paywall.title.grace");
+  const failed = !!e.flags?.paymentFailed;
+  const title = failed ? t("paywall.title.failed") : access.state === "expired" || access.state === "blocked" ? t("paywall.title.expired") : d?.code?.startsWith("quota") ? t("paywall.title.quota") : t("paywall.title.grace");
 
   const subscribe = async () => {
     setError("");
@@ -66,6 +67,7 @@ export default function Paywall({ hasWork }) {
   return (
     <Dialog title={title} onClose={closable ? close : undefined} wide>
       {d?.message && <p className="acc-note">{d.message}</p>}
+      {failed && <p className="acc-note">{t("paywall.failedNote")}</p>}
       <section className="acc-box">
         <p>{e.purgeAt ? t("paywall.keepUntil", { date: fmtDate(e.purgeAt) }) : t("paywall.keep")}</p>
         <button type="button" className="acc-btn acc-btn--full" onClick={download} disabled={!!busy} data-autofocus>
@@ -101,6 +103,7 @@ export default function Paywall({ hasWork }) {
           <button type="button" className="acc-link" onClick={() => setCodeOpen(true)}>{t("action.haveCode")}</button>
         )}
         {!access.registered && <button type="button" className="acc-link" onClick={() => access.open({ kind: "auth", mode: "login" })}>{t("action.login")}</button>}
+        {access.session.demo && <button type="button" className="acc-link" onClick={() => access.open({ kind: "demo" })}>{t("action.demoTools")}</button>}
         {closable && !sheet && <button type="button" className="acc-link" onClick={close}>{t("action.keepLooking")}</button>}
       </div>
     </Dialog>

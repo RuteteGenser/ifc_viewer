@@ -111,3 +111,12 @@ test("library writes carry X-Argus-Client; a 402 keeps the server message and bo
   await assert.rejects(renameModel("a", "b.ifc"), (err) => err instanceof LibraryError && err.status === 402 && /3 saved models/.test(err.message) && err.body.code === "quota_models");
   assert.equal(calls[0].headers["X-Argus-Client"], "1");
 });
+
+test("demo flag is carried from the session; copy has the demo strings without dashes", () => {
+  assert.equal(parseSession({ ...raw("anonymous_trial"), demo: true }).demo, true);
+  assert.equal(parseSession(raw("anonymous_trial")).demo, false);
+  assert.equal(mapError(400, "email_required"), "demo.needEmail");
+  for (const k of ["banner.demo", "demo.checkBody", "pay.declinedBody", "verify.bad", "magic.bad", "demo.moved"]) {
+    assert.ok(!/[–—]/.test(t(k)), k);
+  }
+});

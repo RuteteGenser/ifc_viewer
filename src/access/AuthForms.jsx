@@ -1,7 +1,8 @@
 import { useState } from "react";
 import Dialog from "./Dialog";
 import { useAccess } from "./AccessProvider";
-import { claimDeviceModels, confirmReset, login, requestReset, signup } from "./api";
+import { claimDeviceModels, confirmReset, login, requestMagic, requestReset, signup } from "./api";
+import { rememberDemoEmail } from "./Demo";
 import { mapError } from "./state";
 import { t } from "./copy";
 
@@ -43,6 +44,14 @@ export default function AuthForms({ mode: first = "signup", token }) {
       if (mode === "forgot") {
         await requestReset(email);
         setSent(true);
+        rememberDemoEmail(email);
+        return;
+      }
+      if (mode === "magic") {
+        await requestMagic(email);
+        rememberDemoEmail(email);
+        if (access.session.demo) return access.open({ kind: "checkemail", email });
+        setSent(true);
         return;
       }
       if (mode === "reset") await confirmReset(token, password);
@@ -56,6 +65,10 @@ export default function AuthForms({ mode: first = "signup", token }) {
         }
       }
       await access.refresh();
+      if (mode === "signup" && access.session.demo) {
+        rememberDemoEmail(email);
+        return access.open({ kind: "checkemail", email });
+      }
       access.say(t("toast.loggedIn"));
       access.close();
     } catch (err) {
@@ -70,7 +83,7 @@ export default function AuthForms({ mode: first = "signup", token }) {
     window.dispatchEvent(new Event("argus:library-refresh"));
     access.close();
   };
-  const titles = { signup: t("action.signup"), login: t("action.login"), forgot: t("auth.forgot"), reset: t("auth.saveNew") };
+  const titles = { signup: t("action.signup"), login: t("action.login"), forgot: t("auth.forgot"), reset: t("auth.saveNew"), magic: t("action.sendMagic") };
 
   if (claim) {
     return (
@@ -89,7 +102,7 @@ export default function AuthForms({ mode: first = "signup", token }) {
       {mode === "signup" && <p className="acc-hint">{t("auth.keepNote")}</p>}
       <form onSubmit={submit} noValidate>
         {mode !== "reset" && <Field id="acc-email" label={t("auth.email")} type="email" value={email} onChange={setEmail} autoComplete="email" autoFocus />}
-        {mode !== "forgot" && (
+        {mode !== "forgot" && mode !== "magic" && (
           <>
             <Field id="acc-pw" label={mode === "reset" ? t("auth.newPassword") : t("auth.password")} type={show ? "text" : "password"} value={password} onChange={setPassword}
               autoComplete={mode === "login" ? "current-password" : "new-password"} hint={mode === "login" ? "" : t("auth.passwordHint")} autoFocus={mode === "reset"} />
@@ -100,13 +113,15 @@ export default function AuthForms({ mode: first = "signup", token }) {
           <label className="acc-check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> {t("auth.terms")}</label>
         )}
         {error && <p className="acc-error" role="alert">{error}</p>}
-        {sent && <p className="acc-ok" role="status">{t("auth.resetSent")} {t("auth.resetDemo")}</p>}
+        {sent && <p className="acc-ok" role="status">{mode === "magic" ? t("magic.sent") : `${t("auth.resetSent")} ${access.session.demo ? "" : t("auth.resetDemo")}`}</p>}
+        {sent && access.session.demo && <button type="button" className="acc-btn acc-btn--full" onClick={() => access.open({ kind: "inbox", email })}>{t("action.openInbox")}</button>}
         <button type="submit" className="acc-btn acc-btn--primary acc-btn--full" disabled={busy}>
           {mode === "forgot" ? t("auth.sendLink") : titles[mode]}
         </button>
       </form>
       <div className="acc-links">
         {mode === "login" && <button type="button" className="acc-link" onClick={() => { setError(""); setMode("forgot"); }}>{t("auth.forgot")}</button>}
+        {mode === "login" && <button type="button" className="acc-link" onClick={() => { setError(""); setMode("magic"); }}>{t("action.magic")}</button>}
         {mode === "login" && <button type="button" className="acc-link" onClick={() => { setError(""); setMode("signup"); }}>{t("auth.noAccount")}</button>}
         {mode !== "login" && mode !== "reset" && <button type="button" className="acc-link" onClick={() => { setError(""); setSent(false); setMode("login"); }}>{t("auth.haveAccount")}</button>}
       </div>

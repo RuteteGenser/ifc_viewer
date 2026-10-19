@@ -42,3 +42,7 @@
 .lib__quota { margin: 2px 0 6px; font-size: 12px; color: var(--ink-faint, #72685a); }
 .lib__account { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
 @media (max-width: 600px) { .acc-account-btn--header { display: none; } .acc-backdrop { align-items: flex-end; padding: 8px; } }
+.acc-demobar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; padding: 0 12px; background: #1f3a5f; color: #fff; font-size: 12px; flex-shrink: 0; }
+.acc-demobar .acc-link { color: #fff; min-height: 28px; }
+@media (pointer: coarse) { .acc-demobar .acc-link { min-height: 44px; } }
+.acc-mail-link { display: flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box; }

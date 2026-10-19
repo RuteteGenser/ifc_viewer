@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { bootstrapRaw } from "./api";
+import { bootstrapRaw, verifyEmail, verifyMagic } from "./api";
 import { bannerFor, currentState, paywallNow, parseSession } from "./state";
 import { setLocale, t } from "./copy";
 
@@ -8,7 +8,7 @@ const AccessContext = createContext(null);
 export const useAccess = () => useContext(AccessContext);
 
 const REFRESH_MS = 5 * 60 * 1000;
-const HANDLED = ["checkout", "chk", "reset", "account", "code"];
+const HANDLED = ["checkout", "chk", "reset", "account", "code", "verify", "magic"];
 
 export function AccessProvider({ children }) {
   const [session, setSession] = useState(null); // null = loading or legacy
@@ -57,7 +57,17 @@ export function AccessProvider({ children }) {
     }
     if (params.get("reset")) setDialog({ kind: "auth", mode: "reset", token: params.get("reset") });
     if (params.get("account")) setDialog({ kind: "account" });
-    if (params.get("checkout") && params.get("checkout") !== "cancel") setToast(t("toast.paid"));
+    const co = params.get("checkout");
+    if (co === "cancel") setToast(t("pay.cancelled"));
+    else if (co === "declined") setDialog({ kind: "declined" });
+    else if (co) setToast(t("toast.paid"));
+    // Links from the (demo) inbox: confirm the email, or sign in with a magic link. Both work once.
+    if (params.get("verify")) {
+      verifyEmail(params.get("verify")).then(() => { setToast(t("verify.ok")); refresh(); }, () => setToast(t("verify.bad")));
+    }
+    if (params.get("magic")) {
+      verifyMagic(params.get("magic")).then(() => { setToast(t("toast.loggedIn")); refresh(); window.dispatchEvent(new Event("argus:library-refresh")); }, () => setToast(t("magic.bad")));
+    }
     if (HANDLED.some((k) => params.has(k))) {
       HANDLED.forEach((k) => params.delete(k));
       const q = params.toString();

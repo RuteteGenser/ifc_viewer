@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LIMITS, newAnnotation } from "../cases/schema";
 import { MIN_ARROW_PX, arrowGeometry, clampToViewport, placeLabels, projectPathVisibleSegments, rdpSimplify, smoothPathD } from "./geometry";
+import { useSurfaceMirror } from "../ui/surfaces";
 import ActionBar from "./ActionBar";
 import AnnotationEditor from "./AnnotationEditor";
 import "./annotations.css";
@@ -209,6 +210,7 @@ export default function AnnotationLayer({ viewer, annotations, tool = null, colo
     setEditor(null);
   };
 
+  useSurfaceMirror("overlay", "annotationEditor", !!editor, useCallback(() => setEditor(null), [])); // Back closes the editor, then the tool
   let comments = 0;
   const selected = annotations.find((a) => a.id === selectedId);
   const editing = editor?.mode === "edit" ? annotations.find((a) => a.id === editor.id) : null;

@@ -22,6 +22,7 @@
 // point is 3 m in front of the camera (three space) and anchor.guid is the viewpoint's first
 // Selection IfcGuid. Only the first viewpoint of a topic becomes the snapshot.
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { newId } from "./ids";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const ULID_RE = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
@@ -31,7 +32,7 @@ const IN_FRONT = 3;
 const TARGET_DIST = 10;
 
 // ---------- ids ----------
-let idFactory = null;
+let idFactory = newId; // shared ULID generator from ids.js; setIdFactory(null) restores the local fallback below
 export function setIdFactory(fn) { idFactory = typeof fn === "function" ? fn : null; }
 export function randomId() {
   if (idFactory) return idFactory();

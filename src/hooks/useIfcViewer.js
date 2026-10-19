@@ -2217,6 +2217,8 @@ export function useIfcViewer() {
     let startPhi = 0;
     let startNdcX = 0;
     let startNdcY = 0;
+    let gainX = 1;
+    let gainY = 1;
     const cameraQuatStart = new THREE.Quaternion();
     const groupQuatStart = new THREE.Quaternion();
     const groupPosStart = new THREE.Vector3();
@@ -2752,13 +2754,13 @@ export function useIfcViewer() {
     renderer.domElement.addEventListener("wheel", clearNameHover, { passive: true });
 
     const applyRotation = (ndc) => {
-      const theta = startTheta - Math.PI * ROTATE_GAIN * (ndc.x - startNdcX);
+      const theta = startTheta - Math.PI * ROTATE_GAIN * gainX * (ndc.x - startNdcX);
       // + on the elevation term: ndc.y grows upward, and dragging up
       // should tip the model's top away from you (equivalently, raise
       // the virtual camera), matching OrbitControls' vertical direction.
       const phi = Math.max(
         EPS,
-        Math.min(Math.PI - EPS, startPhi + Math.PI * ROTATE_GAIN * (ndc.y - startNdcY)),
+        Math.min(Math.PI - EPS, startPhi + Math.PI * ROTATE_GAIN * gainY * (ndc.y - startNdcY)),
       );
 
       const modelQuat = cameraQuatStart
@@ -2781,6 +2783,12 @@ export function useIfcViewer() {
     // instant of the call the accumulated rotation is exactly identity.
     const anchorGesture = (ndc, pivot) => {
       rotatePivot.copy(pivot);
+      // Same turn per pixel along both axes: NDC spans the width and the
+      // height, so scale each by its size relative to the smaller side.
+      const rect = renderer.domElement.getBoundingClientRect();
+      const small = Math.max(1, Math.min(rect.width, rect.height));
+      gainX = rect.width / small;
+      gainY = rect.height / small;
       startNdcX = ndc.x;
       startNdcY = ndc.y;
       cameraQuatStart.copy(camera.quaternion);

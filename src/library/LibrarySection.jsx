@@ -122,6 +122,19 @@ function ModelItem({ item }) {
       </div>
       {expanded && (
         <div className="lib-row__actions">
+          {!loaded && (
+            <button
+              type="button"
+              className="lib-btn"
+              disabled={busy}
+              onClick={() => {
+                setExpanded(false);
+                library.open(item);
+              }}
+            >
+              Open
+            </button>
+          )}
           <button
             type="button"
             className="lib-btn"
@@ -132,6 +145,19 @@ function ModelItem({ item }) {
           >
             Rename
           </button>
+          {!loaded && library.hasModels && (
+            <button
+              type="button"
+              className="lib-btn"
+              disabled={busy}
+              onClick={() => {
+                setExpanded(false);
+                library.addToView(item);
+              }}
+            >
+              Add to view
+            </button>
+          )}
           <button type="button" className="lib-btn" onClick={() => library.copyLink(item)}>
             Copy link
           </button>

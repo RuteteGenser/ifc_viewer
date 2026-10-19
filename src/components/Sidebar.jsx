@@ -6,6 +6,7 @@ import { disciplineOf, splitModelName } from "../ifc/modelLabel";
 import ModelTree from "./ModelTree";
 import LibrarySection from "../library/LibrarySection";
 import { SaveToggle, SaveRowButton } from "../library/SaveControls";
+import { TrashIcon } from "./ModelsSheet";
 
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   const discipline = disciplineOf(model.name);
@@ -57,12 +58,13 @@ function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
         )}
         <button
           type="button"
-          className="model-row__remove"
+          className="model-row__remove model-row__remove--labelled"
           aria-label={`Remove ${model.name}`}
-          title="Remove model"
+          title="Remove this model from the view"
           onClick={() => onRemove(model.id)}
         >
-          ✕
+          <TrashIcon />
+          <span>Remove</span>
         </button>
       </div>
       <SaveRowButton model={model} />
@@ -150,7 +152,7 @@ export default function Sidebar({
           onClick={onAddFiles}
           disabled={isLoading}
         >
-          {isLoading ? loadingLabel || "Loading…" : "+ Add file"}
+          {isLoading ? loadingLabel || "Loading…" : models.length > 0 ? "Add another model" : "Open IFC file"}
         </button>
         <button
           type="button"
@@ -162,6 +164,10 @@ export default function Sidebar({
           Save .ifcZIP
         </button>
       </div>
+
+      {models.length > 0 && (
+        <p className="sidebar__hint">Opening a model replaces the current one. Add another model to view several together.</p>
+      )}
 
       <SaveToggle />
 

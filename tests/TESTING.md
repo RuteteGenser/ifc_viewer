@@ -36,6 +36,7 @@ One file per flow. Each case runs on three profiles: `desktop` (1440x900), `ipho
 | tools | measure (+Done, Esc), section preset + Undo, hide + Undo/Redo, isolate via search + Show all, level "Only" |
 | navigation | wheel zoom limits and toasts once, Home, zoom buttons, touch pinch, orbit pivot (state hook) |
 | back-guard | Back asks, Stay, second Back, Leave, #hash change |
+| single-model | opening replaces (sample, library row, picker, multi-pick as a set, drop); Add to view / Add another model / Shift-drop add; Models chip and sheet (count, Remove, Remove all, one-time notice); a corrupt or geometry-less replace keeps the old model; 44 px targets and no sideways scroll at iPhone SE/13, Pixel 7, iPad Mini (emulated touch) |
 | offline | reload offline opens the sample (?demo=1 and by hand) |
 | pwa | manifest, icons, service worker active |
 | landing | header + 2 sections, links, no horizontal overflow at 375/768/1440 |

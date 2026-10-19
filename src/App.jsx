@@ -20,6 +20,7 @@ import ViewTools from "./components/ViewTools";
 import Compass from "./components/Compass";
 import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
+import ModelsSheet from "./components/ModelsSheet";
 import ToolHint from "./components/ToolHint";
 import Hud from "./components/Hud";
 import { GestureSheet } from "./components/ShortcutsHelp";
@@ -82,6 +83,7 @@ function App() {
     setVisible,
     setModelColor,
     removeModel,
+    removeAllModels,
     renameLoadedModel,
     resetView,
     resetVisibility,
@@ -159,7 +161,10 @@ function App() {
 
   const hasNoModels = models.length === 0;
   const [isDragging, setIsDragging] = useState(false);
+  const [dropShift, setDropShift] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [multiNotice, setMultiNotice] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // On narrow screens the model list is a drawer over the view: while it is
   // open the view behind it takes no taps and no focus.
@@ -357,7 +362,46 @@ function App() {
   }, [sidebarOpen]);
 
   const fileInputRef = useRef(null);
-  const openFilePicker = useCallback(() => fileInputRef.current?.click(), []);
+  const pickAddRef = useRef(false);
+  const multiNoticeShownRef = useRef(false);
+  // Opening replaces what is loaded; "Add another model" is the explicit way to add.
+  const openFilePicker = useCallback(() => {
+    pickAddRef.current = false;
+    fileInputRef.current?.click();
+  }, []);
+  const addFilePicker = useCallback(() => {
+    pickAddRef.current = true;
+    fileInputRef.current?.click();
+  }, []);
+
+  // Nothing left in the list: close it. Phones always show the Models chip; a wide
+  // screen shows it from two models on (the sidebar lists them there).
+  useEffect(() => {
+    if (models.length === 0) setModelsOpen(false);
+  }, [models.length]);
+  useEffect(() => {
+    if (modelsOpen) setMultiNotice(false);
+  }, [modelsOpen]);
+  // First time two models are loaded together this session: say how to remove one.
+  useEffect(() => {
+    if (models.length < 2) return;
+    let seen = false;
+    try {
+      seen = sessionStorage.getItem("ifcViewer.multiNotice") === "1";
+      sessionStorage.setItem("ifcViewer.multiNotice", "1");
+    } catch {
+      // no session storage: the notice shows once per page load instead
+      seen = multiNoticeShownRef.current;
+    }
+    if (seen || multiNoticeShownRef.current) return;
+    multiNoticeShownRef.current = true;
+    setMultiNotice(true);
+  }, [models.length]);
+  useEffect(() => {
+    if (!multiNotice) return undefined;
+    const t = setTimeout(() => setMultiNotice(false), 15000);
+    return () => clearTimeout(t);
+  }, [multiNotice]);
   const sectionHint = COARSE_POINTER && clipPlanes.length > 0 ? (clipMoveMode ? "sectionMove" : "sectionIdle") : null;
   const armedTool = measureModeActive ? "measure" : tagToolActive ? "tag" : categoryHideModeActive ? "category" : sectionHint;
   useEffect(() => {
@@ -401,10 +445,12 @@ function App() {
     e.preventDefault();
     dragDepthRef.current += 1;
     setIsDragging(true);
+    setDropShift(!!e.shiftKey);
   }, []);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
+    setDropShift((was) => (was === !!e.shiftKey ? was : !!e.shiftKey));
   }, []);
 
   const handleDragLeave = useCallback((e) => {
@@ -419,7 +465,9 @@ function App() {
       dragDepthRef.current = 0;
       setIsDragging(false);
       if (e.dataTransfer.files?.length) {
-        library.openLocal(e.dataTransfer.files);
+        // A plain drop replaces the loaded model(s); Shift, or the "Add to view" zone, adds.
+        const add = e.shiftKey || !!e.target?.closest?.("[data-drop-add]");
+        library.openLocal(e.dataTransfer.files, { add });
       }
     },
     [library.openLocal],
@@ -437,9 +485,10 @@ function App() {
         hidden
         onChange={(e) => {
           if (e.target.files?.length) {
-            library.openLocal(e.target.files);
+            library.openLocal(e.target.files, { add: pickAddRef.current });
             setSidebarOpen(false);
           }
+          pickAddRef.current = false;
           e.target.value = "";
         }}
       />
@@ -448,6 +497,13 @@ function App() {
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
         sidebarCollapsed={sidebarCollapsed}
         onToggleCollapsed={toggleSidebarCollapsed}
+        modelCount={models.length}
+        showModelsChip={drawerLayout || models.length > 1}
+        modelsOpen={modelsOpen}
+        onToggleModels={() => {
+          setSidebarOpen(false);
+          setModelsOpen((v) => !v);
+        }}
       />
 
       <div
@@ -469,7 +525,7 @@ function App() {
         <Sidebar
           className={sidebarOpen ? "sidebar--open" : ""}
           models={models}
-          onAddFiles={openFilePicker}
+          onAddFiles={models.length > 0 ? addFilePicker : openFilePicker}
           onToggleVisible={setVisible}
           onSetModelColor={setModelColor}
           onRemove={removeModel}
@@ -504,7 +560,7 @@ function App() {
           onDrop={handleDrop}
         >
           <Viewport containerRef={containerRef} />
-          <DropOverlay visible={isDragging} />
+          <DropOverlay visible={isDragging} hasModels={models.length > 0} shift={dropShift} />
           {models.length === 0 && !isLoading && <EmptyState onOpenFiles={openFilePicker} onLoadSample={handleLoadSample} />}
           <LoadingOverlay visible={isLoading && !confirmReplace} label={loadingLabel} onCancel={cancelLoad} />
           <Toolbar
@@ -579,6 +635,23 @@ function App() {
           />
           <StatusBanner error={error} errorInfo={errorInfo} onDismissError={clearError} onRetry={loadFailed ? retryLoad : undefined} onChooseFile={openFilePicker} idle={!isLoading && !armedTool} />
           <Toast toast={toast} />
+          {multiNotice && models.length > 1 && (
+            <div className="multi-notice" role="status">
+              <span>{models.length} models are loaded together. Use Models to remove one.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiNotice(false);
+                  setModelsOpen(true);
+                }}
+              >
+                Models
+              </button>
+              <button type="button" aria-label="Dismiss" onClick={() => setMultiNotice(false)}>
+                OK
+              </button>
+            </div>
+          )}
           {!panelOpen && detailsCount > 0 && (
             <button type="button" className="details-fab" aria-label={`Show details, ${detailsCount} item${detailsCount === 1 ? "" : "s"}`} onClick={openDetails}>
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -657,6 +730,22 @@ function App() {
               closeMeasureLegEditPopup();
             }}
             onClose={closeMeasureLegEditPopup}
+          />
+        )}
+
+        {modelsOpen && models.length > 0 && (
+          <ModelsSheet
+            models={models}
+            isLoading={isLoading}
+            onClose={() => setModelsOpen(false)}
+            onToggleVisible={setVisible}
+            onSetColor={setModelColor}
+            onRemove={removeModel}
+            onRemoveAll={removeAllModels}
+            onAdd={() => {
+              setModelsOpen(false);
+              addFilePicker();
+            }}
           />
         )}
 

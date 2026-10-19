@@ -3612,3 +3612,52 @@
   user-select: text;
   font-size: 11px;
 }
+
+/* ---------- Replace by default: labelled Remove, add button, hint ---------- */
+
+.model-row__remove--labelled {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+
+.model-row__remove--labelled:hover {
+  border-color: var(--danger);
+}
+
+.sidebar__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  .model-row__remove--labelled {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 0 12px;
+  }
+}
+
+/* The labelled Remove button gets a line of its own, so the name keeps its width. */
+.model-row:not(:has(.model-row__meta)) .model-row__name {
+  grid-column: 2 / 4;
+}
+.model-row:not(:has(.model-row__meta)) .model-row__actions {
+  grid-row: 2;
+}
+.model-row:not(:has(.model-row__meta)) .model-row__label input {
+  grid-row: 1 / span 2;
+}
+
+.sidebar__top-buttons {
+  flex-wrap: wrap;
+}
+.sidebar__add-button {
+  flex: 1 1 100%;
+}

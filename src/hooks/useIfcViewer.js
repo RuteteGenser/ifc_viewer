@@ -2174,6 +2174,7 @@ export function useIfcViewer() {
     pivotMarker.renderOrder = 999;
     scene.add(pivotMarker);
 
+    if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.pivotState = () => ({ visible: pivotMarker.visible, pos: pivotMarker.position.toArray(), scale: pivotMarker.scale.x, rotating, pending: pivotPending });
     const scalePivotMarker = () => {
       if (!pivotMarker.visible) return;
       const distance = camera.position.distanceTo(pivotMarker.position);

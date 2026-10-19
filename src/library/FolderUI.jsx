@@ -253,6 +253,7 @@ export function FolderRow({ folder }) {
             title={`Delete folder "${folder.name}"?`}
             message="Models inside move up one level, and so do folders inside it. No models are deleted."
             confirmLabel="Delete folder"
+            danger
             initialFocus="cancel"
             onCancel={close}
             onConfirm={() => {

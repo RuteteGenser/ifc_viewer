@@ -1,0 +1,447 @@
+/* Phone chrome: how much of a portrait phone the controls take, and where they sit.
+   Goal: the 3D view keeps at least 60 percent of the screen height with the details
+   sheet at its default height. Calm status (the free trial) is a floating chip, not a
+   row; search is a tool like the others and opens over the tool row; the view controls
+   are two capsules down the right edge; undo and redo are one capsule in the bottom
+   right corner, the compass in the bottom left. Nothing sits over the middle of the model.
+   Layout only: paint comes from skin.css. Loaded after it (src/main.jsx). */
+
+@media (max-width: 768px) and (min-height: 501px) {
+  /* ---------- Free trial: a chip over the 3D view once a model is open ---------- */
+  .app:has(> .app-body:not([data-sheet="none"])) .acc-slim:not(.acc-slim--warn):not(:has(.acc-slim__demo)) {
+    position: fixed;
+    z-index: 17;
+    top: calc(var(--header-height) + var(--toolbar-h, 52px) + 12px + var(--hud-h, 0px));
+    left: calc(12px + var(--safe-left));
+    max-width: calc(100vw - 24px - 64px - var(--safe-left) - var(--safe-right));
+    height: 36px;
+    gap: 6px;
+    padding: 0 0 0 12px;
+    border-radius: var(--radius-pill);
+  }
+
+  .app:has(> .app-body:not([data-sheet="none"])) .acc-slim:not(.acc-slim--warn):not(:has(.acc-slim__demo)) .acc-slim__text {
+    -webkit-line-clamp: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    display: block;
+  }
+
+  .app:has(> .app-body:not([data-sheet="none"])) .acc-slim:not(.acc-slim--warn):not(:has(.acc-slim__demo)) .acc-slim__menu {
+    margin: -4px 0;
+    width: 40px;
+  }
+
+  .app:has(> .app-body:not([data-sheet="none"])) .acc-slim:not(.acc-slim--warn):not(:has(.acc-slim__demo)) .acc-slim__pop {
+    left: 0;
+    right: auto;
+    top: calc(100% + 6px);
+  }
+
+  /* The details sheet at full height: the chip steps aside with the other floating controls. */
+  .app:has(> .app-body[data-sheet="full"]) .acc-slim:not(.acc-slim--warn) {
+    visibility: hidden;
+  }
+
+  /* ---------- Tool row: equal cells, one grid for icon and caption ---------- */
+  .toolbar {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 4px calc(6px + var(--safe-right)) 4px calc(6px + var(--safe-left));
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toolbar > .tooltip,
+  .toolbar > .camera-clip,
+  .toolbar > .search-bar,
+  .toolbar > .shortcuts-help {
+    flex: 1 1 0;
+    min-width: 44px;
+    max-width: 68px;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .toolbar > .camera-clip > .tooltip,
+  .toolbar .tooltip:has(> .top-bar__icon-button),
+  .toolbar .tooltip:has(> .top-bar__home-button) {
+    width: 100%;
+  }
+
+  .toolbar .top-bar__icon-button,
+  .toolbar .top-bar__home-button {
+    display: grid;
+    grid-template-rows: 22px auto;
+    align-content: center;
+    justify-items: center;
+    row-gap: 4px;
+    width: 100%;
+    min-width: 44px;
+    height: 48px;
+    min-height: 48px;
+    padding: 0 2px;
+  }
+
+  .toolbar .top-bar__icon-button svg,
+  .toolbar .top-bar__home-button svg,
+  .toolbar .top-bar__home-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+  }
+
+  .toolbar .top-bar__caption,
+  .toolbar .top-bar__home-text {
+    display: block;
+    font-size: 10.5px;
+    line-height: 12px;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  /* Search is a tool cell; tapping it opens the field over the tool row. */
+  .search-bar {
+    order: 0;
+    position: relative;
+    width: auto;
+  }
+
+  .search-bar__icon {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 5px;
+    width: 22px;
+    height: 22px;
+    margin-left: -11px;
+    color: var(--ink);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .search-bar::after {
+    content: "Search";
+    content: "Search" / "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 31px;
+    text-align: center;
+    font-size: 10.5px;
+    line-height: 12px;
+    font-weight: var(--weight-medium);
+    color: var(--ink);
+    pointer-events: none;
+  }
+
+  .toolbar .search-bar__input {
+    width: 100%;
+    height: 48px;
+    min-height: 48px;
+    padding: 0;
+    color: transparent;
+    caret-color: transparent;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    cursor: pointer;
+  }
+
+  .toolbar .search-bar__input::placeholder {
+    color: transparent;
+  }
+
+  /* A search is running: the cell says so with the active wash. */
+  .toolbar .search-bar__input:not(:placeholder-shown) {
+    background: var(--accent-soft);
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .toolbar .search-bar:focus-within {
+    position: fixed;
+    left: calc(8px + var(--safe-left));
+    right: calc(8px + var(--safe-right));
+    top: calc(var(--header-height) + var(--acc-bars-h, 0px) + (var(--toolbar-h, 56px) - 44px) / 2);
+    max-width: none;
+    width: auto;
+    z-index: 60;
+  }
+
+  .toolbar .search-bar:focus-within::after {
+    content: none;
+  }
+
+  .toolbar .search-bar:focus-within .search-bar__icon {
+    left: 12px;
+    top: 12px;
+    width: 20px;
+    height: 20px;
+    margin-left: 0;
+    color: var(--ink-muted);
+  }
+
+  .toolbar .search-bar:focus-within .search-bar__input {
+    height: 44px;
+    min-height: 44px;
+    color: var(--ink);
+    caret-color: auto;
+    cursor: text;
+    padding: 0 12px 0 40px;
+    font-size: 16px;
+    background: var(--surface);
+    border-color: var(--accent);
+    border-radius: var(--radius-pill);
+    box-shadow: 0 0 0 3px var(--accent-ring), var(--shadow-md);
+  }
+
+  .toolbar .search-bar:focus-within .search-bar__input::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .search-bar__dropdown {
+    position: fixed;
+    left: calc(8px + var(--safe-left));
+    right: calc(8px + var(--safe-right));
+    top: calc(var(--header-height) + var(--acc-bars-h, 0px) + var(--toolbar-h, 52px) + 6px);
+  }
+
+  /* ---------- The details sheet: a low default, the 3D view keeps 60 percent ---------- */
+  .app-body {
+    --sheet-open-h: clamp(
+      124px,
+      calc(40dvh - var(--header-height) - var(--toolbar-h, 52px) - var(--acc-bars-h, 0px)),
+      380px
+    );
+  }
+
+  .element-panel__grabber {
+    height: 20px;
+  }
+
+  .element-panel__grabber::before {
+    inset: -12px 0 -4px;
+  }
+
+  .element-panel__tab {
+    min-height: 44px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .element-panel__body {
+    padding-top: 10px;
+  }
+
+  /* ---------- Floating controls: the edges, never the middle ---------- */
+  .view-tools {
+    top: calc(var(--toolbar-h, 52px) + 12px + var(--hud-h, 0px));
+  }
+
+  .view-tools__buttons,
+  .view-tools__zoom {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+  }
+
+  .view-tools__buttons > .tooltip:nth-child(2) {
+    margin-bottom: 10px;
+  }
+
+  .view-tools .view-tools__button,
+  .view-tools .view-tools__button--cap {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 0;
+    gap: 0;
+  }
+
+  .view-tools .view-tools__caption {
+    display: none;
+  }
+
+  .view-tools__buttons > .tooltip:first-child .view-tools__button,
+  .view-tools__zoom > .tooltip:first-child .view-tools__button {
+    border-radius: 22px 22px 0 0;
+    border-bottom-color: transparent;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .view-tools__buttons > .tooltip:nth-child(2) .view-tools__button,
+  .view-tools__zoom > .tooltip:last-child .view-tools__button {
+    border-radius: 0 0 22px 22px;
+    border-top-color: var(--line);
+  }
+
+  .view-tools__zoom {
+    flex-direction: column-reverse;
+  }
+
+  .view-tools__zoom > .tooltip:first-child .view-tools__button {
+    border-radius: 0 0 22px 22px;
+    border-bottom-color: var(--line-control);
+    border-top-color: var(--line);
+  }
+
+  .view-tools__zoom > .tooltip:last-child .view-tools__button {
+    border-radius: 22px 22px 0 0;
+    border-top-color: var(--line-control);
+    border-bottom-color: transparent;
+  }
+
+  .view-tools__panel,
+  .view-tools__panel--menu {
+    top: 0;
+    right: 54px;
+    width: min(320px, calc(100vw - 24px - 54px - var(--safe-left) - var(--safe-right)));
+  }
+
+  /* Undo and redo: one capsule in the bottom right corner. */
+  .history-buttons {
+    flex-direction: row;
+    gap: 0;
+  }
+
+  .history-buttons .history-buttons__button {
+    border-radius: 22px 0 0 22px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .history-buttons .history-buttons__button + .history-buttons__button {
+    border-radius: 0 22px 22px 0;
+    border-left-color: var(--line);
+  }
+
+  .history-buttons .history-buttons__button:first-child {
+    border-right-color: transparent;
+  }
+
+  .details-fab {
+    bottom: calc(var(--sheet-inset) + 12px + 44px + 10px + var(--transfer-h, 0px));
+  }
+
+  .first-run {
+    bottom: calc(var(--sheet-inset, 0px) + 68px + var(--transfer-h, 0px));
+  }
+
+  /* Toasts rise above the corner controls. */
+  .toast {
+    bottom: calc(max(var(--sheet-inset, 0px), var(--surface-h, 0px)) + 68px);
+  }
+}
+
+/* The narrowest phones: the Views panel takes the width under the tool row, over the button column. */
+@media (max-width: 360px) and (min-height: 501px) {
+  .view-tools .view-tools__panel:not(.view-tools__panel--menu) {
+    position: fixed;
+    top: calc(var(--header-height) + var(--acc-bars-h, 0px) + var(--toolbar-h, 52px) + 8px + var(--hud-h, 0px));
+    left: calc(8px + var(--safe-left));
+    right: calc(8px + var(--safe-right));
+    width: auto;
+    z-index: 2;
+  }
+}
+
+/* Short phones (iPhone SE class): icons only in the tool row, as before; search keeps its cell. */
+@media (max-width: 768px) and (max-height: 600px) and (min-height: 501px) {
+  .toolbar .top-bar__icon-button,
+  .toolbar .top-bar__home-button {
+    grid-template-rows: 22px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .toolbar .top-bar__caption,
+  .toolbar .top-bar__home-text,
+  .search-bar::after {
+    display: none;
+  }
+
+  .toolbar .search-bar__input {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .search-bar__icon {
+    top: 11px;
+  }
+}
+
+/* Room for the search field in the tool row (wide phones in portrait, small tablets). */
+@media (min-width: 560px) and (max-width: 768px) and (min-height: 601px) {
+  .toolbar > .search-bar {
+    flex: 2 1 160px;
+    max-width: 280px;
+  }
+
+  .search-bar::after {
+    content: none;
+  }
+
+  .search-bar__icon {
+    left: 12px;
+    top: 13px;
+    margin-left: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--ink-muted);
+  }
+
+  .toolbar .search-bar__input {
+    height: 44px;
+    min-height: 44px;
+    margin-top: 2px;
+    padding: 0 12px 0 40px;
+    color: var(--ink);
+    caret-color: auto;
+    cursor: text;
+    background: var(--surface);
+    border-color: var(--line-control);
+    border-radius: var(--radius-pill);
+  }
+
+  .toolbar .search-bar__input::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .toolbar .search-bar:focus-within {
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+  }
+}
+
+/* Annotating on a phone: the dock is a compact bar on the bottom edge; the compass steps aside. */
+@media (max-width: 768px) and (min-height: 501px) {
+  .viewport-wrapper[data-annotating] .ann-dock {
+    bottom: calc(10px + var(--safe-bottom));
+    gap: 0;
+    padding: 4px;
+  }
+
+  .viewport-wrapper[data-annotating] .ann-dock .ann-tool {
+    min-width: 54px;
+    min-height: 48px;
+    gap: 3px;
+  }
+
+  .viewport-wrapper[data-annotating] .ann-dock .ann-tool__cap {
+    font-size: 10.5px;
+    font-weight: var(--weight-medium);
+  }
+
+  .viewport-wrapper[data-annotating] .compass {
+    visibility: hidden;
+  }
+}

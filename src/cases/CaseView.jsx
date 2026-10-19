@@ -216,11 +216,11 @@ export default function CaseView({ caseId, viewer, library, modelKey, controller
       </div>
 
       {confirm === "case" && (
-        <ConfirmDialog title={COPY.deleteCaseTitle} message={COPY.deleteCaseMessage(c.name)} confirmLabel={COPY.delete} cancelLabel={COPY.cancel} initialFocus="cancel"
+        <ConfirmDialog title={COPY.deleteCaseTitle} message={COPY.deleteCaseMessage(c.name)} confirmLabel={COPY.delete} cancelLabel={COPY.cancel} initialFocus="cancel" danger
           onCancel={() => setConfirm(null)} onConfirm={async () => { setConfirm(null); await controller.remove(c.id); onOpen(null); }} />
       )}
       {confirm === "snapshot" && snap && (
-        <ConfirmDialog title={COPY.deleteSnapshotTitle} message={COPY.deleteSnapshotMessage} confirmLabel={COPY.delete} cancelLabel={COPY.cancel} initialFocus="cancel"
+        <ConfirmDialog title={COPY.deleteSnapshotTitle} message={COPY.deleteSnapshotMessage} confirmLabel={COPY.delete} cancelLabel={COPY.cancel} initialFocus="cancel" danger
           onCancel={() => setConfirm(null)} onConfirm={() => { const next = removeSnapshot(c, snap.id); setConfirm(null); onSelect(next.snapshots[Math.min(index, next.snapshots.length - 1)]?.id || null); save(next); }} />
       )}
     </div>

@@ -43,8 +43,10 @@ export default function Dialog({ title, onClose, children, wide, sheet }) {
         <div className="acc-dialog__head">
           <h2 className="acc-dialog__title">{title}</h2>
           {onClose && (
-            <button type="button" className="acc-btn acc-btn--quiet" onClick={onClose}>
-              {t("action.close")}
+            <button type="button" className="acc-btn acc-btn--quiet acc-dialog__close" aria-label={t("action.close")} onClick={onClose}>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
             </button>
           )}
         </div>

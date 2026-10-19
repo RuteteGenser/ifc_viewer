@@ -2172,6 +2172,19 @@ export function useIfcViewer() {
     );
     pivotMarker.visible = false;
     pivotMarker.renderOrder = 999;
+    // A fingertip covers about 40 px, so on touch a thin ring (radius in
+    // pixels) around the dot stays visible next to the finger. It is a
+    // child of the dot: same position, visibility and (via the unit ring
+    // radius * PIVOT_RING_PIXELS / PIVOT_MARKER_PIXELS) screen size.
+    const PIVOT_RING_PIXELS = 26;
+    const pivotRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.92, 1, 48),
+      new THREE.MeshBasicMaterial({ color: 0xff6a00, depthTest: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+    );
+    pivotRing.scale.setScalar(PIVOT_RING_PIXELS / PIVOT_MARKER_PIXELS);
+    pivotRing.renderOrder = 999;
+    pivotRing.visible = TOUCH_UI;
+    pivotMarker.add(pivotRing);
     scene.add(pivotMarker);
 
     if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.pivotState = () => ({ visible: pivotMarker.visible, pos: pivotMarker.position.toArray(), scale: pivotMarker.scale.x, rotating, pending: pivotPending });
@@ -2182,6 +2195,7 @@ export function useIfcViewer() {
         (2 * Math.tan((camera.fov * Math.PI) / 360) * distance) /
         renderer.domElement.clientHeight;
       pivotMarker.scale.setScalar(worldPerPixel * PIVOT_MARKER_PIXELS);
+      pivotRing.quaternion.copy(camera.quaternion);
     };
 
     // "Orbit the model" rotation (left mouse button). The camera never

@@ -3815,7 +3815,10 @@ export function useIfcViewer() {
           // left to anchor.
           if (!pivotPending || gestureId !== gestureSeq) return;
           pivotPending = false;
-          const ndc = pendingNdc ?? startNdc;
+          // Anchor at the press position; the pointer travel buffered in
+          // pendingNdc while the raycast ran is applied around the right
+          // pivot on the next frame instead of being dropped.
+          const ndc = startNdc;
           // hit.point is already expressed in modelsGroup's *current*
           // frame (the fragments library converts its local-space hit
           // to world space using matrixWorld as of when the raycast

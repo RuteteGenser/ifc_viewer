@@ -57,7 +57,7 @@ const requireReal = (skip) => { if (!REAL) skip("set ARGUS_ADMIN and ARGUS_CLOCK
 const signup = async (page, email) => {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
-  await page.getByLabel(/I agree to the Terms/).check();
+  await page.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
   await page.getByRole("button", { name: "Create account" }).last().click();
 };
 
@@ -316,7 +316,8 @@ await suite("access", [
       await dlg.getByRole("button", { name: "Download my models" }).click();
       assert.match((await dl).suggestedFilename(), /keep-me/);
       // Subscribe as an anonymous visitor asks for an account first
-      await dlg.getByLabel(/I want my plan to start now/).check();
+      await dlg.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
+      await dlg.getByRole("checkbox", { name: /I ask for the service to start right away/ }).check();
       await dlg.getByRole("button", { name: "Subscribe" }).click();
       const auth = page.getByRole("dialog", { name: "Create account" });
       await auth.waitFor();
@@ -324,7 +325,7 @@ await suite("access", [
       await shot(page, project, "signup");
       await page.getByLabel("Password", { exact: true }).fill("short");
       await page.getByLabel("Email").fill("t@example.com");
-      await page.getByLabel(/I agree to the Terms/).check();
+      await page.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
       await page.getByRole("button", { name: "Create account" }).last().click();
       await page.getByRole("alert").waitFor();
       assert.match(await page.getByRole("alert").innerText(), /longer password/);
@@ -337,7 +338,8 @@ await suite("access", [
       const models = await page.evaluate(() => fetch("/api/models").then((r) => r.json()));
       assert.ok(models.some((m) => m.name === "keep-me.ifc" && m.owner === "me"), "saved model kept after sign-up");
       // checkout
-      await page.getByRole("dialog", { name: "Your free time has ended" }).getByLabel(/I want my plan to start now/).check();
+      await page.getByRole("dialog", { name: "Your free time has ended" }).getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
+      await page.getByRole("dialog", { name: "Your free time has ended" }).getByRole("checkbox", { name: /I ask for the service to start right away/ }).check();
       await page.getByRole("dialog", { name: "Your free time has ended" }).getByRole("button", { name: "Subscribe" }).click();
       await page.getByRole("button", { name: "Pay", exact: true }).click();
       await page.waitForURL(/\/app\//);

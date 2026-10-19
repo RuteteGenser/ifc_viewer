@@ -50,7 +50,7 @@ const signupApi = async (page, mail) => {
 const fillSignup = async (page, mail) => {
   await page.getByLabel("Email").fill(mail);
   await page.getByLabel("Password", { exact: true }).fill(PW);
-  await page.getByLabel(/I agree to the Terms/).check();
+  await page.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
   await page.getByRole("button", { name: "Create account" }).last().click();
 };
 const openInboxAndClick = async (page, subject) => {
@@ -58,7 +58,8 @@ const openInboxAndClick = async (page, subject) => {
   await dlg(page, "Demo inbox").getByRole("link", { name: subject }).first().click();
 };
 const subscribe = async (page) => {
-  await page.getByRole("checkbox", { name: /I want my plan to start now/ }).check();
+  await page.locator(".acc-dialog").last().getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
+  await page.getByRole("checkbox", { name: /I ask for the service to start right away/ }).check();
   await page.getByRole("button", { name: "Subscribe" }).click();
   await page.getByText("DEMO: no real card is used").waitFor();
 };
@@ -95,7 +96,8 @@ await suite("demo-flow", [
       await tools(page, "+7 days");
       await dlg(page, "Your free time has ended").waitFor();
       await shot(page, project, "3-paywall");
-      await page.getByRole("checkbox", { name: /I want my plan to start now/ }).check();
+      await page.locator(".acc-dialog").last().getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
+      await page.getByRole("checkbox", { name: /I ask for the service to start right away/ }).check();
       await page.getByRole("button", { name: "Subscribe" }).click(); // anonymous: asks for an account first
       const mail = email();
       await fillSignup(page, mail);

@@ -5,6 +5,9 @@ import { claimDeviceModels, confirmReset, login, requestMagic, requestReset, sig
 import { rememberDemoEmail } from "./Demo";
 import { mapError } from "./state";
 import { t } from "./copy";
+import { signupBody } from "../legal/consent";
+import { TermsConsent } from "../legal/LegalPage";
+import { lt } from "../legal/strings";
 
 function Field({ id, label, type = "text", value, onChange, autoComplete, hint, error, autoFocus }) {
   return (
@@ -38,7 +41,7 @@ export default function AuthForms({ mode: first = "signup", token }) {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    if (mode === "signup" && !terms) return setError(t("auth.error.terms"));
+    if (mode === "signup" && !terms) return setError(lt("consent.error.terms"));
     setBusy(true);
     try {
       if (mode === "forgot") {
@@ -55,7 +58,7 @@ export default function AuthForms({ mode: first = "signup", token }) {
         return;
       }
       if (mode === "reset") await confirmReset(token, password);
-      else if (mode === "signup") await signup({ email, password, displayName: "", acceptTerms: true, termsVersion });
+      else if (mode === "signup") await signup(signupBody({ email, password, legacyTermsVersion: termsVersion }));
       else {
         const res = await login({ email, password });
         if (res?.deviceModels > 0) {
@@ -110,12 +113,12 @@ export default function AuthForms({ mode: first = "signup", token }) {
           </>
         )}
         {mode === "signup" && (
-          <label className="acc-check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> {t("auth.terms")}</label>
+          <TermsConsent checked={terms} onChange={setTerms} />
         )}
         {error && <p className="acc-error" role="alert">{error}</p>}
         {sent && <p className="acc-ok" role="status">{mode === "magic" ? t("magic.sent") : `${t("auth.resetSent")} ${access.session.demo ? "" : t("auth.resetDemo")}`}</p>}
         {sent && access.session.demo && <button type="button" className="acc-btn acc-btn--full" onClick={() => access.open({ kind: "inbox", email })}>{t("action.openInbox")}</button>}
-        <button type="submit" className="acc-btn acc-btn--primary acc-btn--full" disabled={busy}>
+        <button type="submit" className="acc-btn acc-btn--primary acc-btn--full" disabled={busy || (mode === "signup" && !terms)}>
           {mode === "forgot" ? t("auth.sendLink") : titles[mode]}
         </button>
       </form>

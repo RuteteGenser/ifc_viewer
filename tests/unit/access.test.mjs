@@ -66,7 +66,7 @@ test("copy: wording and variables", () => {
   assert.match(t("action.login"), /Logg inn/);
   assert.match(t("code.empty"), /code/); // falls back to English
   setLocale("en");
-  for (const key of ["banner.trial", "banner.grace", "paywall.consent"]) assert.ok(!/[–—]/.test(t(key)));
+  for (const key of ["banner.trial", "banner.grace", "auth.error.terms"]) assert.ok(!/[–—]/.test(t(key)));
 });
 
 test("mapError", () => {

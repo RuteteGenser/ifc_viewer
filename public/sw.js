@@ -173,6 +173,10 @@ self.addEventListener('fetch', (event) => {
   // The page asked for the network on purpose (a version check, a retry past the caches).
   if (request.cache === 'no-store' || request.cache === 'reload') return
 
+  // The static legal pages (legal/*.html) are pages of their own: a navigation to one must
+  // never be stored as the app's index, so they always come from the network.
+  if (url.href.slice(SCOPE.length).startsWith('legal/')) return
+
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstPage(event))
     return

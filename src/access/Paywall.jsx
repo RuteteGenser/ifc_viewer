@@ -6,6 +6,8 @@ import { getPlans, startCheckout } from "./api";
 import { deleteAllModels, downloadAllModels } from "./download";
 import { formatBytes, formatDay as fmtDate, mapError, paymentFailure } from "./state";
 import { t } from "./copy";
+import { TermsConsent } from "../legal/LegalPage";
+import { lt, priceSummary } from "../legal/strings";
 
 
 export function priceText(p) {
@@ -21,7 +23,8 @@ export default function Paywall({ hasWork }) {
   const e = access.session.entitlement;
   const [plan, setPlan] = useState(null);
   const [planError, setPlanError] = useState(false);
-  const [consent, setConsent] = useState(false);
+  const [terms, setTerms] = useState(false);
+  const [waiver, setWaiver] = useState(false);
   const [codeOpen, setCodeOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -58,7 +61,7 @@ export default function Paywall({ hasWork }) {
     setError("");
     setBusy("pay");
     try {
-      const r = await startCheckout(price.lookupKey, access.session.public.termsVersion);
+      const r = await startCheckout(price.lookupKey, access.session.public.termsVersion, { withdrawalWaiver: waiver });
       window.location.assign(r.url);
     } catch (err) {
       if (err.code === "signup_required") access.open({ kind: "auth", mode: "signup" });
@@ -113,11 +116,13 @@ export default function Paywall({ hasWork }) {
               {limits.maxBytesTotal && <li>{t("paywall.bullet.bytes", { size: formatBytes(limits.maxBytesTotal) })}</li>}
               <li>{t("paywall.bullet.devices")}</li>
             </ul>
-            <label className="acc-check">
-              <input type="checkbox" checked={consent} onChange={(ev) => setConsent(ev.target.checked)} />
-              {t("paywall.consent", { days: access.session.public.refundWindowDays || 14 })}
+            <TermsConsent checked={terms} onChange={setTerms} extraDocs={["purchase-info", "withdrawal-form"]} />
+            <label className="acc-check" data-testid="consent-waiver">
+              <input type="checkbox" checked={waiver} onChange={(ev) => setWaiver(ev.target.checked)} />
+              <span>{lt("consent.waiver")}</span>
             </label>
-            <button type="button" className="acc-btn acc-btn--primary acc-btn--full" disabled={!consent || !!busy} onClick={subscribe}>
+            <p className="acc-price-line" data-testid="price-summary">{priceSummary(price)}</p>
+            <button type="button" className="acc-btn acc-btn--primary acc-btn--full" disabled={!terms || !waiver || !!busy} onClick={subscribe}>
               {busy === "pay" ? t("code.checking") : t("action.subscribe")}
             </button>
             {access.session.billing.testMode && <p className="acc-note">{t("paywall.testNote")}</p>}

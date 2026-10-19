@@ -40,6 +40,7 @@ export const COPY = {
   deleteSnapshotMessage: "It will be removed from the case.",
   delete: "Delete",
   annotations: "Annotations",
+  annotate: "Annotate",
   notFound: (n) => `${n} hidden element${n === 1 ? " was" : "s were"} not found in the open model.`,
   export: "Export",
   exportPdf: "Export PDF",

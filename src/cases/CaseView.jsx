@@ -4,6 +4,7 @@ import { store } from "./store";
 import { matchModel, caseGuids } from "./match";
 import { buildCasePdf, downloadPdf } from "./pdf";
 import { buildBcf } from "./bcf";
+import { burnAnnotations } from "./burnAnnotations";
 import { slugify } from "./files";
 import { downloadBlob } from "./download";
 import { moveSnapshot, removeSnapshot, updateSnapshot, indexAfter, caseBytes } from "./caseOps";
@@ -58,7 +59,7 @@ function MatchBanner({ c, match, library }) {
   );
 }
 
-export default function CaseView({ caseId, viewer, library, modelKey, controller, showToast, selectedId, onSelect, onBack, onOpen, onWarnings }) {
+export default function CaseView({ caseId, viewer, library, modelKey, controller, showToast, selectedId, onSelect, onBack, onOpen, onWarnings, onAnnotate }) {
   const [c, failed] = useFullCase(caseId);
   const match = useMatch(c, viewer, modelKey);
   const [notFound, setNotFound] = useState(0);
@@ -104,7 +105,10 @@ export default function CaseView({ caseId, viewer, library, modelKey, controller
     try {
       const full = await store.getCase(caseId);
       const base = slugify(full.name);
-      if (kind === "pdf") await downloadPdf(buildCasePdf(full, { locale: localeOf() }), `${base}.pdf`);
+      if (kind === "pdf") {
+        const snapshots = await Promise.all(full.snapshots.map(async (s) => (s.annotations.length ? { ...s, image: await burnAnnotations(s.image || s.thumb, s) } : s)));
+        await downloadPdf(buildCasePdf({ ...full, snapshots }, { locale: localeOf() }), `${base}.pdf`);
+      }
       else if (kind === "bcf") downloadBlob(new Blob([buildBcf(full)], { type: "application/octet-stream" }), `${base}.bcf`);
       else { const { blob, filename, warnings } = await controller.exportCase(caseId); downloadBlob(blob, filename); if (warnings.length) onWarnings(warnings); }
       showToast(COPY.exported(kind === "pdf" ? "PDF" : kind === "bcf" ? "BCF" : "Case file"));
@@ -194,6 +198,9 @@ export default function CaseView({ caseId, viewer, library, modelKey, controller
                 </ol>
               </div>
             )}
+            <div className="cases__row">
+              <button type="button" className="cases__btn cases__btn--primary" onClick={async () => { await jump(snap); onAnnotate?.({ caseId, snapshotId: snap.id }); }}>{COPY.annotate}</button>
+            </div>
             <div className="cases__row">
               <button type="button" className="cases__btn" disabled={index === 0} onClick={() => { save(moveSnapshot(c, snap.id, -1)); }}>{COPY.moveLeft}</button>
               <button type="button" className="cases__btn" disabled={index === snaps.length - 1} onClick={() => { save(moveSnapshot(c, snap.id, 1)); }}>{COPY.moveRight}</button>

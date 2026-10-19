@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { fileSchemaOf } from "../ifc/stepHeader";
 import { readProjectUnits } from "../ifc/projectUnits";
 import { LIMITS } from "./schema";
+import { createAnnotationViewer } from "./annotationViewer";
 
 const FLAT_FOV_MAX = 20; // same threshold the view link uses for "flat" (parallel-looking) projection
 const MAX_HASH_BYTES = 100 * 1024 * 1024;
@@ -272,5 +273,8 @@ export function createViewerAdapter(getDeps) {
     return { found: guids.length - missing.length, missing };
   }
 
-  return { captureView, applyView, captureImage, getModelInfo, hasGuids };
+  // The viewer object for the annotation layer; getBase() = the snapshot's modelPose.
+  const annotationViewer = (getBase) => createAnnotationViewer(d, getBase);
+
+  return { captureView, applyView, captureImage, getModelInfo, hasGuids, annotationViewer };
 }

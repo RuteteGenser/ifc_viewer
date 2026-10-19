@@ -1,10 +1,10 @@
 // "Save snapshot": captures the current view and picture and adds them to the open case (or a new one named after the model).
 import { store } from "./store";
-import { addSnapshot } from "./caseOps";
+import { addSnapshot, updateSnapshot } from "./caseOps";
 import { COPY } from "./copy";
 
 // viewer: the cases adapter from useIfcViewer. controller: actions of useCases(). Returns { caseId, snapshotId } or null.
-export async function saveSnapshot({ viewer, controller, currentId, title = "", showToast }) {
+export async function saveSnapshot({ viewer, controller, currentId, title = "", showToast, annotations = [] }) {
   try {
     const [view, image, thumb, info] = await Promise.all([
       viewer.captureView(),
@@ -18,7 +18,8 @@ export async function saveSnapshot({ viewer, controller, currentId, title = "", 
       const made = await controller.create(`${info.name} case`, info);
       c = await store.getCase(made.id);
     }
-    const { case: next, snapshot } = addSnapshot(c, { title: title.trim().slice(0, 200), view, image, thumb });
+    let { case: next, snapshot } = addSnapshot(c, { title: title.trim().slice(0, 200), view, image, thumb });
+    if (annotations.length) next = updateSnapshot(next, snapshot.id, { annotations }); // saved while annotating: the marks come along
     await store.saveCase(next);
     controller.setCurrent(next.id);
     showToast(COPY.savedTo(next.name));

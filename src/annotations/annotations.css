@@ -69,3 +69,6 @@
   .ann-palette { left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .ann-card.is-open { animation: none; } .ann-note { transition: none; } }
+.ann-tool--done { color: var(--accent); }
+.ann-tool--done[aria-label] { font-weight: 600; }
+.ann-tool--done .ann-tool__cap { display: block; }

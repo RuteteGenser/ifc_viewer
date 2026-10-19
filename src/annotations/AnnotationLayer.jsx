@@ -27,7 +27,7 @@ function Pin() {
 
 // Overlay above the 3D canvas. Props: viewer (see README), annotations, tool, color, selectedId, onSelect,
 // onCreate(annotation), onUpdate(id, patch), onRemove(id), author.
-export default function AnnotationLayer({ viewer, annotations, tool = null, color, selectedId = null, onSelect, onCreate, onUpdate, onRemove, author = "" }) {
+export default function AnnotationLayer({ viewer, annotations, tool = null, color, selectedId = null, onSelect, onCreate, onUpdate, onRemove, author = "", readOnly = false }) {
   const rootRef = useRef(null);
   const rubberRef = useRef(null);
   const barRef = useRef(null);
@@ -244,7 +244,7 @@ export default function AnnotationLayer({ viewer, annotations, tool = null, colo
           </div>
         );
       })}
-      {selected && !editor && (
+      {selected && !editor && !readOnly && (
         <ActionBar ref={barRef} annotation={selected} colors={null}
           onEdit={TEXT_TYPES.includes(selected.type) ? () => setEditor({ mode: "edit", id: selected.id }) : null}
           onColor={(c) => onUpdate(selected.id, { color: c })}

@@ -2293,22 +2293,7 @@
   }
 }
 
-.empty-state__link {
-  min-height: 44px;
-  padding: 0 12px;
-  background: none;
-  border: none;
-  font: inherit;
-  font-size: 14px;
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.empty-state__link:hover {
-  color: var(--accent-hover);
-}
+.empty-state__samples { width: 100%; margin: 4px 0 0; padding: 0; list-style: none; }
 
 /* Nothing to list or inspect yet: on a wide screen the empty state owns
    the whole window, and the side columns appear once a model opens. */
@@ -3497,12 +3482,6 @@
   .empty-state__card .lib-toggle {
     width: 100%;
     justify-content: center;
-  }
-}
-
-@media (max-width: 768px) {
-  .empty-state__link--listed {
-    display: none;
   }
 }
 

@@ -29,7 +29,8 @@ export function AccessProvider({ children }) {
       if (whoRef.current && whoRef.current !== who) window.dispatchEvent(new Event("argus:library-refresh"));
       whoRef.current = who;
       setSession(s);
-      setLocale(s.account.locale);
+      // A visitor without an account has only the backend's default "en": the browser language decides.
+      setLocale(s.account.kind === "registered" ? s.account.locale : /^(nb|nn|no)\b/i.test(globalThis.navigator?.language || "") ? "nb" : "en");
     }
     return s;
   }, []);

@@ -4,11 +4,10 @@ import { SaveToggle } from "../library/SaveControls";
 import { CodeLink } from "../access/AccessUI";
 
 // The one screen shown before any model is open: a single primary action
-// (also a drop zone with a mouse) and a quiet link to a sample building.
+// (also a drop zone with a mouse). The sample building is a row in the Samples list below it
+// (the library's own, or the same single row when there is no library).
 export default function EmptyState({ onOpenFiles, onLoadSample }) {
   const library = useLibraryContext();
-  // When "My models" lists the sample as its first row, phones drop the extra link.
-  const sampleListed = !!library && library.available && library.status === "ready";
   return (
     <div className="empty-state">
       <div className="empty-state__card" onClick={onOpenFiles}>
@@ -23,9 +22,18 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
         </button>
         <SaveToggle />
         <p className="empty-state__drop">Drop an IFC file here or click to browse</p>
-        <button type="button" className={`empty-state__link${sampleListed ? " empty-state__link--listed" : ""}`} onClick={(e) => { e.stopPropagation(); onLoadSample(); }}>
-          or try a sample building
-        </button>
+        {!library?.available && (
+          <ul className="lib-list empty-state__samples" aria-label="Samples">
+            <li className="lib-row">
+              <div className="lib-row__line">
+                <button type="button" className="lib-row__main" aria-label="Open Sample building" onClick={(e) => { e.stopPropagation(); onLoadSample(); }}>
+                  <span className="lib-row__name">Sample building</span>
+                  <span className="lib-row__meta">Built in</span>
+                </button>
+              </div>
+            </li>
+          </ul>
+        )}
         <CodeLink />
         <LibrarySection variant="empty" />
       </div>

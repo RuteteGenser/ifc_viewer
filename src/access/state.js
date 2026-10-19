@@ -126,3 +126,14 @@ export function subscriptionLine(session, sub, state) {
 
 // "2026-11-02T..." -> "2 November" (the same words everywhere a date is shown).
 export const formatDay = (iso) => (iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long" }) : "");
+
+// A length of time in words, as { key, n } for copy.js: "dur.hours" 6, "dur.days" 3, "dur.minutes" 40.
+// Rounds to what people say (the session gives only an end time, so a trial seen a few seconds
+// after it began is a few seconds short of its length).
+export function durationParts(ms) {
+  const h = ms / 3600000;
+  if (!(h > 0)) return { key: "dur.minutes", n: 1 };
+  if (h >= 48) return { key: "dur.days", n: Math.round(h / 24) };
+  if (h >= 0.98) return { key: "dur.hours", n: Math.round(h) };
+  return { key: "dur.minutes", n: Math.max(1, Math.round(h * 60)) };
+}

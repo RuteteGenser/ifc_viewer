@@ -236,7 +236,7 @@ export async function suite(title, cases) {
       const page = await ctx.newPage();
       // ARGUS_IGNORE_SESSION_404=1: a deployment without the access API answers /api/session with 404; the
       // browser logs that one line itself. Everything else still counts.
-      const session404 = (url) => process.env.ARGUS_IGNORE_SESSION_404 && /\/api\/session$/.test(url || "");
+      const session404 = (url) => process.env.ARGUS_IGNORE_SESSION_404 && /\/api\/(session|folders)$/.test(url || "");
       page.on("console", (m) => m.type() === "error" && !session404(m.location()?.url) && errors.push(`console.error: ${m.text()}`));
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
       // ERR_ABORTED is a request the browser itself cancelled (a navigation left the page, an

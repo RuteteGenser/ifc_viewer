@@ -221,7 +221,7 @@
 @media (pointer: coarse) {
   .view-tools__button--cap {
     width: 52px;
-    height: 48px;
+    height: 44px;
     flex-direction: column;
     gap: 2px;
     border-radius: 14px;
@@ -383,6 +383,11 @@
 
 /* Wide layouts: sit beside the always-visible details panel. */
 @media (min-width: 769px) and (not ((max-height: 500px) and (pointer: coarse))) {
+  /* One column of equal circles, so every button lines up under the one above. */
+  .view-tools__zoom {
+    flex-direction: column;
+  }
+
   .view-tools {
     right: calc(var(--panel-w, 320px) + 12px);
   }

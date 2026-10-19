@@ -1,7 +1,6 @@
 :root {
   color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  font-family: var(--font-sans);
 }
 
 * {
@@ -24,8 +23,8 @@ html {
 }
 
 body {
-  background: #fbfaf6;
-  color: #2a2622;
+  background: var(--paper-white);
+  color: var(--ink);
   overscroll-behavior: none;
   /* The app fills the screen; nothing should scroll behind it on iOS. */
   overflow: hidden;

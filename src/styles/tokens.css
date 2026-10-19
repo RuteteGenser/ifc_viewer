@@ -1,0 +1,98 @@
+/* Design tokens: the one place for colour, type, space, radius, elevation and state.
+   The palette (paper, ink, burnt-ochre accent) is the brand identity: change it only with
+   the brand owner. Component CSS uses these names; src/styles/skin.css applies them to
+   the shared controls (buttons, links, chips, sheets, floating controls).
+   Contrast: every text colour below is 4.5:1 or more on --paper-white, --paper-ivory and
+   --surface; --line-input is 3:1 or more (form-field and checkbox outlines). */
+:root {
+  /* Paper surfaces, lightest to darkest */
+  --surface: #fffdf9;      /* raised: buttons, cards, sheets */
+  --paper-white: #fbfaf6;  /* the app background */
+  --paper-ivory: #f3efe4;  /* recessed: wells, the 3D view's backdrop */
+  --paper-grey: #e7e1d2;
+  --paper: var(--paper-ivory);
+
+  /* Ink */
+  --ink: #2a2622;
+  --ink-muted: #6b6155;
+  --ink-faint: #6a6054; /* 4.5:1 or more on every paper surface, including grey and the soft accent */
+
+  /* Lines: hairlines separate, they do not outline */
+  --line: #e2dbcd;          /* dividers inside a surface */
+  --line-control: #d8cfbf;  /* the edge of a button or card (with a shadow, never alone for meaning) */
+  --line-input: #8a8073;    /* text fields and checkboxes: 3.3:1 on ivory */
+  --line-strong: var(--line-control);
+
+  /* Accent: muted burnt ochre */
+  --accent: #96652f;
+  --accent-hover: #7d5326;
+  --accent-pressed: #6c4720;
+  --accent-soft: #f0e4d0;
+  --accent-wash: #f7efe2;   /* selected rows, active tools */
+
+  --danger: #b42318;
+  --danger-bg: #fbeae1;
+  --danger-border: #e8b9a1;
+
+  /* States for neutral controls */
+  --hover: rgba(42, 38, 34, 0.045);
+  --pressed: rgba(42, 38, 34, 0.08);
+  --scrim: rgba(42, 38, 34, 0.32);
+  --focus-ring: 0 0 0 2px var(--paper-white), 0 0 0 4px var(--accent);
+
+  /* Elevation: soft, layered, warm; low contrast */
+  --shadow-xs: 0 1px 1px rgba(42, 38, 34, 0.04), 0 1px 2px rgba(42, 38, 34, 0.05);
+  --shadow-sm: 0 1px 2px rgba(42, 38, 34, 0.05), 0 2px 8px rgba(42, 38, 34, 0.06);
+  --shadow-md: 0 2px 4px rgba(42, 38, 34, 0.04), 0 8px 24px rgba(42, 38, 34, 0.09);
+  --shadow-lg: 0 4px 12px rgba(42, 38, 34, 0.06), 0 20px 48px rgba(42, 38, 34, 0.14);
+  --shadow-sheet: 0 -1px 0 rgba(42, 38, 34, 0.05), 0 -12px 40px rgba(42, 38, 34, 0.12);
+
+  /* Radius: one family */
+  --radius-sm: 6px;   /* badges, small chips inside rows */
+  --radius: 8px;      /* buttons, inputs */
+  --radius-lg: 12px;  /* cards, popovers, rows */
+  --radius-xl: 16px;  /* sheets, dialogs */
+  --radius-pill: 999px;
+
+  /* Space: 4 / 8 pt */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Type. UI text is the platform's own face (SF on Apple, Segoe on Windows); Fraunces is
+     the brand's display face, for titles only. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;    /* captions, meta */
+  --text-sm: 13px;    /* secondary text, banner */
+  --text-base: 15px;  /* body, buttons */
+  --text-md: 16px;    /* inputs (no iOS zoom) */
+  --text-lg: 17px;    /* row titles */
+  --text-xl: 20px;    /* sheet titles */
+  --text-2xl: 24px;   /* screen titles */
+  --text-3xl: 30px;   /* the welcome */
+  --leading-tight: 1.2;
+  --leading: 1.45;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --tracking-title: -0.015em;
+  --tracking-caps: 0.06em;
+
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch' result='noise'/%3E%3CfeColorMatrix in='noise' type='matrix' values='0 0 0 0 0.16 0 0 0 0 0.14 0 0 0 0 0.12 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* back-compat aliases */
+  --bg: var(--paper-white);
+  --bg-subtle: var(--paper-ivory);
+  --border: var(--line);
+  --border-strong: var(--line-control);
+  --text: var(--ink);
+  --text-muted: var(--ink-muted);
+  --text-faint: var(--ink-faint);
+  --header-height: 52px;
+}

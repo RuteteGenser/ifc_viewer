@@ -47,7 +47,7 @@ function List({ cases, modelName, controller, onOpen, onWarnings, showToast }) {
   return (
     <div className="cases__body">
       <div className="cases__bar">
-        <button type="button" className="cases__btn cases__btn--primary" onClick={() => setNaming(true)}>{COPY.newCase}</button>
+        <button type="button" className="cases__btn" onClick={() => setNaming(true)}>{COPY.newCase}</button>
         <button type="button" className="cases__btn" onClick={() => fileRef.current?.click()}>{COPY.importFile}</button>
         <input ref={fileRef} type="file" hidden accept=".json,.bcf,.bcfzip,.zip,application/json" aria-label={COPY.importFile}
           onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = ""; }} />
@@ -128,7 +128,7 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
     <div className="cases" data-state={state} data-surface-sheet="cases" role="dialog" aria-label={COPY.title} ref={ref}>
       <div className="cases__head" {...swipe.head}>
         <h2 className="cases__title">{COPY.title}</h2>
-        <button type="button" className="cases__btn" onClick={onClose}>{COPY.done}</button>
+        <button type="button" className="cases__btn cases__btn--quiet" onClick={onClose}>{COPY.done}</button>
       </div>
       {!cases.persistent && <p className="cases__banner cases__banner--warn" role="status">{COPY.notSaved}</p>}
       {cases.error && <p className="cases__banner cases__banner--warn" role="alert">{cases.error}</p>}

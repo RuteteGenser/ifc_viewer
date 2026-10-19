@@ -1,0 +1,776 @@
+/* Skin: the shared look of every control, from the tokens in tokens.css.
+   Only paint lives here (colour, border, radius, shadow, type). Size and layout stay in the
+   component CSS, so this file can never move a button or change a touch target.
+   Loaded after the component CSS (src/main.jsx), so equal-specificity rules here win.
+
+   Button hierarchy, one primary action per view:
+     primary      accent fill, white text            (.acc-btn--primary, .lib-btn--primary, ...)
+     secondary    raised surface, hairline, xs shadow (the default for every other button)
+     ghost        no fill, no line; hover wash        (toolbar tools, header icons, Done)
+     destructive  danger text on a surface            (Remove, Delete)
+   Links are text in the accent colour, medium weight, underlined only on hover. */
+
+/* ---------- Base ---------- */
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--paper-white);
+  color: var(--ink);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+/* Numbers line up in tables, measurements and the trial clock. */
+.element-panel,
+.measure-control,
+.compass__offset,
+.lib__quota,
+.lib-row__meta,
+.acc-slim__text,
+.acc-banner,
+.dim-tags {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Secondary buttons: raised surface, hairline, a breath of shadow ---------- */
+
+.acc-btn,
+.lib-btn,
+.cases__btn,
+.models-sheet__icon-btn,
+.models-sheet__tint,
+.models-sheet__add,
+.models-sheet__remove-all,
+.models-sheet__remove,
+.sidebar__save-button,
+.sidebar__reset-visibility-button,
+.sidebar__help-button,
+.element-panel__hide-button,
+.model-row__remove--labelled,
+.confirm-dialog__cancel,
+.sb-actions__btn,
+.view-tools__toggle,
+.view-tools__close,
+.camera-clip-popover .camera-clip-popover__done,
+.legal-page__close,
+.acc-account-btn {
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+}
+
+.acc-btn:hover:not(:disabled),
+.lib-btn:hover:not(:disabled),
+.cases__btn:hover:not(:disabled),
+.models-sheet__icon-btn:hover,
+.models-sheet__tint:hover,
+.models-sheet__add:hover,
+.models-sheet__remove-all:hover,
+.sidebar__save-button:hover:not(:disabled),
+.sidebar__reset-visibility-button:hover:not(:disabled),
+.sidebar__help-button:hover,
+.element-panel__hide-button:hover,
+.model-row__remove--labelled:hover,
+.confirm-dialog__cancel:hover,
+.sb-actions__btn:hover:not(:disabled),
+.view-tools__toggle:hover,
+.view-tools__close:hover,
+.legal-page__close:hover {
+  background: var(--paper-white);
+  border-color: #cdc3b1;
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Primary: one per view ---------- */
+
+.acc-btn--primary,
+.lib-btn--primary,
+.cases__btn--primary,
+.models-sheet__add,
+.sidebar__add-button,
+.empty-state__primary,
+.confirm-dialog__confirm,
+.sidebar__reset-visibility-button--primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: #fff;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.005em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(68, 44, 18, 0.18);
+}
+
+.acc-btn--primary:hover:not(:disabled),
+.lib-btn--primary:hover:not(:disabled),
+.cases__btn--primary:hover:not(:disabled),
+.models-sheet__add:hover,
+.sidebar__add-button:hover:not(:disabled),
+.empty-state__primary:hover,
+.confirm-dialog__confirm:hover,
+.sidebar__reset-visibility-button--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  filter: none;
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(68, 44, 18, 0.2);
+}
+
+.cases__btn--primary:disabled {
+  background: var(--paper-grey);
+  border-color: var(--paper-grey);
+  color: var(--ink-faint);
+  box-shadow: none;
+}
+
+/* ---------- Destructive ---------- */
+
+.acc-btn--danger,
+.lib-btn--danger,
+.cases__btn--danger,
+.models-sheet__remove,
+.model-row__remove--labelled {
+  color: var(--danger);
+  border-color: var(--line-control);
+}
+
+.acc-btn--danger:hover:not(:disabled),
+.lib-btn--danger:hover:not(:disabled),
+.cases__btn--danger:hover:not(:disabled),
+.models-sheet__remove:hover,
+.model-row__remove--labelled:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
+/* ---------- Ghost: tools and quiet actions ---------- */
+
+.acc-btn--quiet,
+.menu-toggle,
+.sidebar-collapse,
+.models-sheet__close,
+.acc-slim__menu {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  box-shadow: none;
+  color: var(--ink);
+}
+
+.acc-btn--quiet:hover:not(:disabled),
+.menu-toggle:hover,
+.sidebar-collapse:hover,
+.models-sheet__close:hover,
+.acc-slim__menu:hover {
+  background: var(--hover);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Disabled: still readable (4.5:1), clearly inert, no dashed outline. */
+.sidebar__save-button:disabled,
+.sidebar__reset-visibility-button:disabled,
+.lib-btn:disabled,
+.acc-btn:disabled {
+  background: var(--paper-ivory);
+  border: 1px solid var(--line);
+  box-shadow: none;
+  color: var(--ink-faint);
+  opacity: 1;
+}
+
+/* ---------- Links ---------- */
+
+.acc-link,
+.legal-links__a,
+.lib-crumbs__btn {
+  color: var(--accent-hover);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.acc-link:hover,
+.legal-links__a:hover,
+.lib-crumbs__btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.legal-links__a {
+  color: var(--ink-muted);
+  font-weight: var(--weight-regular);
+}
+
+/* ---------- Inputs ---------- */
+
+.acc-input,
+.cases__input,
+.lib-rename__input,
+.lib-org__select,
+.search-bar__input {
+  background: var(--surface);
+  border: 1px solid var(--line-input);
+  border-radius: var(--radius);
+  color: var(--ink);
+  box-shadow: inset 0 1px 1px rgba(42, 38, 34, 0.03);
+}
+
+.acc-input:focus,
+.cases__input:focus,
+.lib-rename__input:focus,
+.search-bar__input:focus,
+.toolbar .search-bar__input:focus {
+  border-color: var(--accent);
+}
+
+.toolbar .search-bar__input {
+  border-color: var(--line-input);
+}
+
+/* ---------- Header ---------- */
+
+.header {
+  border-bottom-color: var(--line);
+}
+
+.header__title {
+  font-size: 18px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.menu-toggle svg {
+  width: 22px;
+  height: 22px;
+}
+
+.models-chip {
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+}
+
+.models-chip:hover {
+  background: var(--paper-white);
+}
+
+.models-chip[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+/* ---------- Toolbar: tools are ghost buttons; the armed one is washed in accent ---------- */
+
+.toolbar {
+  border-bottom-color: var(--line);
+  gap: 4px;
+}
+
+.top-bar__home-button,
+.top-bar__icon-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  box-shadow: none;
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.top-bar__home-button:hover:not(:disabled),
+.top-bar__icon-button:hover:not(:disabled) {
+  background: var(--hover);
+  box-shadow: none;
+  transform: none;
+}
+
+.top-bar__icon-button--active,
+.top-bar__icon-button--active:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-pressed);
+}
+
+@media (pointer: coarse) {
+  .toolbar .top-bar__icon-button,
+  .toolbar .top-bar__home-button {
+    gap: 3px;
+    border-radius: 10px;
+  }
+
+  .toolbar .top-bar__icon-button svg,
+  .toolbar .top-bar__home-button svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .toolbar .top-bar__caption,
+  .toolbar .top-bar__home-text {
+    font-size: 10px;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0;
+    color: inherit;
+  }
+}
+
+/* ---------- Floating controls over the 3D view ---------- */
+
+.view-tools__button,
+.history-buttons__button,
+.compass__dial,
+.panel-reveal,
+.details-fab {
+  background: rgba(255, 253, 249, 0.94);
+  border: 1px solid var(--line-control);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  -webkit-backdrop-filter: saturate(1.2) blur(8px);
+  backdrop-filter: saturate(1.2) blur(8px);
+}
+
+.view-tools__button:hover,
+.history-buttons__button:hover:not(:disabled) {
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.view-tools__button.is-open {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper-white);
+}
+
+/* ---------- Popovers, menus, dialogs ---------- */
+
+.view-tools__panel,
+.context-menu,
+.search-bar__results,
+.shortcuts-help__popover,
+.camera-clip-popover,
+.acc-slim__pop,
+.first-run,
+.loading-overlay__box,
+.drop-overlay__box {
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.confirm-dialog,
+.acc-dialog {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.acc-dialog__title,
+.confirm-dialog__title {
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.acc-backdrop {
+  background: var(--scrim);
+}
+
+.models-sheet-backdrop {
+  background: var(--scrim);
+}
+
+.acc-toast,
+.toast {
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--paper-white);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-lg);
+}
+
+.acc-toast {
+  padding: 10px 18px;
+}
+
+/* ---------- Sheets (phone) and side panels ---------- */
+
+.models-sheet,
+.cases,
+.help-sheet {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: var(--shadow-sheet);
+}
+
+.models-sheet__title,
+.cases__title,
+.help-sheet__title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.models-sheet__row {
+  background: var(--paper-white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.models-sheet__name {
+  font-weight: var(--weight-semibold);
+}
+
+@media (min-width: 769px) {
+  .models-sheet,
+  .cases {
+    border: 1px solid var(--line-control);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* ---------- Trial banner ---------- */
+
+.acc-slim,
+.acc-banner {
+  background: var(--accent-wash);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.acc-slim--warn,
+.acc-banner--warn {
+  background: var(--danger-bg);
+}
+
+.acc-slim__text {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.acc-slim__menu svg {
+  width: 20px;
+  height: 20px;
+}
+
+.acc-slim__item {
+  font-size: var(--text-base);
+}
+
+.acc-slim__item:hover {
+  background: var(--hover);
+}
+
+/* ---------- Empty state ---------- */
+
+.empty-state__card {
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  gap: 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .empty-state__card {
+    border-style: dashed;
+    border-color: #c9bfad;
+  }
+  .empty-state__card:hover {
+    background: var(--surface);
+    border-color: var(--accent);
+  }
+}
+
+.empty-state__icon {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  box-sizing: content-box;
+  border-radius: 16px;
+  background: var(--accent-wash);
+  stroke-width: 1.75;
+}
+
+.empty-state__title {
+  font-size: 26px;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-title);
+}
+
+.empty-state__text {
+  font-size: var(--text-base);
+  color: var(--ink-muted);
+}
+
+.empty-state__primary {
+  border-radius: 12px;
+  font-size: var(--text-md);
+}
+
+/* ---------- Library list ---------- */
+
+.lib-row {
+  background: var(--paper-white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.lib-row--loaded {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.lib-row__main {
+  border-radius: var(--radius-lg);
+}
+
+.lib-row__main:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.lib-row__name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.lib-badge {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--paper-grey);
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  padding: 0 6px;
+}
+
+.lib-badge--open {
+  background: var(--accent);
+  color: #fff;
+}
+
+.lib__title {
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-title);
+}
+
+.lib__group,
+.sidebar__section-title,
+.lib--sidebar .lib__title {
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-faint);
+}
+
+.lib-chip {
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+}
+
+.lib-chip--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-pressed);
+}
+
+.lib-notice {
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-lg);
+}
+
+/* ---------- Details panel ---------- */
+
+.element-panel__tab {
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+}
+
+.element-panel__tab--active {
+  font-weight: var(--weight-semibold);
+}
+
+.element-panel__hide-button {
+  border-radius: var(--radius);
+}
+
+/* ---------- Welcome ---------- */
+
+.acc-welcome__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.acc-welcome__brand .logo-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.acc-welcome__title {
+  font-size: var(--text-3xl);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  overflow-wrap: normal;
+  text-wrap: balance;
+}
+
+.acc-welcome__lead {
+  font-size: var(--text-md);
+  color: var(--ink-muted);
+}
+
+.acc-welcome__open {
+  min-height: 52px;
+  margin-top: 8px;
+  border-radius: 12px;
+  font-size: var(--text-md);
+}
+
+.acc-welcome__secondary {
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.acc-welcome__secondary .acc-link {
+  flex: 1 1 0;
+  min-height: 48px;
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  box-shadow: var(--shadow-xs);
+}
+
+.acc-welcome__secondary .acc-link:hover {
+  text-decoration: none;
+  background: var(--paper-white);
+}
+
+.acc-welcome__included {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding-top: 16px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
+}
+
+.acc-welcome__included svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--ink-muted);
+}
+
+.acc-welcome__legal .acc-link {
+  color: var(--ink-faint);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-sm);
+}
+
+@media (min-width: 600px) {
+  .acc-welcome {
+    background: var(--scrim);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .acc-welcome__card {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 36px 36px 24px;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+.acc-slim__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Pass-1 refinements ---------- */
+
+.cases__btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.cases__btn--quiet:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.models-sheet__close,
+.cases__btn--quiet {
+  color: var(--accent-hover);
+  font-weight: var(--weight-semibold);
+}
+
+.models-sheet__count {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+}
+
+.element-panel__grabber span {
+  background: var(--ink-muted);
+  opacity: 0.32;
+}
+
+@media (pointer: coarse) {
+  .view-tools__caption {
+    font-weight: var(--weight-medium);
+  }
+}
+
+.acc-welcome__secondary {
+  flex-wrap: wrap;
+}
+
+.acc-welcome__secondary .acc-link {
+  flex: 1 1 auto;
+  padding: 0 16px;
+  white-space: nowrap;
+  font-size: var(--text-base);
+}
+
+/* The header's two controls (Account, the models chip) share one shape. */
+.acc-account-btn--header {
+  border-radius: var(--radius-pill);
+}

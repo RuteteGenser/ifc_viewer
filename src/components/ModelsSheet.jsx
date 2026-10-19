@@ -11,7 +11,7 @@ export const countText = (n) => `${n} model${n === 1 ? "" : "s"}`;
 
 function EyeIcon({ off }) {
   return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
       <circle cx="12" cy="12" r="3" />
       {off && <path d="M4 4l16 16" />}
@@ -21,7 +21,7 @@ function EyeIcon({ off }) {
 
 export function TrashIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
     </svg>
   );
@@ -37,7 +37,7 @@ export function ModelsChip({ count, open, onClick, className = "" }) {
       aria-expanded={open}
       onClick={onClick}
     >
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 3 20 7.5v9L12 21 4 16.5v-9L12 3Z" />
         <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
       </svg>

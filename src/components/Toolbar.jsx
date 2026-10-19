@@ -6,7 +6,7 @@ import ShortcutsHelp from "./ShortcutsHelp";
 
 function MeasureIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
       <rect x="3" y="9" width="18" height="6" rx="1" transform="rotate(-30 12 12)" />
       <path d="M8.5 12.6 L9.7 10.6 M11.3 14.2 L12.5 12.2 M14 15.8 L15.2 13.8" transform="rotate(-30 12 12)" />
     </svg>
@@ -15,7 +15,7 @@ function MeasureIcon() {
 
 function TagIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12.5 3.5H5.5a2 2 0 0 0-2 2v7l10 10a2 2 0 0 0 2.8 0l6.2-6.2a2 2 0 0 0 0-2.8l-10-10Z" />
       <circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none" />
     </svg>
@@ -24,7 +24,7 @@ function TagIcon() {
 
 function HomeIcon() {
   return (
-    <svg className="top-bar__home-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className="top-bar__home-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 11.5 12 4l9 7.5" />
       <path d="M5.5 10v10h13V10" />
     </svg>
@@ -33,7 +33,7 @@ function HomeIcon() {
 
 function EyeIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -42,7 +42,7 @@ function EyeIcon() {
 
 function EyeOffIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3l18 18" />
       <path d="M10.6 5.2A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a13.4 13.4 0 0 1-3.1 3.9M6.6 6.6C4 8.3 2 12 2 12s3.5 7 10 7a10.6 10.6 0 0 0 4.4-.9" />
       <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
@@ -52,7 +52,7 @@ function EyeOffIcon() {
 
 function HideCategoryIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
       <path d="M4 7.5l8 4.5 8-4.5" />
       <path d="M12 12v9" />

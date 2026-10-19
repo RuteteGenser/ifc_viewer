@@ -8,14 +8,14 @@ const MIN_FILTER = 2;
 function EyeIcon({ state }) {
   if (state === "hidden") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M17.9 17.9A10.5 10.5 0 0 1 12 19.5C6.5 19.5 3 12 3 12a17 17 0 0 1 4.1-5.2M9.9 4.6A9.7 9.7 0 0 1 12 4.5C17.5 4.5 21 12 21 12a17 17 0 0 1-2.2 3.2" />
         <path d="m3 3 18 18" />
       </svg>
     );
   }
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" opacity={state === "partial" ? 0.55 : 1}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" opacity={state === "partial" ? 0.55 : 1}>
       <path d="M3 12s3.5-7.5 9-7.5S21 12 21 12s-3.5 7.5-9 7.5S3 12 3 12Z" />
       <circle cx="12" cy="12" r="3" fill={state === "partial" ? "currentColor" : "none"} />
     </svg>
@@ -24,7 +24,7 @@ function EyeIcon({ state }) {
 
 function Chevron({ open }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: open ? "rotate(90deg)" : "none" }}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: open ? "rotate(90deg)" : "none" }}>
       <path d="m9 6 6 6-6 6" />
     </svg>
   );

@@ -44,7 +44,7 @@ function TabIndicator({ barRef, active }) {
   return (
     <span ref={ref} className="element-panel__tab-indicator" aria-hidden="true">
       <svg className="element-panel__tab-underline" viewBox="0 0 40 6" preserveAspectRatio="none">
-        <path d="M1 2.5C8 1 16 4 20 2.3C26 0.5 33 3 39 1.8" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" fill="none" vectorEffect="non-scaling-stroke" />
+        <path d="M1 3H39" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" fill="none" vectorEffect="non-scaling-stroke" />
       </svg>
     </span>
   );

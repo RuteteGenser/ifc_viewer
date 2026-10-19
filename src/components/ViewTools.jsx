@@ -8,7 +8,7 @@ import { STANDARD_VIEWS } from "../ifc/viewHelpers";
 import { formatElevation } from "../ifc/storeys";
 import "./ViewTools.css";
 
-const svgProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
+const svgProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
 
 function CubeIcon() {
   return (

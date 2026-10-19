@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useExitGhost } from "../usePresence";
 
 export default function ContextMenu({ x, y, touch = false, onCreateClipPlane, onHideElement, onZoomTo, onIsolate, onCopyGuid, onClose }) {
   const menuRef = useRef(null);
+  useExitGhost(menuRef);
 
   useEffect(() => {
     const handlePointerDown = (e) => {

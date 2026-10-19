@@ -1,20 +1,45 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import ElementInfoPanel from "./ElementInfoPanel";
 import MeasureControl from "./MeasureControl";
 import DimensionTagsPanel from "./DimensionTagsPanel";
 
-function TabUnderline() {
+// One underline for all tabs. It is a fixed 100px box moved with transform (translate + scaleX), so
+// sliding between tabs never touches layout. Re-placed on tab change and whenever the bar or a tab
+// resizes (rotation, the short "Info/Measure" labels, the resizable panel).
+function TabIndicator({ barRef, active }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const bar = barRef.current;
+    const el = ref.current;
+    if (!bar || !el) return undefined;
+    const place = () => {
+      const tab = bar.querySelector(".element-panel__tab--active");
+      if (!tab || !tab.offsetWidth) {
+        el.classList.remove("element-panel__tab-indicator--on");
+        return;
+      }
+      const w = Math.max(0, tab.offsetWidth - 16);
+      el.style.transform = `translate(${tab.offsetLeft + 8}px, ${tab.offsetTop + tab.offsetHeight - 8}px) scaleX(${w / 100})`;
+      if (!el.classList.contains("element-panel__tab-indicator--on")) {
+        // First placement: appear in place (draw-in), slide from then on.
+        el.classList.remove("element-panel__tab-indicator--ready");
+        el.classList.add("element-panel__tab-indicator--on");
+        requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("element-panel__tab-indicator--ready")));
+      }
+    };
+    place();
+    if (typeof ResizeObserver !== "function") return undefined;
+    const ro = new ResizeObserver(place);
+    ro.observe(bar);
+    bar.querySelectorAll(".element-panel__tab").forEach((t) => ro.observe(t));
+    return () => ro.disconnect();
+  }, [barRef, active]);
   return (
-    <svg className="element-panel__tab-underline" viewBox="0 0 40 6" preserveAspectRatio="none" aria-hidden="true">
-      <path
-        d="M1 2.5C8 1 16 4 20 2.3C26 0.5 33 3 39 1.8"
-        stroke="var(--accent)"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        fill="none"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <span ref={ref} className="element-panel__tab-indicator" aria-hidden="true">
+      <svg className="element-panel__tab-underline" viewBox="0 0 40 6" preserveAspectRatio="none">
+        <path d="M1 2.5C8 1 16 4 20 2.3C26 0.5 33 3 39 1.8" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" fill="none" vectorEffect="non-scaling-stroke" />
+      </svg>
+    </span>
   );
 }
 
@@ -46,6 +71,7 @@ export default function RightPanel({
   // The handle and tab bar follow the finger and snap on release; everything
   // is a transform, so a drag can be interrupted at any point.
   const asideRef = useRef(null);
+  const tabbarRef = useRef(null);
   const compactProbeRef = useRef(null);
   const dragRef = useRef(null);
   const swipedRef = useRef(false);
@@ -172,7 +198,8 @@ export default function RightPanel({
       >
         <span />
       </button>
-      <div className="element-panel__tabbar" {...swipe}>
+      <div className="element-panel__tabbar" ref={tabbarRef} {...swipe}>
+        <TabIndicator barRef={tabbarRef} active={activeTab} />
         <button
           type="button"
           className={`element-panel__tab${activeTab === "info" ? " element-panel__tab--active" : ""}`}
@@ -181,7 +208,6 @@ export default function RightPanel({
         >
           <span className="tab-label tab-label--full">Properties</span>
           <span className="tab-label tab-label--short" aria-hidden="true">Info</span>
-          {activeTab === "info" && <TabUnderline />}
         </button>
         <button
           type="button"
@@ -191,7 +217,6 @@ export default function RightPanel({
         >
           <span className="tab-label tab-label--full">Measurements</span>
           <span className="tab-label tab-label--short" aria-hidden="true">Measure</span>
-          {activeTab === "measurements" && <TabUnderline />}
         </button>
         <button
           type="button"
@@ -201,7 +226,6 @@ export default function RightPanel({
         >
           <span className="tab-label tab-label--full">Tags</span>
           <span className="tab-label tab-label--short" aria-hidden="true">Tags</span>
-          {activeTab === "dimensions" && <TabUnderline />}
         </button>
         <button
           type="button"

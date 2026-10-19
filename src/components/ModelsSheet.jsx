@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import usePresence from "../usePresence";
+import { hapticsEnabled, setHapticsEnabled } from "../haptics";
 import { createPortal } from "react-dom";
 import ModelName from "./ModelName";
 import { disciplineOf } from "../ifc/modelLabel";
@@ -89,6 +90,7 @@ function SheetRow({ model, onToggleVisible, onSetColor, onRemove }) {
 // a popover under the header on a wide screen.
 function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetColor, onRemove, onRemoveAll, onAdd }) {
   const ref = useRef(null);
+  const [haptics, setHaptics] = useState(hapticsEnabled);
   const closed = state === "closed";
   useEffect(() => {
     if (closed) return undefined;
@@ -133,6 +135,13 @@ function SheetBody({ state, models, isLoading, onClose, onToggleVisible, onSetCo
             </button>
           )}
         </div>
+        <label className="models-sheet__haptics">
+          <input type="checkbox" checked={haptics} onChange={(e) => { setHaptics(e.target.checked); setHapticsEnabled(e.target.checked); }} />
+          <span>
+            Haptics
+            <small>A light buzz on main buttons. Works on most Android phones; iPhone has no vibration for web pages.</small>
+          </span>
+        </label>
       </div>
     </>,
     document.body,

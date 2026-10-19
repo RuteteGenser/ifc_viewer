@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
+import { useExitGhost } from "../usePresence";
 
 // Every hotkey the app responds to (see the keydown handler in
 // useIfcViewer.js) — kept as a plain list here rather than derived, since
@@ -50,6 +51,10 @@ function HelpIcon() {
 }
 
 export function GestureSheet({ onClose }) {
+  const scrimRef = useRef(null);
+  const sheetRef = useRef(null);
+  useExitGhost(scrimRef, "fade");
+  useExitGhost(sheetRef, "sheet");
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
@@ -59,8 +64,8 @@ export function GestureSheet({ onClose }) {
   }, [onClose]);
   return (
     <>
-      <button type="button" className="help-sheet__scrim" aria-label="Close help" onClick={onClose} />
-      <div className="help-sheet" role="dialog" aria-label="How to move around">
+      <button type="button" className="help-sheet__scrim" ref={scrimRef} aria-label="Close help" onClick={onClose} />
+      <div className="help-sheet" ref={sheetRef} role="dialog" aria-label="How to move around">
         <div className="help-sheet__title">How to move around</div>
         <dl className="help-sheet__list">
           {GESTURES.map((g) => (
@@ -75,6 +80,24 @@ export function GestureSheet({ onClose }) {
         </button>
       </div>
     </>
+  );
+}
+
+function ShortcutsPopover() {
+  const ref = useRef(null);
+  useExitGhost(ref);
+  return (
+    <div className="shortcuts-help__popover" ref={ref}>
+      <div className="shortcuts-help__title">Keyboard shortcuts</div>
+      <dl className="shortcuts-help__list">
+        {SHORTCUTS.map((s) => (
+          <div className="shortcuts-help__row" key={s.keys}>
+            <dt>{s.description}</dt>
+            <dd>{s.keys}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
@@ -117,17 +140,7 @@ export default function ShortcutsHelp({ open, onOpenChange }) {
       </Tooltip>
 
       {open && !COARSE && (
-        <div className="shortcuts-help__popover">
-          <div className="shortcuts-help__title">Keyboard shortcuts</div>
-          <dl className="shortcuts-help__list">
-            {SHORTCUTS.map((s) => (
-              <div className="shortcuts-help__row" key={s.keys}>
-                <dt>{s.description}</dt>
-                <dd>{s.keys}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+        <ShortcutsPopover />
       )}
     </div>
   );

@@ -207,10 +207,10 @@ export default function ElementInfoPanel({ element, loading, onHide, onToast }) 
   return (
     <div className="dp-info">
       <div className="element-panel__info-header">
-        <div className="element-panel__category" title={element.category}>
+        <div className="element-panel__category" key={`c-${currentId}`} title={element.category}>
           {prettyCategory(element.category)}
         </div>
-        {element.name && <div className="element-panel__name">{element.name}</div>}
+        {element.name && <div className="element-panel__name" key={`n-${currentId}`}>{element.name}</div>}
         {onHide && (
           <button type="button" className="element-panel__hide-button" onClick={onHide}>
             Hide this element

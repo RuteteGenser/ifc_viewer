@@ -1,8 +1,10 @@
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
+import { useAddedKeys } from "../usePresence";
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 
 export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins, onStartTagging }) {
+  const added = useAddedKeys(pinnedTags.map((t) => t.key));
   return (
     <div className="measure-control">
       {pinnedTags.length === 0 ? (
@@ -19,7 +21,7 @@ export default function DimensionTagsPanel({ pinnedTags, onUnpin, onClearAllPins
       )}
       {pinnedTags.length > 0 &&
         pinnedTags.map((tag) => (
-          <div className="clip-control__plane" key={tag.key}>
+          <div className={`clip-control__plane${added.has(tag.key) ? " row-new" : ""}`} key={tag.key}>
             <div className="measure-control__length">{tag.name || "(unnamed)"}</div>
             <div className="measure-control__values">
               <span>{tag.dimData?.familyName || tag.name || tag.category}</span>

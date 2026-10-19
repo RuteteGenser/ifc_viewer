@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import usePopoverGroup from "../hooks/usePopoverGroup";
 import Tooltip from "./Tooltip";
+import { useExitGhost } from "../usePresence";
 import { STANDARD_VIEWS } from "../ifc/viewHelpers";
 import { formatElevation } from "../ifc/storeys";
 import "./ViewTools.css";
@@ -70,6 +71,8 @@ const SECTION_KINDS = [
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
 function ViewsPanel({ views, spaceControl, onClose }) {
+  const panelRef = useRef(null);
+  useExitGhost(panelRef);
   const { flat, setFlatProjection, goToView, levels, levelSel, showLevels, showAllLevels } = views;
   const [mode, setMode] = useState(levelSel?.mode ?? "only");
   // On a touch screen the panel covers much of the model, so it gets out of
@@ -84,7 +87,7 @@ function ViewsPanel({ views, spaceControl, onClose }) {
     if (levelSel) showLevels(levelSel.id, next);
   };
   return (
-    <div className="view-tools__panel" role="dialog" aria-label="Views and levels">
+    <div className="view-tools__panel" ref={panelRef} role="dialog" aria-label="Views and levels">
       <div className="view-tools__head">
         <span className="view-tools__heading">Views and levels</span>
         <button type="button" className="view-tools__close" onClick={onClose}>
@@ -196,9 +199,11 @@ function ViewsPanel({ views, spaceControl, onClose }) {
 }
 
 function SharePanel({ views, onClose }) {
+  const panelRef = useRef(null);
+  useExitGhost(panelRef);
   const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function" && window.matchMedia?.("(pointer: coarse)").matches;
   return (
-    <div className="view-tools__panel view-tools__panel--menu" role="menu" aria-label="Save and share">
+    <div className="view-tools__panel view-tools__panel--menu" ref={panelRef} role="menu" aria-label="Save and share">
       <button
         type="button"
         role="menuitem"

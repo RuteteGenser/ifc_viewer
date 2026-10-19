@@ -153,8 +153,8 @@ export function MovePicker({ title, moving = null, current, onPick, onClose }) {
   return (
     <Dialog title={title} onClose={onClose}>
       <ul className="fpick" aria-label="Folders">
-        {rows.map((r) => (
-          <li key={r.folder?.id ?? "top"}>
+        {rows.map((r, i) => (
+          <li key={r.folder?.id ?? "top"} style={{ "--i": Math.min(i, 8) }}>
             <button
               type="button"
               className={`fpick__row${r.current ? " fpick__row--current" : ""}`}

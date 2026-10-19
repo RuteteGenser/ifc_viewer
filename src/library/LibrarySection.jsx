@@ -12,6 +12,7 @@ import { useAccess } from "../access/AccessProvider";
 import { AccountButton } from "../access/AccessUI";
 import { quotaText } from "../access/AccountPage";
 import { t } from "../access/copy";
+import { useListSwap } from "../usePresence";
 
 function MoreIcon() {
   return (
@@ -242,12 +243,34 @@ function SampleItem() {
 
 const SIDEBAR_ROWS = 3;
 
+// While the first fetch is pending: two rows the size of real ones. It appears only if the answer is
+// slow (so a fast answer never flashes it) and is replaced in place by the list.
+function LibrarySkeleton() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setShow(true), 300);
+    return () => clearTimeout(id);
+  }, []);
+  if (!show) return null;
+  return (
+    <ul className="lib-list lib-skel" role="status" aria-label="Loading my models">
+      {[0, 1].map((i) => (
+        <li className="lib-row lib-row--skel" key={i} aria-hidden="true">
+          <div className="lib-skel__bar" />
+          <div className="lib-skel__bar" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // variant "empty": inside the start card. variant "sidebar": collapsible section.
 export default function LibrarySection({ variant }) {
   const library = useLibraryContext();
   const [open, setOpen] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const [state, setState] = useState(() => ({ ...loadState() }));
+  const listRef = useRef(null);
   useEffect(() => saveState(state), [state]);
   const items = library?.items;
   const loadedNames = library?.loadedNames;
@@ -266,7 +289,10 @@ export default function LibrarySection({ variant }) {
       }),
     [items, allOwn, state, loadedNames, folders, folderId, searching],
   );
-  if (!library || !library.available || library.status === "loading") return null;
+  const swapKey = `${folderId}|${state.sort}|${state.dir}|${state.formats}|${state.disciplines}|${state.openNow}`;
+  useListSwap(listRef, swapKey);
+  if (!library || !library.available) return null;
+  if (library.status === "loading") return <LibrarySkeleton />;
   const isSidebar = variant === "sidebar";
   const headingId = `lib-heading-${variant}`;
   const listId = `lib-list-${variant}`;
@@ -295,7 +321,7 @@ export default function LibrarySection({ variant }) {
             <OrganizeBar id={`lib-org-${variant}`} state={result.state} setState={setState} result={result} canOpenNow={canOpenNow} searchTotal={allOwn.length} />
           )}
           {folders && <FolderBar searching={searching} onClear={clearSearch} />}
-          <ul className="lib-list" id={listId} aria-labelledby={headingId}>
+          <ul className="lib-list" ref={listRef} id={listId} aria-labelledby={headingId}>
             {access && !(folders && folderId) && <li className="lib__group" aria-hidden="true">{t("lib.samples")}</li>}
             {result.builtIn && !(folders && folderId) && <SampleItem />}
             {sampleRecords.map((item) => (

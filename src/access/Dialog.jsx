@@ -1,10 +1,13 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { t } from "./copy";
+import { useExitGhost } from "../usePresence";
 
 // Modal with a labelled title, Escape to close (when closable), focus trap, focus return.
 export default function Dialog({ title, onClose, children, wide, sheet }) {
   const ref = useRef(null);
+  const backdropRef = useRef(null);
+  useExitGhost(backdropRef, "fade", ".acc-dialog");
   useEffect(() => {
     const previous = document.activeElement;
     const box = ref.current;
@@ -31,7 +34,7 @@ export default function Dialog({ title, onClose, children, wide, sheet }) {
     };
   }, [onClose]);
   return createPortal(
-    <div className="acc-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className="acc-backdrop" ref={backdropRef} onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={`acc-dialog${wide ? " acc-dialog--wide" : ""}${sheet ? " acc-dialog--sheet" : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
         <div className="acc-dialog__head">
           <h2 className="acc-dialog__title">{title}</h2>

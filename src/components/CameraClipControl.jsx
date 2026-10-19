@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useExitGhost } from "../usePresence";
 import Tooltip from "./Tooltip";
 import { announcePopover } from "../hooks/usePopoverGroup";
 
@@ -51,10 +52,15 @@ export default function CameraClipControl({
 }
 
 // The distance slider, shown in the tool column (Hud) while the clip is on.
-export function CameraClipPanel({ enabled, distance, max, onChange, onDone }) {
-  if (!enabled) return null;
+export function CameraClipPanel({ enabled, ...rest }) {
+  return enabled ? <CameraClipPopover {...rest} /> : null;
+}
+
+function CameraClipPopover({ distance, max, onChange, onDone }) {
+  const ref = useRef(null);
+  useExitGhost(ref);
   return (
-    <div className="camera-clip-popover" role="group" aria-label="Camera clip">
+    <div className="camera-clip-popover" ref={ref} role="group" aria-label="Camera clip">
       <div className="camera-clip-popover__head">
         <span>Camera clip</span>
         <button type="button" className="tool-hint__done camera-clip-popover__done" onClick={onDone}>

@@ -1,3 +1,4 @@
+import { useAddedKeys } from "../usePresence";
 import { formatLength } from "../ifc/formatLength";
 
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
@@ -9,6 +10,7 @@ const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer:
 // clicked) — that live readout lives only in the 3D view itself; this
 // list is for completed measurements only.
 export default function MeasureControl({ measurements, onRemoveMeasurement, onStartMeasure }) {
+  const added = useAddedKeys(measurements.map((m) => m.id));
   return (
     <div className="measure-control">
       {measurements.length === 0 ? (
@@ -20,7 +22,7 @@ export default function MeasureControl({ measurements, onRemoveMeasurement, onSt
         </>
       ) : (
         measurements.map((m) => (
-          <div className="clip-control__plane" key={m.id}>
+          <div className={`clip-control__plane${added.has(m.id) ? " row-new" : ""}`} key={m.id}>
             <div className="measure-control__length">Length: {formatLength(m.length)}</div>
             <div className="measure-control__values">
               <span style={{ color: "#ef4444" }} title="Perpendicular distance to the second point's surface. click its label in the 3D view to edit">

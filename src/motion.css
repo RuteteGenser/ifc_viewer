@@ -1,5 +1,14 @@
-/* Motion system: tokens + shared keyframes. Only transform/opacity (and
-   shadow/background for press states) are animated. Imported once in main.jsx. */
+/* Motion system (docs)
+   Rule: animate only transform/opacity (plus color/box-shadow for press states). Never
+   width/height/top/left/margin. Individual `translate`/`scale` properties are used where an
+   element already has its own `transform`.
+   Tokens:  --dur-1 90ms press | --dur-2 160ms exits, fades | --dur-3 240ms enters | --dur-4 360ms reveals
+            --ease standard | --ease-out entering | --ease-spring small overshoot (toast, dialog)
+   Reduced motion collapses every --dur to ~0 and usePresence unmounts at once.
+   Enter: CSS animation with `backwards` fill. Exit: src/usePresence.js (usePresence keeps an element
+   mounted; useExitGhost leaves an inert, pointer-less clone that removes itself, so the real
+   component and its handlers are gone at once and taps pass through). Lists: useListSwap.
+   Tab indicator: one element, transform only, positioned from the active tab (RightPanel.jsx). */
 :root {
   --dur-1: 90ms;
   --dur-2: 160ms;
@@ -66,7 +75,7 @@ summary:active {
 .empty-state__card { animation: m-rise var(--dur-4) var(--ease-out) backwards; }
 .models-chip span { display: inline-block; }
 .models-chip span { animation: m-bump var(--dur-3) var(--ease-spring); }
-.element-panel__tab-underline { transform-origin: left center; animation: m-draw var(--dur-3) var(--ease-out) backwards; }
+.element-panel__tab-indicator .element-panel__tab-underline { position: static; width: 100%; height: 100%; }
 .loading-overlay { animation: m-fade-in var(--dur-3) var(--ease) backwards; }
 .viewport--reveal canvas { animation: m-reveal var(--dur-4) var(--ease-out) backwards; }
 .lib-transfer__fill { transition: width var(--dur-3) var(--ease); }
@@ -76,4 +85,44 @@ summary:active {
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0.01ms; --dur-2: 0.01ms; --dur-3: 0.01ms; --dur-4: 0.01ms; }
   button:not(:disabled):active, [role="button"]:active, summary:active { scale: 1; }
+}
+
+/* ---- Part 2 ---- */
+.m-ghost { pointer-events: none !important; }
+
+/* Popovers and dialogs: enter (exit is the ghost in usePresence.js). translate/scale compose with any transform. */
+@keyframes m-pop2-in { from { opacity: 0; translate: 0 -6px; scale: 0.97; } }
+@keyframes m-sheet2-in { from { opacity: 0; translate: 0 24px; } }
+.view-tools__panel, .context-menu, .shortcuts-help__popover, .camera-clip-popover { animation: m-pop2-in var(--dur-2) var(--ease-out) backwards; }
+.help-sheet { animation: m-sheet2-in var(--dur-3) var(--ease-out) backwards; }
+.help-sheet__scrim, .acc-backdrop { animation: m-fade-in var(--dur-3) var(--ease) backwards; }
+.acc-dialog { animation: m-pop2-in var(--dur-3) var(--ease-spring) backwards; }
+.lib-row__actions { animation: m-rise var(--dur-2) var(--ease-out) backwards; }
+
+/* Move-to picker rows */
+.fpick li { animation: m-rise var(--dur-3) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 18ms); }
+
+/* Details tabs: one indicator that slides (placed by RightPanel.jsx; transform only). */
+.element-panel__tabbar { position: relative; }
+.element-panel__tab-indicator { position: absolute; left: 0; top: 0; width: 100px; height: 6px; transform-origin: left center; pointer-events: none; opacity: 0; will-change: transform; }
+.element-panel__tab-indicator--on { opacity: 1; animation: m-fade-in var(--dur-3) var(--ease) backwards; }
+.element-panel__tab-indicator--ready { transition: transform var(--dur-3) var(--ease); }
+.element-panel__tab-indicator svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+/* Selection pulse (name row only) and new-row highlight. */
+@keyframes m-pulse-in { from { opacity: 0.35; scale: 0.985; } }
+.element-panel__info-header .element-panel__category, .element-panel__info-header .element-panel__name { animation: m-pulse-in var(--dur-3) var(--ease-out) backwards; transform-origin: left center; }
+@keyframes m-flash { from { box-shadow: 0 0 0 2px var(--accent); } to { box-shadow: 0 0 0 2px transparent; } }
+.row-new { animation: m-rise var(--dur-3) var(--ease-out) backwards, m-flash 900ms var(--ease) both; }
+
+/* Loading placeholders (opacity pulse). */
+@keyframes m-pulse { 50% { opacity: 0.45; } }
+.lib-skel__bar { height: 12px; border-radius: 6px; background: var(--paper-grey, #e8e4dc); animation: m-pulse 1.2s ease-in-out infinite; }
+.lib-skel__bar:first-child { width: 55%; margin-bottom: 8px; }
+.lib-skel__bar:last-child { width: 30%; }
+.lib-row--skel { min-height: 50px; display: flex; flex-direction: column; justify-content: center; padding: 0 14px; }
+.mi__body .sidebar__empty { animation: m-pulse 1.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lib-skel__bar, .mi__body .sidebar__empty { animation: none; }
 }

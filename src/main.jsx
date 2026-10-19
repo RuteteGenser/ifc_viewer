@@ -7,6 +7,7 @@ import fragmentsWorkerUrl from '@thatopen/fragments/worker?url'
 import { startEngineDownloads } from './ifc/engineDownloads'
 import { prewarmIfcImporter } from './ifc/ifcImportClient'
 import { recoverFromChunkFailure } from './reliability/recovery'
+import { initHaptics } from './haptics'
 
 // Boot the IFC engine (separate chunk, import worker, web-ifc wasm, fragments worker) now,
 // once the UI code is here, so it downloads and starts in parallel with React
@@ -38,6 +39,8 @@ engineImport
 window.addEventListener('vite:preloadError', () => {
   recoverFromChunkFailure()
 })
+
+initHaptics()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

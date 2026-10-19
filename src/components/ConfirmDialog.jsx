@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useExitGhost } from "../usePresence";
 
 const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex='-1'])";
 
@@ -8,6 +9,8 @@ const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), select
 // back to whatever had it before.
 export default function ConfirmDialog({ title, message, confirmLabel = "Replace", cancelLabel = "Cancel", onConfirm, onCancel, initialFocus = "confirm" }) {
   const dialogRef = useRef(null);
+  const backdropRef = useRef(null);
+  useExitGhost(backdropRef, "fade", ".confirm-dialog");
   const confirmRef = useRef(null);
   const cancelRef = useRef(null);
 
@@ -50,6 +53,7 @@ export default function ConfirmDialog({ title, message, confirmLabel = "Replace"
   return (
     <div
       className="confirm-dialog-backdrop"
+      ref={backdropRef}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}

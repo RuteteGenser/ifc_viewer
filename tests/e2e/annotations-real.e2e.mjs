@@ -196,14 +196,15 @@ await suite("annotations-real", [
 
       // ---- prev/next shows each snapshot's own annotations (read-only: no toolbar, no action bar)
       await openCases(page);
-      const count = async () => { await page.waitForTimeout(900); await frames(page); return page.locator(".ann-item").count(); };
+      // The marks load from IndexedDB after the jump: poll for the number rather than wait a fixed time.
+      const count = async (n) => { await page.waitForFunction((n) => document.querySelectorAll(".ann-item").length === n, n, { timeout: 15000 }).catch(() => {}); await frames(page); return page.locator(".ann-item").count(); };
       assert.equal(await panel(page).getByRole("option", { selected: true }).count(), 1);
       await panel(page).getByRole("button", { name: "Previous" }).click();
-      assert.equal(await count(), 5, "A shows its five marks");
+      assert.equal(await count(5), 5, "A shows its five marks");
       assert.equal(await dock(page).count(), 0, "no toolbar when only showing");
       await shot(page, "05-prev-readonly", project);
       await panel(page).getByRole("button", { name: "Next" }).click();
-      assert.equal(await count(), 1, "B shows its own one");
+      assert.equal(await count(1), 1, "B shows its own one");
       assert.match(await page.locator(".ann-item").first().getByRole("button").getAttribute("aria-label"), /Beam B/);
 
       // ---- reload keeps them (IndexedDB)
@@ -213,7 +214,7 @@ await suite("annotations-real", [
       await openCases(page);
       await panel(page).getByRole("option").first().waitFor();
       await panel(page).getByRole("option").nth(0).click();
-      assert.equal(await count(), 5, "A's marks survived the reload");
+      assert.equal(await count(5), 5, "A's marks survived the reload");
 
       // ---- exports
       await panel(page).getByRole("button", { name: "Export", exact: true }).click();
@@ -253,7 +254,7 @@ await suite("annotations-real", [
       await panel(page).getByRole("option").nth(1).waitFor();
       assert.equal(await panel(page).getByRole("option").count(), 2);
       await panel(page).getByRole("option").nth(1).click();
-      await page.waitForTimeout(900);
+      await page.waitForFunction(() => document.querySelectorAll(".ann-item").length === 1, null, { timeout: 15000 }).catch(() => {});
       assert.equal(await page.locator(".ann-item").count(), 1, "the new snapshot carries the mark");
       assert.match(await panel(page).locator(".cases__annos").innerText(), /Keep me/);
       await panel(page).getByRole("button", { name: "Done" }).click();

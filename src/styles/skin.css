@@ -1320,7 +1320,8 @@ select.acc-input {
     padding: 8px 8px 8px 20px;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }
-  .acc-dialog form > .acc-btn--primary[type="submit"] {
+  .acc-dialog form > .acc-btn--primary[type="submit"],
+  .acc-dialog .acc-box > .acc-btn--primary.acc-btn--full {
     position: sticky;
     bottom: 0;
     z-index: 1;

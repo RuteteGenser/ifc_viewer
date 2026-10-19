@@ -66,7 +66,8 @@ export default function AuthForms({ mode: first = "signup", token }) {
   };
   const move = async () => {
     try { await claimDeviceModels(); } catch { /* shown in the list */ }
-    window.dispatchEvent(new Event("argus:library-changed"));
+    await access.refresh();
+    window.dispatchEvent(new Event("argus:library-refresh"));
     access.close();
   };
   const titles = { signup: t("action.signup"), login: t("action.login"), forgot: t("auth.forgot"), reset: t("auth.saveNew") };

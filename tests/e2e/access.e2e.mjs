@@ -1,0 +1,275 @@
+// Access system: legacy fallback and the real new backend.
+// Needs ARGUS_URL to serve the build with /api piped to a scratch backend started with
+// ARGUS_REQUIRE_SESSION=1 ARGUS_ADMIN_TOKEN=test (see tests/e2e/serve-access.mjs), and
+// ARGUS_ADMIN=http://127.0.0.1:<backend port> for the admin API (time travel, code duration).
+// The legacy cases fake the missing endpoint with a route and need no backend.
+import assert from "node:assert/strict";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { suite, openApp, loadSample, APP, DEMO_FILE, OUT } from "./lib.mjs";
+
+const ADMIN = process.env.ARGUS_ADMIN || "http://127.0.0.1:4195";
+const SHOTS = process.env.ARGUS_SHOTS || `${OUT}/access`;
+mkdirSync(SHOTS, { recursive: true });
+const H = 3600000;
+const REAL = !!process.env.ARGUS_ADMIN && !!process.env.ARGUS_CLOCK;
+const IGNORE_404 = [/api\/session/, /Failed to load resource/];
+// A wrong access code is answered with 404 on purpose.
+const WRONG_CODE = [/api\/redeem-code/, /Failed to load resource/];
+const WRONG_FORM = [/api\/(auth\/(signup|login)|billing\/checkout)/, /Failed to load resource/];
+
+const admin = async (method, path, body) => {
+  const r = await fetch(ADMIN + "/api/admin" + path, { method, headers: { Authorization: "Bearer test", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  assert.ok(r.ok, `admin ${method} ${path} -> ${r.status}`);
+  return r.json();
+};
+// A fresh visitor: own IP so the per-IP caps never bite across cases.
+let n = 0;
+const fresh = async (page) => {
+  clock("");
+  n += 1;
+  await page.context().setExtraHTTPHeaders({ "x-real-ip": `10.${Math.floor(Math.random() * 250)}.${Math.floor(n / 250)}.${n % 250}` });
+};
+const session = (page) => page.evaluate(() => fetch("/api/session", { credentials: "same-origin" }).then((r) => r.json()));
+// Time travel with the backend's test clock (ARGUS_CLOCK is the file it reads; empty = real time).
+const CLOCK = process.env.ARGUS_CLOCK;
+const clock = (iso) => CLOCK && writeFileSync(CLOCK, iso);
+process.on("exit", () => clock(""));
+// Puts the clock `afterMs` after the end of this visitor's trial (negative: before it).
+const setEnds = async (page, afterMs) => {
+  const s = await session(page);
+  clock(new Date(Date.parse(s.entitlement.endsAt) + afterMs).toISOString());
+};
+const banner = (page) => page.getByTestId("acc-banner");
+const noOverflow = async (page) => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "horizontal overflow");
+const smallTargets = async (page, scope) => {
+  const bad = await page.evaluate((sel) => [...document.querySelectorAll(`${sel} button, ${sel} input:not([type=checkbox]), ${sel} a`)].filter((e) => e.offsetParent).map((e) => ({ t: (e.textContent || e.getAttribute("aria-label") || e.id).trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44), scope);
+  assert.deepEqual(bad, [], `targets under 44px in ${scope}`);
+};
+const shot = (page, project, name) => page.screenshot({ path: `${SHOTS}/${name}-${project}.png` });
+const requireReal = (skip) => { if (!REAL) skip("set ARGUS_ADMIN and ARGUS_CLOCK (scratch backend) to run"); };
+const signup = async (page, email) => {
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
+  await page.getByLabel(/I agree to the Terms/).check();
+  await page.getByRole("button", { name: "Create account" }).last().click();
+};
+
+await suite("access", [
+  {
+    name: "legacy: /api/session 404 shows no access UI and the sample loads",
+    allowErrors: IGNORE_404,
+    fn: async ({ page }) => {
+      await page.route("**/api/session", (r) => r.fulfill({ status: 404, body: "not found", contentType: "text/plain" }));
+      await openApp(page);
+      await page.getByRole("heading", { name: "Open a building model" }).waitFor();
+      await loadSample(page);
+      await page.waitForTimeout(500);
+      for (const sel of ['[data-testid="acc-banner"]', ".acc-dialog", ".acc-codelink", ".acc-account-btn"]) assert.equal(await page.locator(sel).count(), 0, sel);
+      assert.equal(await page.getByText("Have an access code?").count(), 0);
+    },
+  },
+  {
+    name: "legacy: 401 challenge, HTML answer and a hanging answer behave the same",
+    projects: ["desktop"],
+    allowErrors: IGNORE_404,
+    fn: async ({ page }) => {
+      const answers = [(r) => r.fulfill({ status: 401, body: "Unauthorized", headers: { "www-authenticate": 'Basic realm="x"' } }), (r) => r.fulfill({ status: 200, body: "<html>app</html>", contentType: "text/html" }), (r) => r.abort("failed"), (r) => setTimeout(() => r.fulfill({ status: 404, body: "" }).catch(() => {}), 6000)];
+      for (const answer of answers) {
+        await page.unroute("**/api/session").catch(() => {});
+        await page.route("**/api/session", answer);
+        const t0 = Date.now();
+        await openApp(page);
+        assert.ok(Date.now() - t0 < 5000, "viewer ready must not wait for the session answer");
+        await page.waitForTimeout(300);
+        assert.equal(await page.locator('[data-testid="acc-banner"], .acc-dialog, .acc-codelink, .acc-account-btn').count(), 0);
+        await loadSample(page);
+      }
+    },
+  },
+  {
+    name: "trial banner with countdown, dismiss, phone layout, code link",
+    fn: async ({ page, project, skip, touch }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      assert.match(await banner(page).innerText(), /Free trial\. (2[0-4] h|\d+ min) left\./);
+      const b = await banner(page).boundingBox();
+      const h = await page.locator(".header").boundingBox();
+      assert.ok(b.y >= h.y + h.height - 1, "banner sits under the header");
+      await noOverflow(page);
+      if (touch) await smallTargets(page, '[data-testid="acc-banner"]');
+      await shot(page, project, "banner");
+      await page.getByRole("button", { name: "Dismiss" }).click();
+      assert.equal(await banner(page).count(), 0);
+      await shot(page, project, "empty-state-code-link");
+      assert.ok(await page.getByRole("button", { name: "Have an access code?" }).count() >= 1);
+      await loadSample(page);
+    },
+  },
+  {
+    name: "code entry: wrong code, then 123 shows about 30 days",
+    allowErrors: WRONG_CODE,
+    fn: async ({ page, project, skip, touch }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      await page.getByRole("button", { name: "Have an access code?" }).first().click();
+      const dlg = page.getByRole("dialog");
+      await dlg.getByLabel("Access code").fill("nope");
+      await dlg.getByRole("button", { name: "Apply" }).click();
+      await dlg.getByRole("alert").waitFor();
+      assert.match(await dlg.getByRole("alert").innerText(), /does not work/);
+      if (touch) await smallTargets(page, ".acc-dialog");
+      await shot(page, project, "code-entry");
+      await dlg.getByLabel("Access code").fill("123");
+      await dlg.getByRole("button", { name: "Apply" }).click();
+      await dlg.getByText(/Access code active until/).waitFor();
+      await dlg.waitFor({ state: "detached", timeout: 6000 });
+      await page.waitForFunction(() => /Access code active\. (29|30) days left/.test(document.querySelector('[data-testid="acc-banner"]')?.textContent || ""), null, { timeout: 8000 });
+      await noOverflow(page);
+    },
+  },
+  {
+    name: "grace banner, then expired paywall; blocked upload; code 123 clears it",
+    allowErrors: [/api\/models\?name=x\.ifc/, /Failed to load resource/],
+    fn: async ({ page, project, skip, touch }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      await setEnds(page, H);
+      await page.reload();
+      await openApp(page);
+      await banner(page).waitFor();
+      assert.match(await banner(page).innerText(), /Your trial has ended\. You can still open and download your models until/);
+      await shot(page, project, "grace-banner");
+      await setEnds(page, 10 * 24 * H);
+      await page.reload();
+      const dlg = page.getByRole("dialog", { name: "Your free time has ended" });
+      await dlg.waitFor();
+      await dlg.getByRole("button", { name: "Subscribe" }).waitFor();
+      for (const name of ["Download my models", "Subscribe", "Have an access code?", "Log in"]) assert.ok(await dlg.getByRole("button", { name }).count(), name);
+      assert.match(await dlg.innerText(), /Price not final/);
+      assert.ok(await dlg.getByRole("button", { name: "Subscribe" }).isDisabled(), "needs the consent tick");
+      await noOverflow(page);
+      if (touch) await smallTargets(page, ".acc-dialog");
+      await shot(page, project, "paywall");
+      const up = await page.evaluate(() => fetch("/api/models?name=x.ifc", { method: "POST", headers: { "X-Argus-Client": "1" }, body: new Blob(["ISO-10303-21;"]) }).then((r) => r.status));
+      assert.equal(up, 402, "server refuses an upload while expired");
+      await dlg.getByRole("button", { name: "Have an access code?" }).click();
+      await dlg.getByLabel("Access code").fill("123");
+      await dlg.getByRole("button", { name: "Apply" }).click();
+      await dlg.waitFor({ state: "detached", timeout: 8000 });
+      await banner(page).waitFor();
+      assert.match(await banner(page).innerText(), /Access code active/);
+    },
+  },
+  {
+    allowErrors: WRONG_FORM,
+    name: "sign up keeps saved models, fake checkout makes it active, log out and in",
+    fn: async ({ page, project, skip, touch }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      const bytes = readFileSync(DEMO_FILE).toString("base64");
+      const saved = await page.evaluate((b64) => fetch("/api/models?name=keep-me.ifc", { method: "POST", headers: { "X-Argus-Client": "1" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) }).then((r) => r.status), bytes);
+      assert.ok(saved === 200 || saved === 201, `upload ${saved}`);
+      await setEnds(page, 10 * 24 * H);
+      await page.reload();
+      const dlg = page.getByRole("dialog", { name: "Your free time has ended" });
+      await dlg.waitFor();
+      // download still works while expired
+      const dl = page.waitForEvent("download", { timeout: 15000 });
+      await dlg.getByRole("button", { name: "Download my models" }).click();
+      assert.match((await dl).suggestedFilename(), /keep-me/);
+      // Subscribe as an anonymous visitor asks for an account first
+      await dlg.getByLabel(/I want my plan to start now/).check();
+      await dlg.getByRole("button", { name: "Subscribe" }).click();
+      const auth = page.getByRole("dialog", { name: "Create account" });
+      await auth.waitFor();
+      if (touch) await smallTargets(page, ".acc-dialog");
+      await shot(page, project, "signup");
+      await page.getByLabel("Password", { exact: true }).fill("short");
+      await page.getByLabel("Email").fill("t@example.com");
+      await page.getByLabel(/I agree to the Terms/).check();
+      await page.getByRole("button", { name: "Create account" }).last().click();
+      await page.getByRole("alert").waitFor();
+      assert.match(await page.getByRole("alert").innerText(), /longer password/);
+      const email = `t${Date.now()}${n}@example.com`;
+      await signup(page, email);
+      await page.getByRole("dialog", { name: "Create account" }).waitFor({ state: "detached", timeout: 8000 });
+      const models = await page.evaluate(() => fetch("/api/models").then((r) => r.json()));
+      assert.ok(models.some((m) => m.name === "keep-me.ifc" && m.owner === "me"), "saved model kept after sign-up");
+      // checkout
+      await page.getByRole("dialog", { name: "Your free time has ended" }).getByLabel(/I want my plan to start now/).check();
+      await page.getByRole("dialog", { name: "Your free time has ended" }).getByRole("button", { name: "Subscribe" }).click();
+      await page.getByRole("button", { name: /^Pay \(test\)/ }).click();
+      await page.waitForURL(/\/app\//);
+      await page.getByRole("dialog", { name: "Your free time has ended" }).waitFor({ state: "detached", timeout: 10000 });
+      assert.equal(await banner(page).count(), 0, "no banner when active");
+      // account panel
+      await page.getByRole("button", { name: "Account" }).first().click();
+      const acct = page.getByRole("dialog", { name: "Account" });
+      await acct.getByText(email).waitFor();
+      assert.match(await acct.getByTestId("acc-state").innerText(), /Your plan is active/);
+      await shot(page, project, "account");
+      await noOverflow(page);
+      if (touch) await smallTargets(page, ".acc-dialog");
+      // log out: no new trial, so expired
+      await acct.getByRole("button", { name: "Log out" }).click();
+      const again = page.getByRole("dialog", { name: "Your free time has ended" });
+      await again.waitFor();
+      await again.getByRole("button", { name: "Log in" }).click();
+      const login = page.getByRole("dialog", { name: "Log in" });
+      await login.getByLabel("Email").fill(email);
+      await login.getByLabel("Password", { exact: true }).fill("correct horse battery");
+      await login.getByLabel("Password", { exact: true }).press("Enter");
+      await again.waitFor({ state: "detached", timeout: 10000 });
+      // another login that offers to move device models is not covered here
+    },
+  },
+  {
+    name: "samples are read-only in the list; Account button and quota line",
+    fn: async ({ page, skip, project }) => {
+      requireReal(skip);
+      await fresh(page);
+      await openApp(page);
+      await banner(page).waitFor();
+      await page.locator(".lib--empty").waitFor();
+      assert.ok(await page.locator(".lib--empty").getByText("Samples").count(), "Samples label");
+      assert.match(await page.locator(".lib--empty").getByTestId("lib-quota").innerText(), /\d+ of 3 models, \d+ MB of 300 MB/);
+      const row = page.locator(".lib--empty .lib-row").filter({ has: page.locator(".lib-badge", { hasText: "Sample" }) }).first();
+      await row.waitFor();
+      await row.getByRole("button", { name: /More actions/ }).click();
+      const actions = row.locator(".lib-row__actions");
+      assert.equal(await actions.getByRole("button", { name: "Rename" }).count(), 0);
+      assert.equal(await actions.getByRole("button", { name: "Delete" }).count(), 0);
+      await shot(page, project, "library-samples");
+    },
+  },
+  {
+    name: "admin changes a code's duration and a new device gets the new length",
+    projects: ["desktop"],
+    fn: async ({ page, skip }) => {
+      requireReal(skip);
+      const { codes } = await admin("GET", "/codes");
+      const code = codes.find((c) => c.hint?.includes("123") || c.label?.toLowerCase().includes("seed")) || codes[0];
+      const original = code.durationDays;
+      try {
+        await admin("PATCH", `/codes/${code.id}`, { durationDays: 10 });
+        await fresh(page);
+        await openApp(page);
+        await banner(page).waitFor();
+        await page.getByRole("button", { name: "Have an access code?" }).first().click();
+        await page.getByRole("dialog").getByLabel("Access code").fill("123");
+        await page.getByRole("dialog").getByRole("button", { name: "Apply" }).click();
+        await page.waitForFunction(() => /Access code active\. (9|10) days left/.test(document.querySelector('[data-testid="acc-banner"]')?.textContent || ""), null, { timeout: 8000 });
+      } finally {
+        await admin("PATCH", `/codes/${code.id}`, { durationDays: original });
+      }
+    },
+  },
+]);

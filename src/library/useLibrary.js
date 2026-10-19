@@ -87,7 +87,11 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
       if (document.visibilityState === "visible" && Date.now() - lastRefreshRef.current > 30000) refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener("argus:library-refresh", refresh); // sent when the signed-in account changes
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("argus:library-refresh", refresh);
+    };
   }, [refresh]);
 
   const setAlsoSave = useCallback((value) => {

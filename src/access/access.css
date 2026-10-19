@@ -1,6 +1,8 @@
 /* Access UI. Reuses the app's paper tokens; 44px touch targets. */
 .acc-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 12px; background: var(--accent-soft, #f0e4d0); color: var(--ink, #2a2622); font-size: 13px; border-bottom: 1px solid var(--line, #ddd6c7); flex-shrink: 0; }
 .acc-banner--warn { background: var(--danger-bg, #fbeae1); }
+.acc-banner .acc-link { min-height: 32px; }
+@media (pointer: coarse) { .acc-banner .acc-link { min-height: 44px; } }
 .acc-banner__actions { display: flex; gap: 4px; align-items: center; }
 .acc-btn, .acc-link, .acc-input { font: inherit; }
 .acc-btn { min-height: 44px; padding: 0 16px; border: 1px solid var(--line-strong, #2a2622); background: var(--paper-white, #fbfaf6); color: var(--ink, #2a2622); border-radius: var(--radius, 6px); cursor: pointer; }

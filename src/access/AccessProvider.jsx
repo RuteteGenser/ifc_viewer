@@ -8,7 +8,7 @@ const AccessContext = createContext(null);
 export const useAccess = () => useContext(AccessContext);
 
 const REFRESH_MS = 5 * 60 * 1000;
-const HANDLED = ["checkout", "reset", "account", "code"];
+const HANDLED = ["checkout", "chk", "reset", "account", "code"];
 
 export function AccessProvider({ children }) {
   const [session, setSession] = useState(null); // null = loading or legacy
@@ -19,10 +19,15 @@ export function AccessProvider({ children }) {
   const [prefillCode, setPrefillCode] = useState("");
   const [overlayHidden, setOverlayHidden] = useState(false);
   const fetchedAt = useRef(0);
+  const whoRef = useRef("");
 
   const apply = useCallback((raw) => {
     const s = parseSession(raw);
     if (s) {
+      // A different account (login, logout, sign-up) means a different model list.
+      const who = `${s.account.id}:${s.account.kind}`;
+      if (whoRef.current && whoRef.current !== who) window.dispatchEvent(new Event("argus:library-refresh"));
+      whoRef.current = who;
       setSession(s);
       setLocale(s.account.locale);
     }
@@ -52,7 +57,7 @@ export function AccessProvider({ children }) {
     }
     if (params.get("reset")) setDialog({ kind: "auth", mode: "reset", token: params.get("reset") });
     if (params.get("account")) setDialog({ kind: "account" });
-    if (params.get("checkout") === "success") setToast(t("toast.paid"));
+    if (params.get("checkout") && params.get("checkout") !== "cancel") setToast(t("toast.paid"));
     if (HANDLED.some((k) => params.has(k))) {
       HANDLED.forEach((k) => params.delete(k));
       const q = params.toString();

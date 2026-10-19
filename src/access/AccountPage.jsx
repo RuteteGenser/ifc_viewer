@@ -50,14 +50,12 @@ export default function AccountPage() {
   const doLogout = run("out", async () => {
     await logout();
     await access.refresh();
-    window.dispatchEvent(new Event("argus:library-changed"));
     access.say(t("toast.loggedOut"));
     access.close();
   });
   const doDelete = run("del", async () => {
     await deleteAccount(access.registered ? pw : undefined);
     await access.refresh();
-    window.dispatchEvent(new Event("argus:library-changed"));
     access.close();
   });
   const label = (name, text) => (busy === name ? t("code.checking") : text);

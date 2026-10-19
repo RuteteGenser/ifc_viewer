@@ -34,10 +34,10 @@ function sentence(text) {
 
 // Tell the access layer (if the new backend is present) that a plan is needed.
 function upgrade(status, body) {
-  if (status !== 402) return;
+  if (status !== 402 || typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("argus:upgrade", { detail: { code: body?.code, message: body?.error, entitlement: body?.entitlement } }));
 }
-const changed = () => window.dispatchEvent(new Event("argus:library-changed"));
+const changed = () => typeof window !== "undefined" && window.dispatchEvent(new Event("argus:library-changed"));
 const WRITE = { "X-Argus-Client": "1" };
 
 async function problem(res) {

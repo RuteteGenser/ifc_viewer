@@ -207,18 +207,18 @@ await suite("welcome", [
     },
   },
   {
-    name: "Norwegian browser: welcome in nb",
+    name: "Norwegian browser: the welcome is English like the rest of the app (one language per screen)",
     projects: ["desktop"],
     context: { locale: "nb-NO" },
     allowErrors: NOISE,
     fn: async ({ page, project }) => {
       await openApp(page);
       await welcome(page).waitFor();
-      assert.equal(await welcome(page).getByRole("heading", { level: 1 }).innerText(), "Prøv Argus gratis i 24 timer");
-      await openViewerBtn(page).waitFor();
-      assert.equal(await welcome(page).getByRole("button", { name: "Åpne viewer" }).count(), 1);
-      assert.equal(await welcome(page).getByRole("button", { name: "Logg inn" }).count(), 1);
-      await shot(page, project, "welcome-nb");
+      assert.equal(await welcome(page).getByRole("heading", { level: 1 }).innerText(), "Try Argus free for 24 hours");
+      assert.equal(await welcome(page).getByRole("button", { name: "Open the viewer" }).count(), 1);
+      assert.equal(await welcome(page).getByRole("button", { name: "Log in" }).count(), 1);
+      assert.doesNotMatch(await welcome(page).innerText(), /[æøå]|Logg inn|Prøv/);
+      await shot(page, project, "welcome-nb-browser");
     },
   },
 ]);

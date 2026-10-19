@@ -62,4 +62,5 @@ export const COPY = {
   updated: "Updated",
 };
 
-export const localeOf = () => (/^(nb|no)\b/i.test(globalThis.navigator?.language || "") ? "nb" : "en");
+// Exports use the app's language (English), not the browser's: the screen and the PDF must match.
+export const localeOf = () => "en";

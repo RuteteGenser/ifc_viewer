@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { renderMarkdown, escapeHtml, slugify, docTitle } from "../../src/legal/markdown.js";
 import { SELLER, FACTS, fillTemplate, unfilledPlaceholders, isPlaceholder } from "../../src/legal/seller.js";
 import { LEGAL_VERSION, DOCS, LANGS } from "../../src/legal/version.js";
-import { TABLES, pickLang, lt, priceSummary, formatNok } from "../../src/legal/strings.js";
+import { TABLES, lt, priceSummary, formatNok } from "../../src/legal/strings.js";
 import { signupBody, checkoutBody } from "../../src/legal/consent.js";
 import { parseLegalHash, legalHash } from "../../src/legal/route.js";
 import { renderAll, readDoc, OUT_DIR } from "../../scripts/build-legal.mjs";
@@ -134,13 +134,7 @@ test("public/legal is up to date with the Markdown (run node scripts/build-legal
 
 // ------------------------------------------------------------ strings, consent, route
 
-test("language: Norwegian browsers and unknown get nb, everything else en", () => {
-  assert.equal(pickLang(["nb-NO"]), "nb");
-  assert.equal(pickLang(["nn"]), "nb");
-  assert.equal(pickLang(["no", "en"]), "nb");
-  assert.equal(pickLang([]), "nb");
-  assert.equal(pickLang(["en-US", "nb"]), "en");
-  assert.equal(pickLang("de-DE"), "en");
+test("language: both tables complete, no dashes", () => {
   assert.deepEqual(Object.keys(TABLES.nb).sort(), Object.keys(TABLES.en).sort(), "both tables have the same keys");
   for (const lang of LANGS) for (const v of Object.values(TABLES[lang])) assert.ok(!/[–—]/.test(v), v);
   assert.equal(lt("doc.terms", {}, "nb"), "Brukervilkår");

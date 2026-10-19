@@ -59,18 +59,16 @@ const en = {
 
 export const TABLES = { nb, en };
 
-// nb for Norwegian browsers (nb, nn, no) and when the language is unknown; en otherwise.
-export function pickLang(languages) {
-  const list = (Array.isArray(languages) ? languages : [languages]).filter(Boolean).map((l) => String(l).toLowerCase());
-  if (!list.length) return "nb";
-  return /^(nb|nn|no)\b/.test(list[0]) ? "nb" : "en";
-}
-
+// The app speaks one language (English unless the account's language is complete, see
+// access/copy.js), so legal strings follow the app, not the browser. The legal page itself has
+// a Norsk / English switch (route lang, or setLegalLang) for reading the other version.
 let current = null;
+let appDefault = "en";
 export function legalLang() {
-  if (current) return current;
-  const nav = typeof navigator === "undefined" ? null : navigator;
-  return pickLang(nav ? (nav.languages?.length ? nav.languages : [nav.language]) : []);
+  return current || appDefault;
+}
+export function setLegalDefault(lang) {
+  appDefault = lang === "nb" ? "nb" : "en";
 }
 export function setLegalLang(lang) {
   current = lang === "en" || lang === "nb" ? lang : null;

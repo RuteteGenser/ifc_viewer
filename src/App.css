@@ -780,6 +780,35 @@
   letter-spacing: 0.02em;
 }
 
+.clip-control__plane.is-active {
+  border-color: var(--plane-color);
+  background: color-mix(in srgb, var(--plane-color) 10%, transparent);
+}
+
+.clip-control__select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clip-control__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--plane-color);
+}
+
+.clip-control__active {
+  color: var(--text);
+}
+
 /* ---------- Measure control ---------- */
 
 .measure-control {

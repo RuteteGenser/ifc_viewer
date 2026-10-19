@@ -25,6 +25,7 @@ import Toast from "./components/Toast";
 import ModelsSheet from "./components/ModelsSheet";
 import usePresence from "./usePresence";
 import ToolHint from "./components/ToolHint";
+import PlaneSwitch from "./components/PlaneSwitch";
 import Hud from "./components/Hud";
 import { GestureSheet } from "./components/ShortcutsHelp";
 import { CameraClipPanel } from "./components/CameraClipControl";
@@ -101,6 +102,7 @@ function App() {
     setClipPlaneGizmoVisible,
     flipClipPlane,
     removeClipPlane,
+    setActiveClipPlane,
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
@@ -597,6 +599,7 @@ function App() {
           onSetClipPlaneGizmoVisible={setClipPlaneGizmoVisible}
           onFlipClipPlane={flipClipPlane}
           onRemoveClipPlane={removeClipPlane}
+          onSelectClipPlane={setActiveClipPlane}
           hiddenCategories={hiddenCategories}
           onShowCategory={(category) => setCategoryHidden(category, false)}
           browser={browser}
@@ -653,7 +656,7 @@ function App() {
           />
           <ViewTools views={viewFeatures} spaceControl={spaceControl} onOpenChange={handleViewToolsOpen} />
           <Hud>
-            <ToolHint tool={armedTool} onDone={exitArmedTool} />
+            <ToolHint tool={armedTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
             <CameraClipPanel
               enabled={cameraClipEnabled}
               distance={cameraClipDistance}
@@ -662,6 +665,7 @@ function App() {
               onDone={() => setCameraClipEnabled(false)}
             />
           </Hud>
+          <PlaneSwitch planes={clipPlanes} onSelect={setActiveClipPlane} />
           <FirstRunHint visible={models.length > 0 && !isLoading} />
           <div className="history-buttons">
             <button

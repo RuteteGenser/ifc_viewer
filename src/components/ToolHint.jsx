@@ -25,9 +25,12 @@ const HINTS = {
 const LABELS = { sectionIdle: "Move section" };
 
 // One line saying what the armed tool does, with an obvious way out.
-export default function ToolHint({ tool, onDone }) {
+export default function ToolHint({ tool, onDone, plane = 0 }) {
   if (!tool) return null;
-  const text = HINTS[tool][COARSE ? "touch" : "mouse"];
+  let text = HINTS[tool][COARSE ? "touch" : "mouse"];
+  // With two planes, say which one the drag moves.
+  if (plane && tool === "sectionMove") text = `Moving Plane ${plane}. Drag to slide it.`;
+  else if (plane && tool === "sectionIdle") text = `Section cut. Plane ${plane} is active.`;
   return (
     <div className="tool-hint" role="status">
       <span className="tool-hint__text">{text}</span>

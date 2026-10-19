@@ -1,3 +1,5 @@
+import { colorCss } from "../ifc/sectionPlanes";
+
 function FlipIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -17,6 +19,7 @@ export default function ClipPlaneControl({
   onSetClipPlaneGizmoVisible,
   onFlipClipPlane,
   onRemoveClipPlane,
+  onSelectClipPlane,
 }) {
   return (
     <div className="clip-control">
@@ -31,9 +34,23 @@ export default function ClipPlaneControl({
       ) : (
         <>
           {clipPlanes.map((plane, i) => (
-            <div className="clip-control__plane" key={plane.id}>
+            <div
+              className={`clip-control__plane${clipPlanes.length > 1 && plane.active ? " is-active" : ""}`}
+              key={plane.id}
+              style={{ "--plane-color": colorCss(plane.color) }}
+            >
               {clipPlanes.length > 1 && (
-                <div className="clip-control__plane-title">Plane {i + 1}</div>
+                <button
+                  type="button"
+                  className="clip-control__plane-title clip-control__select"
+                  aria-pressed={!!plane.active}
+                  aria-label={`Plane ${i + 1}${plane.active ? ", active" : ", make active"}`}
+                  onClick={() => onSelectClipPlane?.(plane.id)}
+                >
+                  <span className="clip-control__swatch" aria-hidden="true" />
+                  Plane {i + 1}
+                  {plane.active && <span className="clip-control__active"> (active)</span>}
+                </button>
               )}
               <label className="clip-control__toggle">
                 <input

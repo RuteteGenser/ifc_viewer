@@ -1150,6 +1150,7 @@ export function useIfcViewer() {
     clipPlaneManagerRef.current = clipPlaneManager;
     if (import.meta.env.VITE_TEST_HOOK) {
       window.__ifcDebug.clip = clipPlaneManager;
+      window.__ifcDebug.addPlane = (n, p) => { const id = clipPlaneManager.add(n, p); notifyClipPlanes(); return id; };
       window.__ifcDebug.sections = () => ({
         box: (() => { const b = fullSceneBox(); return b && { min: b.min.toArray(), max: b.max.toArray() }; })(),
         planes: clipPlanesRuntime.map((p) => ({
@@ -4528,6 +4529,8 @@ export function useIfcViewer() {
     createClipPlaneAt(hit);
   }, [createClipPlaneAt]);
 
+  const setActiveClipPlane = useCallback((id) => clipPlaneManagerRef.current?.setActive(id), []);
+
   const flipClipPlane = useCallback((id) => {
     clipPlaneManagerRef.current?.flip(id);
     // A flip is its own inverse — flipping twice restores the original
@@ -6142,6 +6145,7 @@ export function useIfcViewer() {
     contextMenu,
     closeContextMenu,
     createClipPlaneHere,
+    setActiveClipPlane,
     hideElementHere,
     resetVisibility,
     cameraClipEnabled,

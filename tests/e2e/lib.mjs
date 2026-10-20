@@ -212,7 +212,8 @@ export const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 
 // ------------------------------------------------------------------- runner
 
-const timeoutOf = (c) => c.timeout ?? 90000;
+// ARGUS_TIMEOUT_X=2 doubles every case timeout (a loaded machine renders slowly).
+const timeoutOf = (c) => (c.timeout ?? 90000) * (Number(process.env.ARGUS_TIMEOUT_X) || 1);
 
 function allowed(list, text) {
   return list.some((p) => (p instanceof RegExp ? p.test(text) : text.includes(p)));

@@ -28,9 +28,9 @@ import useSpaceVisibility from "./useSpaceVisibility";
 import { createViewerAdapter } from "../cases/viewerAdapter";
 import { robustUnion } from "../ifc/modelBounds";
 import { sheetRect, PLANE_COLORS, SHEET_OPACITY, planesToDrop, activeAfterRemove, axisOf, KIND_BY_AXIS, miniSlab } from "../ifc/sectionPlanes";
-import { stackUp } from "../ifc/labelStack";
+import { stackUp, legLabelFits } from "../ifc/labelStack";
 import { createPressRings } from "../ifc/pressRings";
-import { visibleByHit, stepVisibility, onScreen } from "../ifc/anchorVisibility";
+import { visibleWithMargin, stepVisibility, onScreen } from "../ifc/anchorVisibility";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format is a plain ZIP archive containing one or
@@ -1365,12 +1365,19 @@ export function useIfcViewer() {
       // nearly parallel to the total.
       sprite.center.set(0.5, anchorY);
       sprite.renderOrder = 1000;
-      sprite.userData = { canvas, ctx, aspect: canvas.width / canvas.height };
+      sprite.userData = { canvas, ctx, aspect: canvas.width / canvas.height, text: lines.map((l) => l.text).join("\n") };
       modelsGroup.add(sprite);
       return sprite;
     };
     const updateMeasureLabelText = (sprite, lines, align = "center") => {
-      drawMeasureLabelCanvas(sprite.userData.canvas, sprite.userData.ctx, lines, align);
+      const { canvas } = sprite.userData;
+      const [w0, h0] = [canvas.width, canvas.height];
+      drawMeasureLabelCanvas(canvas, sprite.userData.ctx, lines, align);
+      // A texture's GPU storage is allocated once at its first size. A new text means a new canvas width, which
+      // would be copied into the old, differently sized storage (remnants of the old pill beside the new one, or
+      // the old text left standing). Dispose on a size change so the next draw allocates afresh.
+      if (canvas.width !== w0 || canvas.height !== h0) sprite.material.map.dispose();
+      sprite.userData.text = lines.map((l) => l.text).join("\n");
       sprite.userData.aspect = sprite.userData.canvas.width / sprite.userData.canvas.height;
       sprite.material.map.needsUpdate = true;
     };
@@ -1523,6 +1530,7 @@ export function useIfcViewer() {
     };
 
     const recomputeMeasurementEntry = (entry) => {
+      entry.touchedAt = performance.now();
       const a = entry.markerA.position;
       const b = entry.markerB.position;
       entry.line.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
@@ -1952,11 +1960,29 @@ export function useIfcViewer() {
     };
 
     // Decides, per frame, which leg labels have room. The total label is
+    if (import.meta.env.VITE_TEST_HOOK) {
+      // Test hook: what each measurement's labels say and show; move an end point exactly as a drag does.
+      window.__ifcDebug.measureState = () => measurementsRuntime.map((e) => ({
+        id: e.id, length: e.length,
+        total: { text: e.label.userData.text, visible: e.label.visible, w: e.label.userData.canvas.width, h: e.label.userData.canvas.height },
+        legs: [e.legRightLabel, e.legUpLabel, e.legDepthLabel].map((l) => ({ text: l.userData.text, visible: l.visible })),
+      }));
+      window.__ifcDebug.moveMeasureMarker = (i, which, x, y, z) => {
+        const e = measurementsRuntime[i];
+        (which === "A" ? e.markerA : e.markerB).position.set(x, y, z);
+        recomputeMeasurementEntry(e);
+        setMeasurements(measureManager.list());
+      };
+      window.__ifcDebug.reuploadMeasureLabels = () => { for (const e of measurementsRuntime) for (const l of [e.label, e.legRightLabel, e.legUpLabel, e.legDepthLabel]) { l.material.map.dispose(); l.material.map.needsUpdate = true; } requestRender(); };
+      window.__ifcDebug.measurePoints = () => measurementsRuntime.map((e) => [e.markerA.position.toArray(), e.markerB.position.toArray()]);
+    }
+
     // always shown; a leg label appears only when its leg is long enough on
     // screen to carry it and it would not touch the total, a marker or a
     // leg label already placed. So a tiny measurement reads as one clear
     // number, and a large one shows the full breakdown.
     const layoutScratch = new THREE.Vector3();
+    const MEASURE_LABEL_GRACE_MS = 1500;
     const MEASURE_TOTAL_LABEL_CENTER_Y = -0.1; // as createMeasureLabel(..., -0.1) for the total
     const layoutMeasureLabels = () => {
       const w = renderer.domElement.clientWidth;
@@ -2011,6 +2037,7 @@ export function useIfcViewer() {
           // A leg as long as the total repeats the same number.
           if ((value ?? 1) <= 0.005 || Math.abs((value ?? 0) - (entry.length ?? 0)) < 0.01 * (entry.length ?? 1)) {
             label.visible = false;
+            if (label.userData.fit) label.userData.fit = { shown: false, agree: 0 };
             continue;
           }
           // Try below the leg first, then above it.
@@ -2030,14 +2057,24 @@ export function useIfcViewer() {
             pb.y = (-layoutScratch.y * 0.5 + 0.5) * h;
             legPx = Math.hypot(pa.x - pb.x, pa.y - pb.y);
           }
+          // Hysteresis: a label already shown is kept down to 70 percent of its width and may touch its
+          // neighbours' padding; a hidden one needs 90 percent and clear space. A hide must also hold for
+          // 3 frames, and never happens within 1.5 s of the measurement being made or edited.
+          const fit = (label.userData.fit ??= { shown: label.visible, agree: 0 });
+          const prevY = label.center.y;
           for (const cy of [1.1, -0.1]) {
             label.center.y = cy;
-            rect = rectOf(label, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT, 2);
-            ok = legPx >= rect.w * 0.9 && !placed.some((q) => hit(rect, q));
+            rect = rectOf(label, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT, fit.shown ? 0 : 2);
+            ok = legLabelFits(legPx, rect.w, fit.shown) && !placed.some((q) => hit(rect, q));
             if (ok) break;
           }
-          label.visible = ok;
-          if (ok) placed.push(rect);
+          const young = performance.now() - (entry.touchedAt ?? 0) < MEASURE_LABEL_GRACE_MS;
+          fit.agree = ok === fit.shown ? 0 : fit.agree + 1;
+          if (ok !== fit.shown && (ok ? fit.agree >= 2 : fit.agree >= 3 && !young)) { fit.shown = ok; fit.agree = 0; }
+          if (!ok && fit.shown) label.center.y = prevY; // held on: stay where it was
+          label.visible = fit.shown;
+          if (fit.shown) placed.push(rectOf(label, MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT, 2));
+          if (fit.agree > 0) requestRender(); // a pending change needs another frame to confirm
         }
       }
     };
@@ -2094,7 +2131,7 @@ export function useIfcViewer() {
           anchorWorld.copy(a.local).applyMatrix4(modelsGroup.matrixWorld);
           const anchorDistance = camera.position.distanceTo(anchorWorld);
           const hit = await raycastVisible(rect.left + (ndc.x * 0.5 + 0.5) * rect.width, rect.top + (-ndc.y * 0.5 + 0.5) * rect.height);
-          const seen = visibleByHit(anchorDistance, hit ? camera.position.distanceTo(hit.point) : null);
+          const seen = visibleWithMargin(anchorDistance, hit ? camera.position.distanceTo(hit.point) : null, a.vis.shown);
           if (seen === null) {
             // no answer (a pick was in flight): retry on the next frames, a few times
             if (++a.tries >= 3) { a.seen = version; a.tries = 0; }

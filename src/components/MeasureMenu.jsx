@@ -181,8 +181,8 @@ export default function MeasureMenu({ hasModels, active, tool, onToggle, onChoos
           className={`top-bar__icon-button measure-split__main${active ? " top-bar__icon-button--active" : ""}${hasModels ? "" : " is-blocked"}`}
           onClick={onMain}
           aria-disabled={!hasModels}
-          aria-label={phone && !active ? MEASURE_COPY.menuLabel : "Toggle measure mode"}
-          aria-pressed={phone && !active ? undefined : active}
+          aria-label="Toggle measure mode"
+          aria-pressed={active}
           aria-haspopup={phone ? "menu" : undefined}
           aria-expanded={phone ? open : undefined}
         >

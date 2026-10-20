@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { suite, openApp, loadSample, canvasBox, stableClick, measureTab, readLevels, closeViews, requireHook, isTouch } from "./lib.mjs";
 
-const mainButton = (page) => page.getByRole("button", { name: /^(Toggle measure mode|Measure tools)$/ });
+const mainButton = (page) => page.getByRole("button", { name: /^Toggle measure mode$/ });
 const caret = (page) => page.getByRole("button", { name: "Choose a measure tool" });
 const menu = (page) => page.getByRole("menu", { name: "Measure tools" });
 const item = (page, name) => menu(page).getByRole("menuitemradio", { name });

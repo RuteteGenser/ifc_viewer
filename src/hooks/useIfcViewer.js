@@ -901,18 +901,8 @@ export function useIfcViewer() {
     // radiating moiré/seam pattern across the whole disc. A quad has
     // only one internal edge, so this artifact is negligible.
     //
-    // A thin box rather than a zero-thickness plane: shift+drag/shift+
-    // scroll/middle+scroll all raycast against this exact mesh (see
-    // tryStartClipPlaneDrag and moveClipPlaneUnderCursor below), and a
-    // perfectly flat quad's on-screen silhouette shrinks toward a
-    // single line — genuinely near-zero pixels wide — when viewed
-    // close to edge-on, making it effectively unclickable from some
-    // angles. Giving it a small thickness along its own normal (the
-    // box's 3rd dimension) keeps a real, non-vanishing cross-section to
-    // hit at any viewing angle, at the cost of an imperceptible amount
-    // of extra visible "edge" thickness face-on.
-    const GIZMO_THICKNESS = 0.08; // fraction of the gizmo's own unit width
-    const gizmoGeometry = new THREE.BoxGeometry(1, 1, GIZMO_THICKNESS);
+    // A flat, double-sided quad: the section is a two-dimensional plane, not a slab.
+    const gizmoGeometry = new THREE.PlaneGeometry(1, 1);
     const GIZMO_UP = new THREE.Vector3(0, 0, 1); // faces +Z before orienting to the plane's normal
     // A thin outline keeps the sheet readable now that its fill is faint.
     const gizmoOutlineGeometry = new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1));
@@ -991,13 +981,8 @@ export function useIfcViewer() {
       mesh.position.copy(pointOnPlaneLocal).addScaledVector(localPlane.normal, KEPT_SIDE_EPSILON);
       if (rect) mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(rect.u, rect.v, rect.n));
       else mesh.quaternion.setFromUnitVectors(GIZMO_UP, localPlane.normal);
-      // The box's 1x1 face is a unit square (half-width 0.5), so scale by
-      // ~2x the radius to get a comparable span to what a radius-1.3x
-      // circle would have covered. Uniform scaling also grows the thin
-      // GIZMO_THICKNESS dimension proportionally, which is fine — it
-      // just keeps the raycast hit-target a constant fraction of the
-      // gizmo's own (now scale-dependent) visual size.
-      mesh.scale.set(sheetW, sheetH, Math.max(sheetW, sheetH));
+      // The quad is a unit square: scale it to the sheet's width and height.
+      mesh.scale.set(sheetW, sheetH, 1);
       if (entry.outline) {
         entry.outline.position.copy(mesh.position);
         entry.outline.quaternion.copy(mesh.quaternion);
@@ -1161,7 +1146,7 @@ export function useIfcViewer() {
         planes: clipPlanesRuntime.map((p) => ({
           id: p.id, active: p.id === activeClipId, normal: p.localPlane.normal.toArray(), constant: p.localPlane.constant,
           rect: p.rect && { centre: p.rect.centre.toArray(), u: p.rect.u.toArray(), v: p.rect.v.toArray(), halfU: p.rect.halfU, halfV: p.rect.halfV },
-          meshScale: p.mesh.scale.toArray(), opacity: p.mesh.material.opacity, color: p.mesh.material.color.getHex(),
+          meshScale: p.mesh.scale.toArray(), geometry: p.mesh.geometry.type, thickness: (() => { p.mesh.geometry.computeBoundingBox(); const b = p.mesh.geometry.boundingBox; return (b.max.z - b.min.z) * p.mesh.scale.z; })(), opacity: p.mesh.material.opacity, color: p.mesh.material.color.getHex(),
         })),
       });
     }

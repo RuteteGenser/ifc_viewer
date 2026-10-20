@@ -45,6 +45,11 @@ await suite("sections", [
         const s = await sections(page);
         assert.equal(s.planes.length, 1, `${kind}: ${s.planes.length} planes`);
         assert.ok(overshoot(s) <= 0.01, `${kind}: corner outside the sheet by ${overshoot(s)}`);
+        // The section is one flat plane: a PlaneGeometry with no thickness, never a box.
+        for (const p of s.planes) {
+          assert.equal(p.geometry, "PlaneGeometry", `${kind}: sheet is ${p.geometry}`);
+          assert.ok(Math.abs(p.thickness) < 1e-9, `${kind}: sheet thickness ${p.thickness}`);
+        }
       }
       // tilted plane, then moved along its normal, then flipped
       await page.evaluate(() => {

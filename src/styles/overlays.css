@@ -926,12 +926,11 @@
   color: var(--ink);
   /* Indent guides: one hairline per ancestor level, through the middle of its chevron. */
   --mt-depth: 0;
+  /* One 14 px step per level (the row's own indent); the first line sits under the parent's chevron. */
   background-image: repeating-linear-gradient(to right,
-    transparent 0 calc(var(--mt-chev) / 2 - 0.5px),
-    var(--line) calc(var(--mt-chev) / 2 - 0.5px) calc(var(--mt-chev) / 2 + 0.5px),
-    transparent calc(var(--mt-chev) / 2 + 0.5px) 14px);
+    transparent 0 6.5px, var(--line) 6.5px 7.5px, transparent 7.5px 14px);
   background-repeat: no-repeat;
-  background-position: 4px 0;
+  background-position: calc(4px + var(--mt-chev) / 2 - 7px) 0;
   background-size: calc(var(--mt-depth) * 14px) 100%;
 }
 
@@ -1208,6 +1207,10 @@
 
 .acc-plan .legal-consent__links {
   font-size: var(--text-sm);
+}
+
+.acc-plan .acc-btn--primary + .acc-note {
+  margin: 12px 0 0;
 }
 
 .acc-plan .acc-price-line {
@@ -1530,7 +1533,7 @@
     position: absolute;
     left: -4px;
     right: -4px;
-    bottom: 1px;
+    bottom: 4px;
     font-size: 11px;
     line-height: 1;
     text-align: center;

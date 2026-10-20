@@ -3,7 +3,7 @@
 // __org_<random> files and deletes exactly those (by their own ids) in a finally block.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { suite, openApp, api, sleep } from "./lib.mjs";
+import { suite, openApp, api, sleep, isTouch } from "./lib.mjs";
 import { buildIfc } from "../fixtures/generate.mjs";
 
 const storeys = (n) => Array.from({ length: n }, (_, i) => ({ name: `L${i}`, elevation: i * 3 }));
@@ -62,7 +62,7 @@ await suite("library-organize", [
     projects: ["desktop", "iphone13"],
     timeout: 240000,
     allowErrors: [/api\/folders/, /Failed to load resource/],
-    fn: async ({ page }) => {
+    fn: async ({ page, project }) => {
       await page.route("**/api/folders", (r) => r.fulfill({ status: 404, body: "not found", contentType: "text/plain" }));
       const realBefore = (await (await api.get("/models")).json()).map((m) => m.id).sort();
       await withSet(async ({ tag, recs }) => {
@@ -138,7 +138,8 @@ await suite("library-organize", [
         assert.ok(over <= 0, `horizontal overflow ${over}px at 320`);
         for (const el of await page.locator(".lib--empty .lib-org button, .lib--empty .lib-org select, .lib--empty .lib-org input").all()) {
           const b = await el.boundingBox();
-          if (b) assert.ok(b.height >= 43.5 && b.width >= 43.5, `target ${Math.round(b.width)}x${Math.round(b.height)} too small`);
+          // the 44 px floor is the coarse-pointer rule; a mouse at a narrow window keeps the compact controls
+          if (b && isTouch(project)) assert.ok(b.height >= 43.5 && b.width >= 43.5, `target ${Math.round(b.width)}x${Math.round(b.height)} too small`);
         }
       });
       assert.deepEqual((await (await api.get("/models")).json()).map((m) => m.id).sort(), realBefore, "the real models are unchanged");

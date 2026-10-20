@@ -1,0 +1,242 @@
+/* Polish layer (visual pass 4): loaded after overlays.css. Tokens only; no layout
+   that the tests measure changes size here except where noted. */
+
+/* ---------- Element menu: icon, label, shortcut ---------- */
+
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.context-menu__icon {
+  flex: none;
+  color: var(--ink-muted);
+  transition: color var(--dur-2) var(--ease);
+}
+.context-menu button:hover .context-menu__icon,
+.context-menu button:focus-visible .context-menu__icon {
+  color: var(--accent);
+}
+.context-menu__label {
+  flex: 1;
+}
+.context-menu kbd {
+  float: none;
+  margin-left: 16px;
+  min-width: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-white);
+  font-size: var(--text-xs);
+  line-height: 20px;
+  text-align: center;
+  color: var(--ink-faint);
+}
+.context-menu__sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
+}
+@media (pointer: coarse) {
+  .context-menu button {
+    min-height: 48px;
+  }
+}
+
+/* ---------- My models: one drawn chevron, turning, like every other disclosure ---------- */
+
+.lib__chev {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-faint);
+}
+.lib__chev--open {
+  rotate: 90deg;
+}
+
+/* ---------- Legal pages: underline tabs like the details panel, not a black pill ---------- */
+
+.legal-page .legal-page__nav ul {
+  gap: 4px;
+  padding-bottom: 0;
+}
+.legal-page .legal-page__nav a {
+  position: relative;
+  padding: 0 10px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.legal-page .legal-page__nav a::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  opacity: 0;
+  scale: 0.6 1;
+  transition: opacity var(--dur-2) var(--ease), scale var(--dur-3) var(--ease-out);
+}
+.legal-page .legal-page__nav a[aria-current="page"] {
+  background: transparent;
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+.legal-page .legal-page__nav a[aria-current="page"]::after {
+  opacity: 1;
+  scale: 1 1;
+}
+.legal-page .legal-doc h1 {
+  text-wrap: balance;
+}
+@media (max-width: 480px) {
+  .legal-page .legal-doc h1 {
+    font-size: var(--text-2xl);
+  }
+}
+
+/* ---------- Consent links: a compact row. Each link stays 44px tall on touch; the rows
+   overlap their quiet edges (negative block margin) so a wrapped row does not read as a gap. */
+
+.legal-consent .legal-consent__links {
+  row-gap: 0;
+  column-gap: 16px;
+  margin-top: -4px;
+  padding-block: 5px;
+}
+@media (pointer: coarse) {
+  .legal-consent .legal-consent__links .legal-links__a {
+    margin-block: -5px;
+  }
+}
+
+/* ---------- Selection language: segmented controls and filter chips ----------
+   One quiet "selected" look instead of solid brown blocks: a segmented control is a
+   recessed track with a raised white segment; a selected chip is washed accent. */
+
+.search-bar__results .search-bar__mode-toggle {
+  gap: 2px;
+  margin: 8px;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--paper-ivory);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.search-bar__results .search-bar__mode-toggle-btn {
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--ink-muted);
+  font-weight: var(--weight-medium);
+  transition: background-color var(--dur-2) var(--ease), color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+}
+.search-bar__results .search-bar__mode-toggle-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.search-bar__results .search-bar__mode-toggle-btn--active,
+.search-bar__results .search-bar__mode-toggle-btn--active:hover {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--line-control);
+}
+
+.view-tools .view-tools__seg button.is-active {
+  background: var(--accent-wash);
+  color: var(--accent-pressed);
+  font-weight: var(--weight-semibold);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.view-tools .view-tools__chip.is-active,
+.view-tools .view-tools__mini.is-active {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent-pressed);
+  font-weight: var(--weight-semibold);
+  box-shadow: none;
+}
+
+/* Phones: the Views panel keeps its 60 percent budget; soft edges say there is more to scroll. */
+@media (max-width: 768px) {
+  .view-tools .view-tools__panel {
+    background:
+      linear-gradient(var(--surface) 30%, rgba(255, 253, 249, 0)) top / 100% 24px no-repeat local,
+      linear-gradient(rgba(255, 253, 249, 0), var(--surface) 70%) bottom / 100% 24px no-repeat local,
+      radial-gradient(farthest-side at 50% 0, rgba(42, 38, 34, 0.12), rgba(42, 38, 34, 0)) top / 100% 10px no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, rgba(42, 38, 34, 0.12), rgba(42, 38, 34, 0)) bottom / 100% 10px no-repeat scroll,
+      var(--surface);
+  }
+}
+
+/* ---------- First-run tips: three gestures side by side, arriving after the model ---------- */
+
+@keyframes p-rise { from { opacity: 0; translate: 0 10px; } }
+@keyframes p-fade { from { opacity: 0; } }
+
+.first-run {
+  animation: p-rise var(--dur-4) var(--ease-out) 420ms backwards;
+}
+.first-run__close {
+  color: var(--ink-muted);
+}
+@media (max-width: 400px) {
+  .first-run {
+    padding: 6px 4px 6px 12px;
+    border-radius: var(--radius-xl);
+  }
+  .first-run .first-run__list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 4px;
+    text-align: center;
+  }
+  .first-run .first-run__row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 2px 6px;
+  }
+  .first-run .first-run__row + .first-run__row {
+    box-shadow: -1px 0 0 var(--line);
+  }
+  .first-run .first-run__row b {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+}
+
+/* ---------- Model reveal and the welcome hand-off ---------- */
+
+.acc-welcome.m-ghost {
+  z-index: 86;
+}
+
+/* ---------- Empty state on phones: the Samples list starts within the first screen ---------- */
+
+@media (max-width: 768px) and (max-height: 760px) {
+  .empty-state .empty-state__card {
+    gap: 8px;
+    padding-top: 18px;
+  }
+  .empty-state .empty-state__art {
+    width: 100px;
+    height: 80px;
+    margin-top: 0;
+  }
+  .empty-state .empty-state__title {
+    font-size: var(--text-2xl);
+  }
+  .empty-state .empty-state__text {
+    font-size: var(--text-sm);
+    line-height: var(--leading);
+    max-width: 32ch;
+  }
+}

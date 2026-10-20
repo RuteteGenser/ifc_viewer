@@ -394,7 +394,7 @@ export default function LibrarySection({ variant }) {
       <div className="lib__head">
         {isSidebar ? (
           <button type="button" className="lib__toggle" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((v) => !v)}>
-            <span className="lib__chev" aria-hidden="true">{open ? "▾" : "▸"}</span>
+            <svg className={`lib__chev${open ? " lib__chev--open" : ""}`} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
             <h2 className="lib__title" id={headingId}>My models</h2>
           </button>
         ) : (

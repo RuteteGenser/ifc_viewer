@@ -5,6 +5,7 @@ const SIZE = 52;
 const svg = (kind) =>
   `<svg viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}" aria-hidden="true" focusable="false">` +
   `<circle class="press-ring__fill" cx="26" cy="26" r="24"/>` +
+  `<circle class="press-ring__shade" cx="26" cy="26" r="26.5"/>` +
   `<circle class="press-ring__halo" cx="26" cy="26" r="25.5"/>` +
   `<circle class="press-ring__track" cx="26" cy="26" r="22"/>` +
   (kind === "charge" ? `<circle class="press-ring__arc" cx="26" cy="26" r="22" pathLength="100"/>` : `<circle class="press-ring__dot" cx="26" cy="26" r="3"/>`) +

@@ -3636,7 +3636,7 @@ textarea::placeholder {
 .press-ring--charge.is-on { animation: press-ring-in var(--press-ms, 500ms) linear forwards; }
 .press-ring--charge.is-on .press-ring__arc { animation: press-ring-fill var(--press-ms, 500ms) linear forwards; }
 .press-ring--pin { transition: opacity 120ms linear; }
-.press-ring--pin.is-on:not(.is-hidden) { opacity: 1; }
+.press-ring--pin.is-on:not(.is-hidden) { opacity: 1; transition: none; } /* appears at once (a stalled frame must not delay it); only hiding fades */
 @keyframes press-ring-in { 0%, 20% { opacity: 0; } 40%, 100% { opacity: 1; } }
 @keyframes press-ring-fill { to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {

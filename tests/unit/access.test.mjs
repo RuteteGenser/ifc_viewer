@@ -200,3 +200,23 @@ test("library: friendly folder errors and the plans sheet takes over a 402 witho
     assert.deepEqual(seen, ["argus:upgrade"]);
   } finally { delete globalThis.window; }
 });
+
+test("countdown shows for a free trial or an access code only, never for a paid plan", async () => {
+  const { hasCountdown } = await import("../../src/access/state.js");
+  const S = (state, over = {}, ui = {}) => parseSession(raw(state, over, ui));
+  assert.equal(hasCountdown(S("anonymous_trial"), NOW), true);
+  assert.equal(hasCountdown(S("code_trial", {}, { banner: "code_trial" }), NOW), true);
+  // Paid: active, cancel at period end, payment trouble, even when the server hint says "trial".
+  for (const flags of [{}, { cancelAtPeriodEnd: true }, { paymentFailed: true }]) {
+    for (const hint of ["trial", "code_trial", "none", "plan_ending", "payment_failed"]) {
+      const s = S("active", { planKey: "pro", reason: "subscription", flags }, { banner: hint });
+      assert.equal(hasCountdown(s, NOW), false, `${JSON.stringify(flags)} ${hint}`);
+    }
+  }
+  // A payment problem and the cancel line stay as banners, without a countdown.
+  assert.equal(bannerFor(S("active", { flags: { paymentFailed: true } }, { banner: "payment_failed" }), NOW).kind, "payment_failed");
+  assert.equal(bannerFor(S("active", { flags: { cancelAtPeriodEnd: true } }, { banner: "plan_ending" }), NOW).kind, "plan_ending");
+  assert.equal(bannerFor(S("active", {}, { banner: "none" }), NOW), null);
+  // A trial whose end has passed is a grace period, not a countdown.
+  assert.equal(hasCountdown(S("anonymous_trial", { endsAt: iso(-H) }), NOW), false);
+});

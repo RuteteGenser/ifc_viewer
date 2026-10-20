@@ -53,8 +53,8 @@ test("formatLength: metres from 1 m up, whole mm below", () => {
 
 test("dimension tags", () => {
   assert.equal(formatDimensionTag("IFCFLOWSEGMENT", null), null);
-  assert.deepEqual(formatDimensionTag("x", { shape: "circular", diameter: 80 }), ["Ø80mm"]);
-  assert.deepEqual(formatDimensionTag("x", { shape: "circular", diameter: 110, wallThickness: 2 }), ["OD: Ø110", "ID: 106.0mm"]);
+  assert.deepEqual(formatDimensionTag("x", { shape: "circular", diameter: 80 }), ["ø80mm"]);
+  assert.deepEqual(formatDimensionTag("x", { shape: "circular", diameter: 110, wallThickness: 2 }), ["OD: ø110", "ID: 106.0mm"]);
   assert.deepEqual(formatDimensionTag("x", { shape: "rectangular", width: 300.4, height: 200 }), ["300×200mm"]);
   assert.equal(formatDimensionTag("x", { shape: "rectangular", width: 300 }), null);
 });

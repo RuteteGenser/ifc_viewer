@@ -76,6 +76,40 @@ await suite("access", [
     },
   },
   {
+    name: "countdown: trial and code sessions show it, a paid plan does not (mocked session)",
+    allowErrors: IGNORE_404,
+    fn: async ({ page, project }) => {
+      const now = Date.now();
+      const mock = (state, over = {}, banner = "none") => ({
+        account: { id: "a1", kind: state === "anonymous_trial" ? "anonymous" : "registered", locale: "en", email: "p@example.com" },
+        entitlement: { state, planKey: "pro", planName: "Pro", features: ["viewer", "samples", "export"], limits: { maxStoredModels: 50, maxBytesTotal: 1e9 }, endsAt: new Date(now + 12 * 86400000).toISOString(), flags: {}, ...over },
+        usage: { storedModels: 0, bytes: 0 }, ui: { banner, paywall: false, canUseSamples: true }, billing: { providers: [] }, public: { signupsOpen: true }, serverTime: new Date(now).toISOString(), demo: false,
+      });
+      const cases = [
+        ["anonymous_trial", mock("anonymous_trial", { planKey: "trial", reason: "anonymous_trial" }, "trial"), /Free trial\. \d+ (days|h) left\./],
+        ["code_trial", mock("code_trial", { planKey: "code_trial", reason: "invite_code" }, "code_trial"), /Access code active\. \d+ days left\./],
+        ["paid active", mock("active", { reason: "subscription" }, "trial"), null],
+        ["paid cancels", mock("active", { reason: "subscription", flags: { cancelAtPeriodEnd: true } }, "plan_ending"), "plan_ending"],
+        ["paid past_due", mock("active", { reason: "subscription", flags: { paymentFailed: true } }, "payment_failed"), "payment_failed"],
+      ];
+      for (const [label, body, expect] of cases) {
+        await page.unroute("**/api/session").catch(() => {});
+        await page.route("**/api/session", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) }));
+        await openApp(page);
+        if (expect) await banner(page).waitFor({ timeout: 10000 });
+        await page.waitForTimeout(600);
+        const text = (await banner(page).count()) ? await banner(page).innerText() : "";
+        const shown = await page.evaluate(() => /\bleft\b/.test(document.querySelector('[data-testid="acc-banner"]')?.textContent || ""));
+        if (expect instanceof RegExp) assert.match(text, expect, label);
+        else {
+          assert.equal(shown, false, `${label}: no countdown, got "${text}"`);
+          if (expect) assert.equal(await banner(page).getAttribute("data-kind"), expect, label);
+          else assert.equal(await banner(page).count(), 0, `${label}: no banner`);
+        }
+      }
+    },
+  },
+  {
     name: "legacy: 401 challenge, HTML answer and a hanging answer behave the same",
     projects: ["desktop"],
     allowErrors: IGNORE_404,

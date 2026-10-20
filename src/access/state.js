@@ -66,8 +66,10 @@ export function bannerFor(session, nowMs) {
     return { kind: "first_payment_failed", tone: "warning", dismissible: false };
   }
   const kind = state !== e.state ? state : session.ui.banner;
-  if (kind === "trial" || state === "anonymous_trial") return { kind: "trial", tone: "quiet", target: e.endsAt, dismissible: true };
-  if (kind === "code_trial" || state === "code_trial") {
+  // The countdown belongs to a free trial or an access code only: a paid plan never gets one,
+  // whatever the server's banner hint says (see hasCountdown).
+  if (state === "anonymous_trial") return { kind: "trial", tone: "quiet", target: e.endsAt, dismissible: true };
+  if (state === "code_trial") {
     const urgent = Date.parse(e.endsAt) - nowMs < 3 * 86400000;
     return { kind: "code_trial", tone: urgent ? "urgent" : "quiet", target: e.endsAt, dismissible: true };
   }
@@ -77,6 +79,12 @@ export function bannerFor(session, nowMs) {
   if (kind === "demo_http") return { kind, tone: "info", dismissible: true };
   return null;
 }
+
+// Does the entitlement count down to its end in the UI ("Free trial. 3 days left.")? Trial and code only.
+export const hasCountdown = (session, nowMs) => {
+  const k = bannerFor(session, nowMs)?.kind;
+  return k === "trial" || k === "code_trial";
+};
 
 export const paywallNow = (session, nowMs) => {
   if (!session) return false;

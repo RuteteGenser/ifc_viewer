@@ -242,6 +242,42 @@
   font-size: var(--text-2xs);
 }
 
+/* Tooltips paint above every panel and neighbouring control (the toolbar and the floating
+   view controls rise only while one is shown), sit left of the right-edge capsules where
+   there is room, never take clicks, and exist for a mouse only. */
+.tooltip__box {
+  z-index: 62;
+}
+
+.toolbar:has(.tooltip:hover),
+.view-tools:has(.tooltip:hover) {
+  z-index: 62;
+}
+
+.view-tools .tooltip__box {
+  top: 50%;
+  right: calc(100% + 10px);
+  left: auto;
+  transform: translate(4px, -50%);
+}
+
+.view-tools .tooltip:hover .tooltip__box {
+  transform: translate(0, -50%);
+}
+
+/* A pressed control or an open sheet needs no hint. */
+.tooltip:has(button:active) .tooltip__box,
+.tooltip:has([aria-expanded="true"]) .tooltip__box {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .tooltip__box {
+    display: none;
+  }
+}
+
 /* ---------- Shortcuts help ---------- */
 
 .shortcuts-help {

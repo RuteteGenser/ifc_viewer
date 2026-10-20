@@ -97,7 +97,7 @@ export default function Paywall({ hasWork }) {
       {why && <p className="acc-note" data-testid="paywall-why">{why}</p>}
       {failure === "first" && <p className="acc-note" data-testid="paywall-failed">{t("pay.firstFailed")}</p>}
       {failed && <p className="acc-note">{t("paywall.failedNote")}</p>}
-      <section className="acc-box">
+      <section className="acc-box acc-box--keep">
         <p>{keep}</p>
         <button type="button" className="acc-btn acc-btn--full" onClick={download} disabled={!!busy} data-autofocus>
           {busy && busy !== "pay" && busy !== "dl" && busy !== "del" ? busy : t("action.downloadMine")}
@@ -106,7 +106,7 @@ export default function Paywall({ hasWork }) {
           <button type="button" className="acc-btn acc-btn--danger acc-btn--full" onClick={() => setConfirmDelete(true)} disabled={!!busy}>{t("action.deleteMine")}</button>
         )}
       </section>
-      <section className="acc-box">
+      <section className="acc-box acc-plan">
         {plan && price ? (
           <>
             <h3 className="acc-h3">{plan.name} {price.placeholder && <span className="acc-chip">{t("paywall.notFinal")}</span>}</h3>

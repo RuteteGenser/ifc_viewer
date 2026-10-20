@@ -111,7 +111,7 @@ input[type="range"] {
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(68, 44, 18, 0.18);
@@ -328,12 +328,11 @@ input[type="range"] {
 .compass__dial,
 .panel-reveal,
 .details-fab {
-  background: rgba(255, 253, 249, 0.94);
+  /* Opaque, no backdrop blur: blur over the 3D canvas is recomputed every frame while the model turns. */
+  background: var(--surface);
   border: 1px solid var(--line-control);
   box-shadow: var(--shadow-sm);
   color: var(--ink);
-  -webkit-backdrop-filter: saturate(1.2) blur(8px);
-  backdrop-filter: saturate(1.2) blur(8px);
 }
 
 .view-tools__button:hover,
@@ -554,7 +553,7 @@ input[type="range"] {
 
 .lib-badge--open {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .lib__title {
@@ -883,7 +882,7 @@ input[type="checkbox"] {
   background: var(--surface);
   border: 1.5px solid var(--line-input);
   border-radius: 5px;
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   vertical-align: middle;
   transition: background-color var(--dur-1, 90ms) var(--ease, ease), border-color var(--dur-1, 90ms) var(--ease, ease);
@@ -1441,11 +1440,9 @@ select.acc-input {
 }
 
 .app:has(> .app-body:not([data-sheet="none"])) .acc-slim:not(.acc-slim--warn) {
-  background: rgba(255, 253, 249, 0.94);
+  background: var(--surface);
   border: 1px solid var(--line-control);
   box-shadow: var(--shadow-sm);
-  -webkit-backdrop-filter: saturate(1.2) blur(8px);
-  backdrop-filter: saturate(1.2) blur(8px);
 }
 
 /* ---------- Details panel ---------- */

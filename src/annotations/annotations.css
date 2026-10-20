@@ -36,7 +36,7 @@
 .ann-btn { min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .ann-btn:hover:not(:disabled) { background: var(--bg-subtle); }
 .ann-btn:disabled { opacity: 0.45; cursor: default; }
-.ann-btn--danger { color: #c92a2a; }
+.ann-btn--danger { color: var(--danger); }
 .ann-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .ann-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
 .ann-swatch { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; border-radius: 50%; }

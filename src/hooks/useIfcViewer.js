@@ -1018,7 +1018,7 @@ export function useIfcViewer() {
         localPlane.normal.copy(localNormal);
         localPlane.constant = -localPlane.normal.dot(localPoint);
         const material = new THREE.MeshBasicMaterial({
-          color: 0x3b82f6,
+          color: PLANE_COLORS[0],
           transparent: true,
           opacity: TOUCH_UI ? 0.1 : 0.16,
           side: THREE.DoubleSide,
@@ -1039,7 +1039,7 @@ export function useIfcViewer() {
         modelsGroup.add(mesh);
         const outline = new THREE.LineSegments(
           gizmoOutlineGeometry,
-          new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.7, depthWrite: false }),
+          new THREE.LineBasicMaterial({ color: PLANE_COLORS[0], transparent: true, opacity: 0.7, depthWrite: false }),
         );
         outline.renderOrder = 1;
         modelsGroup.add(outline);
@@ -1215,9 +1215,10 @@ export function useIfcViewer() {
     const measurementsRuntime = []; // { id, markerA, markerB, line, legDepth, legRight, legUp, label, legDepthLabel, legRightLabel, legUpLabel, referenceNormal, depth, horizontal, vertical, length }
     const measureMarkerGeometry = new THREE.SphereGeometry(1, 12, 12);
     const MEASURE_MARKER_PIXELS = 5;
-    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 30; // the main label and (via the ratio below) the per-leg labels
+    // Label height on screen, halo included: about 12.5 px type in a 22 px pill.
+    const MEASURE_LEG_LABEL_PIXEL_HEIGHT = 28; // the main label and (via the ratio below) the per-leg labels
     // On a phone the three per-leg labels shrink so they crowd the total less.
-    const MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT = TOUCH_UI ? 22 : 30;
+    const MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT = TOUCH_UI ? 25 : 28;
     const MEASURE_LINE_WIDTH = TOUCH_UI ? 3 : 2;
     let measurePendingPoint = null; // THREE.Vector3 (modelsGroup-local) | null
     let measurePendingMarker = null; // THREE.Mesh | null
@@ -1289,43 +1290,61 @@ export function useIfcViewer() {
     // `align` defaults to "center" for measurement labels (main/leg
     // labels, always centered on their measured point); dimension tags
     // pass "left" instead so their text reads left-aligned in the box.
-    // Every label is a solid dark pill with white text (15:1 contrast). A line
-    // that has its own colour (a leg, a tag style) keeps it as a small dot in
-    // front of the text, so colour is never the only thing that is readable.
+    // One label style for every 3D label: a warm-ink pill (the app's --ink) with
+    // white text (14:1), a thin light halo so it reads on dark models too, and a
+    // soft shadow. A line that has its own colour (a leg, a pinned tag) keeps it
+    // as a small dot in front of the text, so colour is never the only cue.
+    // A secondary line (a tag's family name) is lighter and regular weight.
     const MEASURE_LABEL_DOTS = new Set(["#ef4444", "#3b82f6", "#22c55e", "#e0a458"]);
+    const MEASURE_LABEL_SECONDARY = new Set(["#9aa0a6"]);
+    const LABEL_FONT_STACK = '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+    const LABEL_HALO = 6; // canvas px of halo + shadow room around the pill
     const drawMeasureLabelCanvas = (canvas, ctx, lines, align = "center") => {
-      const font = "600 36px sans-serif";
+      const font = (line) => (MEASURE_LABEL_SECONDARY.has(line.color) ? `500 32px ${LABEL_FONT_STACK}` : `600 34px ${LABEL_FONT_STACK}`);
       const lineHeight = MEASURE_LABEL_LINE_HEIGHT;
-      const paddingX = 28;
+      const paddingX = 26;
       const paddingY = MEASURE_LABEL_PADDING_Y;
-      const dotSpace = 34;
+      const dotSpace = 30;
       const dotted = (line) => MEASURE_LABEL_DOTS.has(line.color);
       const hasDots = lines.some(dotted);
-      ctx.font = font;
-      const width = Math.max(...lines.map((l) => ctx.measureText(l.text).width + (hasDots ? dotSpace : 0)));
-      canvas.width = Math.ceil(width + paddingX * 2);
-      canvas.height = Math.ceil(lineHeight * lines.length + paddingY * 2);
+      const textWidth = (line) => { ctx.font = font(line); return ctx.measureText(line.text).width; };
+      const width = Math.max(...lines.map((l) => textWidth(l) + (hasDots ? dotSpace : 0)));
+      const m = LABEL_HALO;
+      const w = Math.ceil(width + paddingX * 2);
+      const h = Math.ceil(lineHeight * lines.length + paddingY * 2);
+      canvas.width = w + m * 2;
+      canvas.height = h + m * 2;
       // Resizing the canvas resets all context state, so font/fill/etc.
       // must be re-applied below.
-      ctx.font = font;
-      ctx.fillStyle = "#1b1e24";
+      const radius = lines.length > 1 ? 22 : h / 2;
+      ctx.save();
+      ctx.shadowColor = "rgba(42, 38, 34, 0.28)";
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetY = 1;
+      ctx.fillStyle = "rgba(255, 253, 249, 0.92)"; // the halo: --surface
       ctx.beginPath();
-      ctx.roundRect(0, 0, canvas.width, canvas.height, Math.min(canvas.height / 2, 30));
+      ctx.roundRect(m - 3, m - 3, w + 6, h + 6, radius + 3);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = "#2a2622"; // --ink
+      ctx.beginPath();
+      ctx.roundRect(m, m, w, h, radius);
       ctx.fill();
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       lines.forEach((line, i) => {
-        const y = paddingY + lineHeight * (i + 0.5);
-        const textWidth = ctx.measureText(line.text).width;
-        const contentWidth = textWidth + (hasDots ? dotSpace : 0);
-        const x = align === "left" ? paddingX : (canvas.width - contentWidth) / 2;
+        const y = m + paddingY + lineHeight * (i + 0.5) + 1;
+        const tw = textWidth(line);
+        const contentWidth = tw + (hasDots ? dotSpace : 0);
+        const x = m + (align === "left" ? paddingX : (w - contentWidth) / 2);
         if (dotted(line)) {
           ctx.fillStyle = line.color;
           ctx.beginPath();
-          ctx.arc(x + 9, y, 9, 0, Math.PI * 2);
+          ctx.arc(x + 8, y - 1, 8, 0, Math.PI * 2);
           ctx.fill();
         }
-        ctx.fillStyle = "#ffffff";
+        ctx.font = font(line);
+        ctx.fillStyle = MEASURE_LABEL_SECONDARY.has(line.color) ? "#d8cfbf" : "#ffffff";
         ctx.fillText(line.text, x + (hasDots ? dotSpace : 0), y);
       });
     };
@@ -1336,6 +1355,8 @@ export function useIfcViewer() {
 
       const texture = new THREE.CanvasTexture(canvas);
       texture.minFilter = THREE.LinearFilter;
+      // The canvas holds sRGB colours: without this the pill renders washed out (grey, not ink).
+      texture.colorSpace = THREE.SRGBColorSpace;
       const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
       const sprite = new THREE.Sprite(material);
       // `center` is where the sprite sits relative to its anchor point;
@@ -2128,7 +2149,7 @@ export function useIfcViewer() {
     if (import.meta.env.VITE_TEST_HOOK) window.__ifcDebug.tagState = () => [...dimensionTags.values()].filter((e) => e.anchor).map((e) => ({ guid: e.guid, shown: e.anchor.vis.shown, fade: e.anchor.fade, visible: !!e.sprite?.visible, opacity: e.sprite?.material.opacity ?? null }));
     const dimensionTagScratchVec3 = new THREE.Vector3();
     const dimensionTagForwardScratch = new THREE.Vector3();
-    const DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT = MEASURE_LABEL_LINE_HEIGHT + MEASURE_LABEL_PADDING_Y * 2;
+    const DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT = MEASURE_LABEL_LINE_HEIGHT + MEASURE_LABEL_PADDING_Y * 2 + LABEL_HALO * 2;
     const DIMENSION_TAG_CANVAS_TO_WORLD_RATIO = MEASURE_LEG_LABEL_PIXEL_HEIGHT / DIMENSION_TAG_ONE_LINE_CANVAS_HEIGHT;
     const scaleDimensionTags = () => {
       if (dimensionTags.size === 0) return;
@@ -2385,7 +2406,7 @@ export function useIfcViewer() {
     const PIVOT_MARKER_PIXELS = 7;
     const pivotMarker = new THREE.Mesh(
       new THREE.SphereGeometry(1, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xff6a00, depthTest: false }),
+      new THREE.MeshBasicMaterial({ color: 0x96652f, depthTest: false }), // --accent
     );
     pivotMarker.visible = false;
     pivotMarker.renderOrder = 999;
@@ -2396,7 +2417,7 @@ export function useIfcViewer() {
     const PIVOT_RING_PIXELS = 26;
     const pivotRing = new THREE.Mesh(
       new THREE.RingGeometry(0.92, 1, 48),
-      new THREE.MeshBasicMaterial({ color: 0xff6a00, depthTest: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0x96652f, depthTest: false, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
     );
     pivotRing.scale.setScalar(PIVOT_RING_PIXELS / PIVOT_MARKER_PIXELS);
     pivotRing.renderOrder = 999;
@@ -3098,9 +3119,11 @@ export function useIfcViewer() {
     // regeneration) and end up rendering another same-type element's
     // triangles instead of the clicked one's.
     const HIGHLIGHT_FILL_MATERIAL_PROPS = {
-      color: new THREE.Color(0xff0000),
+      // A warm amber (the accent's family) reads on light walls, red roofs and blue glass alike;
+      // the dark edge below keeps the shape crisp on any colour.
+      color: new THREE.Color(0xe08a2c),
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.5,
       side: THREE.DoubleSide,
       // depthTest stays on so the highlight is correctly hidden behind
       // any other element actually in front of the selected one (rather
@@ -3125,8 +3148,7 @@ export function useIfcViewer() {
       if (highlightOverlays.length === 0) return;
       for (const overlay of highlightOverlays) {
         overlay.parent?.remove(overlay);
-        overlay.geometry.dispose();
-        overlay.material.dispose();
+        overlay.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
       }
       highlightOverlays = [];
       requestRender();
@@ -3155,6 +3177,12 @@ export function useIfcViewer() {
         geometry.computeBoundingBox();
         const overlay = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial(HIGHLIGHT_FILL_MATERIAL_PROPS));
         overlay.renderOrder = 999;
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geometry, 30),
+          new THREE.LineBasicMaterial({ color: 0x6c4720, transparent: true, opacity: 0.9 }),
+        );
+        edges.renderOrder = 999;
+        overlay.add(edges);
         // chunk.transform crosses a worker postMessage, so it arrives as
         // a plain { elements } object rather than a live THREE.Matrix4
         // (matches the library's own reconstruction of this same RPC's

@@ -30,11 +30,13 @@
   --accent-soft: #f0e4d0;
   --accent-wash: #f7efe2;   /* selected rows, active tools */
   --accent-ring: rgba(150, 101, 47, 0.22); /* the soft halo around a focused field */
+  --on-accent: #fff;        /* text and icons on the accent, the danger red and ink pills */
 
   --success: #1b6b3a;
   --success-bg: #e8f2ea;
 
   --danger: #b42318;
+  --danger-hover: #93190f;
   --danger-bg: #fbeae1;
   --danger-border: #e8b9a1;
 

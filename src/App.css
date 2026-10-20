@@ -155,7 +155,7 @@
 .top-bar__icon-button--active,
 .top-bar__icon-button--active:hover:not(:disabled) {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -189,7 +189,7 @@
   align-items: center;
   gap: 14px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 4px;
@@ -903,8 +903,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ef4444;
-  color: #fff;
+  background: var(--danger);
+  color: var(--on-accent);
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 50%;
   font-size: 15px;
@@ -913,7 +913,7 @@
 }
 
 .measure-delete-button:hover {
-  background: #dc2626;
+  background: var(--danger-hover);
 }
 
 .measure-leg-edit-popup {
@@ -1012,7 +1012,7 @@
 .search-bar__mode-toggle-btn--active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .search-bar__results-list {
@@ -1078,7 +1078,7 @@
 .search-bar__isolate-banner button {
   background: var(--accent);
   border: none;
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
@@ -2217,7 +2217,7 @@
   border-radius: 10px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
   font-weight: 600;
   font-size: 16px;
@@ -2333,7 +2333,7 @@
   padding: 6px 6px 6px 14px;
   border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 13px;
   box-shadow: var(--shadow-md);
 }
@@ -2349,7 +2349,7 @@
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   background: transparent;
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -2597,7 +2597,7 @@
   padding: 5px 9px;
   border-radius: 6px;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12.5px;
   line-height: 1.3;
   pointer-events: none;
@@ -2816,7 +2816,7 @@
     padding: 0 5px;
     border-radius: 10px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font-size: 12px;
     font-weight: 700;
     line-height: 20px;
@@ -3156,7 +3156,7 @@
 .sidebar__reset-visibility-button--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   min-height: 44px;
 }
 
@@ -3233,7 +3233,7 @@
   width: 100%;
   min-height: 48px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: 0;
   border-radius: var(--radius);
   font: inherit;
@@ -3563,7 +3563,7 @@
 
 /* The armed-tool pill is accent coloured, so the accent ring would vanish into it. */
 .tool-hint :focus-visible {
-  outline-color: #fff;
+  outline-color: var(--on-accent);
   outline-offset: 1px;
 }
 

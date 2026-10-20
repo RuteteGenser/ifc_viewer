@@ -162,7 +162,7 @@
 .lib-badge--open {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .lib-row__actions {
@@ -197,7 +197,7 @@
 .lib-btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .lib-btn--primary:hover:not(:disabled) {

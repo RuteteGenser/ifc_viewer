@@ -53,7 +53,7 @@
 
 .view-tools__button.is-open {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -182,7 +182,7 @@
 .view-tools__seg button.is-active,
 .view-tools__toggle.is-active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .view-tools__toggle {
@@ -309,7 +309,7 @@
 .view-tools__chip.is-active,
 .view-tools__mini.is-active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 

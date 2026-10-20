@@ -28,3 +28,12 @@ test("deterministic for the same input (no flicker between frames)", () => {
 });
 
 test("empty input", () => assert.deepEqual(stackUp([]), []));
+
+import { legLabelFits } from "../../src/ifc/labelStack.js";
+test("leg label: shows at 90 percent of its width, stays down to 70 percent", () => {
+  assert.equal(legLabelFits(89, 100, false), false);
+  assert.equal(legLabelFits(91, 100, false), true);
+  assert.equal(legLabelFits(75, 100, true), true); // shown: kept inside the band
+  assert.equal(legLabelFits(75, 100, false), false); // hidden: not shown inside the band
+  assert.equal(legLabelFits(65, 100, true), false);
+});

@@ -21,3 +21,18 @@ export function stepVisibility(state, observed, needed = 2) {
 export function onScreen(ndc, margin = 0) {
   return ndc.z > -1 && ndc.z < 1 && Math.abs(ndc.x) <= 1 + margin && Math.abs(ndc.y) <= 1 + margin;
 }
+
+// A margin plus a hysteresis band around visibleByHit, so an anchor lying ON a surface (a tag on a roof, a point on
+// an uneven face) does not pop in and out as the depth reading wobbles by a hair. `tol` is the one-sided margin
+// above. Shown stays shown until the first hit is nearer than the anchor by MORE than 2 x tol (clearly in front);
+// hidden turns shown again as soon as the hit is within 1 x tol of the anchor. In between the state is kept.
+// Returns true | false | null (null = no answer; keep the old state).
+export function anchorTolerance(anchorDistance) {
+  return 0.015 * anchorDistance + 0.02;
+}
+export function visibleWithMargin(anchorDistance, hitDistance, wasShown) {
+  if (hitDistance == null || !Number.isFinite(hitDistance)) return null;
+  const tol = anchorTolerance(anchorDistance);
+  if (wasShown) return hitDistance >= anchorDistance - 2 * tol;
+  return hitDistance >= anchorDistance - tol;
+}

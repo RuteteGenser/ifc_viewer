@@ -35,3 +35,26 @@ test("on-screen test rejects behind the camera and outside the view", () => {
   assert.equal(onScreen({ x: 0, y: 0, z: 1.2 }), false); // behind the camera projects beyond far
   assert.equal(onScreen({ x: 0.9, y: -0.9, z: 0.1 }), true);
 });
+
+import { visibleWithMargin, anchorTolerance } from "../../src/ifc/anchorVisibility.js";
+test("margin band: shown hides only when the hit is clearly in front (2x tolerance), hidden shows again within 1x", () => {
+  const d = 10, tol = anchorTolerance(d); // 0.17
+  assert.ok(Math.abs(tol - 0.17) < 1e-9);
+  // hit exactly on the surface or a hair in front: stays shown, and a hidden one comes back
+  assert.equal(visibleWithMargin(d, d - 0.5 * tol, true), true);
+  assert.equal(visibleWithMargin(d, d - 1.5 * tol, true), true); // dead band: still shown
+  assert.equal(visibleWithMargin(d, d - 1.5 * tol, false), false); // dead band: still hidden
+  assert.equal(visibleWithMargin(d, d - 2.5 * tol, true), false); // clearly in front
+  assert.equal(visibleWithMargin(d, d - 0.9 * tol, false), true);
+  assert.equal(visibleWithMargin(d, d + 3, false), true); // behind the anchor
+  assert.equal(visibleWithMargin(d, null, true), null);
+});
+test("margin band: a wobbling depth on a surface never toggles", () => {
+  let shown = true, flips = 0;
+  for (const wob of [0, -0.1, 0.05, -0.2, -0.15, 0.1, -0.25, -0.1, 0]) {
+    const next = visibleWithMargin(10, 10 + wob, shown);
+    if (next !== shown) flips++;
+    shown = next;
+  }
+  assert.equal(flips, 0);
+});

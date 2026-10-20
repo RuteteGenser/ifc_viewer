@@ -1,0 +1,175 @@
+/* The Measure control (split button) and its menu, and the Clearance rows in the Measurements tab. Tokens only. */
+
+.measure-split {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+}
+.measure-split .tooltip:first-child {
+  display: flex;
+}
+.measure-split__caret {
+  width: 20px;
+  height: 36px;
+  align-self: center;
+  margin-left: -4px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.measure-split__caret svg {
+  width: 14px;
+  height: 14px;
+  transition: rotate var(--dur-2, 0.16s) var(--ease, ease);
+}
+.measure-split.is-open .measure-split__caret svg {
+  rotate: 180deg;
+}
+.measure-split__caret:hover,
+.measure-split.is-open .measure-split__caret {
+  background: var(--hover);
+  color: var(--ink);
+}
+.measure-split__caret:focus-visible,
+.measure-menu__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.measure-split.is-open .tooltip__box {
+  display: none;
+}
+.measure-split__caret.is-blocked {
+  opacity: 0.4;
+}
+@media (pointer: coarse) {
+  .measure-split__caret {
+    width: 44px;
+    height: 44px;
+    margin-left: -8px;
+  }
+}
+
+/* A phone's tool row is a grid of equal cells: the split control is one cell, without an arrow. */
+@media (max-width: 768px) and (min-height: 501px) {
+  .toolbar > .measure-split {
+    flex: 1 1 0;
+    min-width: 44px;
+    max-width: 68px;
+    margin: 0;
+    justify-content: center;
+  }
+  .toolbar .measure-split .tooltip {
+    width: 100%;
+  }
+}
+
+/* ---------- The menu: above the tool row and the view controls, one at a time ---------- */
+.measure-menu {
+  --measure-menu-z: 70; /* above .toolbar (41), the view controls (17) and the details sheet; below dialogs */
+  position: fixed;
+  z-index: var(--measure-menu-z);
+  width: min(300px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: paper-settle 0.16s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+.measure-menu--sheet {
+  left: calc(8px + var(--safe-left, 0px));
+  right: calc(8px + var(--safe-right, 0px));
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  padding: 8px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sheet);
+}
+.measure-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+}
+.measure-menu__item:hover {
+  background: var(--hover);
+}
+.measure-menu__item.is-on {
+  background: var(--accent-wash);
+}
+.measure-menu__icon {
+  flex: none;
+  display: flex;
+  color: var(--ink-muted);
+}
+.measure-menu__item.is-on .measure-menu__icon {
+  color: var(--accent);
+}
+.measure-menu__icon svg {
+  width: 22px;
+  height: 22px;
+}
+.measure-menu__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.measure-menu__name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+.measure-menu__hint {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  line-height: var(--leading);
+}
+.measure-menu__check {
+  flex: none;
+  width: 18px;
+  display: flex;
+  color: var(--accent);
+}
+.measure-menu__check svg {
+  width: 18px;
+  height: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .measure-menu,
+  .measure-split__caret svg {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ---------- Clearance in the Measurements tab ---------- */
+.measure-control__title {
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+.measure-control__values--grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+}
+.measure-control__values--grid .is-open {
+  color: var(--ink-muted);
+}

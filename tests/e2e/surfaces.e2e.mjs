@@ -18,6 +18,12 @@ async function openHelp(page) {
 }
 const menu = (page) => page.getByRole("button", { name: "Open menu" });
 const measure = (page) => page.getByRole("button", { name: "Toggle measure mode" });
+// On a phone the Measure icon opens the Measure menu; choosing Distance arms the tool.
+async function armMeasure(page) {
+  await click(measure(page));
+  const distance = page.getByRole("menuitemradio", { name: /Distance/ });
+  if (await distance.isVisible().catch(() => false)) await click(distance);
+}
 const tag = (page) => page.getByRole("button", { name: "Toggle tag tool" });
 const clip = (page) => page.getByRole("button", { name: "Toggle camera clip" });
 const armed = (loc) => loc.evaluate((el) => el.classList.contains("top-bar__icon-button--active"));
@@ -157,7 +163,7 @@ await suite("surfaces", [
     projects: PHONES,
     fn: async ({ page, skip }) => {
       await ready(page, skip);
-      await click(measure(page));
+      await armMeasure(page);
       assert.ok(await armed(measure(page)));
       await click(tag(page));
       assert.ok(!(await armed(measure(page))) && (await armed(tag(page))), "Tag replaced Measure");
@@ -169,7 +175,7 @@ await suite("surfaces", [
       await sleep(400);
       assert.deepEqual(await sheetsAre(page, ["models"]), ["models"]);
       assert.equal(await page.locator(".camera-clip-popover").count(), 0, "a sheet disarmed the tool");
-      await click(measure(page));
+      await armMeasure(page);
       await sleep(400);
       assert.deepEqual(await sheetsAre(page, []), [], "arming a tool closed the sheet");
       assert.ok(await armed(measure(page)));
@@ -195,7 +201,7 @@ await suite("surfaces", [
     fn: async ({ page, skip, project }) => {
       await ready(page, skip);
       assert.deepEqual(overlaps(await floating(page)), [], "idle");
-      await click(measure(page));
+      await armMeasure(page);
       await sleep(500);
       assert.deepEqual(overlaps(await floating(page)), [], "measure pill and buttons");
       await click(measure(page));
@@ -233,7 +239,7 @@ await suite("surfaces", [
       assert.deepEqual(await sheetsAre(page, []), [], "Back closed Models");
       assert.equal(await page.getByRole("dialog", { name: "Leave the viewer?" }).count(), 0, "closing a sheet asked about leaving");
       // Back with an armed tool disarms it, no question
-      await click(measure(page));
+      await armMeasure(page);
       await sleep(300);
       await page.evaluate(() => history.back());
       await sleep(600);
@@ -263,7 +269,7 @@ await suite("surfaces", [
       // The Views panel fills a 320 px wide screen: tap the strip of empty canvas under it.
       await page.touchscreen.tap(c.x + c.width / 2, c.y + c.height - 12);
       assert.deepEqual(await sheetsAre(page, []), [], "tap on the canvas closed Views");
-      await click(measure(page));
+      await armMeasure(page);
       await tapModel(page, project); // the first measure point: the tool's tap, not a dismissal
       await sleep(600);
       assert.ok(await armed(measure(page)), "a tap on the model in a tool is the tool's, it stays armed");

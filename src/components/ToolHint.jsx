@@ -1,10 +1,10 @@
+import { MEASURE_COPY } from "../measure/copy";
+
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
 const HINTS = {
-  measure: {
-    touch: "Tap two points to measure.",
-    mouse: "Click two points on the model to measure between them.",
-  },
+  measure: MEASURE_COPY.hudDistance,
+  clearance: MEASURE_COPY.hudClearance,
   tag: {
     touch: "Tap an element to pin its tag.",
     mouse: "Hover an element, then click to pin its tag.",

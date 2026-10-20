@@ -1,5 +1,7 @@
 import { useAddedKeys } from "../usePresence";
 import { formatLength } from "../ifc/formatLength";
+import { MEASURE_COPY } from "../measure/copy";
+import { DIRECTIONS, clearanceValueText } from "../ifc/clearance";
 
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
@@ -21,7 +23,23 @@ export default function MeasureControl({ measurements, onRemoveMeasurement, onSt
           </button>
         </>
       ) : (
-        measurements.map((m) => (
+        measurements.map((m) => m.kind === "clearance" ? (
+          <div className={`clip-control__plane${added.has(m.id) ? " row-new" : ""}`} key={m.id} data-kind="clearance">
+            <div className="measure-control__length measure-control__title">{MEASURE_COPY.clearanceTitle(m.name)}</div>
+            <div className="measure-control__values measure-control__values--grid">
+              {DIRECTIONS.map((dir) => (
+                <span key={dir} data-dir={dir} className={m[dir] == null ? "is-open" : undefined}>
+                  {MEASURE_COPY.directions[dir]}: {clearanceValueText(m[dir])}
+                </span>
+              ))}
+            </div>
+            <div className="clip-control__buttons">
+              <button type="button" className="clip-control__remove" aria-label={MEASURE_COPY.remove} title={MEASURE_COPY.remove} onClick={() => onRemoveMeasurement(m.id)}>
+                ✕
+              </button>
+            </div>
+          </div>
+        ) : (
           <div className={`clip-control__plane${added.has(m.id) ? " row-new" : ""}`} key={m.id}>
             <div className="measure-control__length">Length: {formatLength(m.length)}</div>
             <div className="measure-control__values">

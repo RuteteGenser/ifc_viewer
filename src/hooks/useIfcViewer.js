@@ -7,6 +7,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Line2 } from "three/addons/lines/Line2.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineGeometry } from "three/addons/lines/LineGeometry.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { unzip, zip } from "fflate";
 import {
   closeRawIfcModel,
@@ -30,6 +32,8 @@ import { robustUnion } from "../ifc/modelBounds";
 import { sheetRect, PLANE_COLORS, SHEET_OPACITY, planesToDrop, activeAfterRemove, axisOf, KIND_BY_AXIS, miniSlab } from "../ifc/sectionPlanes";
 import { stackUp } from "../ifc/labelStack";
 import { createPressRings } from "../ifc/pressRings";
+import { createClearanceScene } from "../ifc/clearanceScene";
+import { MEASURE_TOOLS, loadLastMeasureTool, saveLastMeasureTool } from "../measure/tools";
 import { visibleByHit, stepVisibility, onScreen } from "../ifc/anchorVisibility";
 
 const IFC_EXTENSION = /\.ifc$/i;
@@ -397,6 +401,8 @@ export function useIfcViewer() {
   const measureManagerRef = useRef(null); // { addPoint, cancelPending, remove, list } | null
   const hoverLabelRef = useRef(null); // DOM node the App renders; text/position are written directly (no React churn per mouse move)
   const measureModeActiveRef = useRef(false);
+  const measureToolRef = useRef(loadLastMeasureTool()); // which measure tool a tap uses: "distance" | "clearance"
+  const clearanceSceneRef = useRef(null);
   const showMeasureDeletePopupRef = useRef(() => {});
   const measureDeletePopupRef = useRef(null); // mirrors measureDeletePopup state, for the imperative animate() loop
   const measureLegEditPopupRef = useRef(null); // mirrors measureLegEditPopup state, for the imperative animate() loop
@@ -482,6 +488,7 @@ export function useIfcViewer() {
   const [selectedElementLoading, setSelectedElementLoading] = useState(false);
   const [zoomLimit, setZoomLimit] = useState(null); // "min" | "max" while the camera sits at a zoom limit
   const [measureModeActive, setMeasureModeActiveState] = useState(false);
+  const [measureTool, setMeasureToolState] = useState(measureToolRef.current);
   const [measurements, setMeasurements] = useState([]); // [{ id, depth, horizontal, vertical, length }]
   const [measureDeletePopup, setMeasureDeletePopup] = useState(null); // { entryId, which, x, y } | null
   const [measureLegEditPopup, setMeasureLegEditPopup] = useState(null); // { entryId, which, x, y } | null — which: "depth" | "horizontal" | "vertical"
@@ -1616,6 +1623,21 @@ export function useIfcViewer() {
       return entry;
     };
 
+    // Clearance tool (src/ifc/clearanceScene.js): its results live beside the point measurements and share the
+    // list, remove and visibility paths below, so the Measurements tab, undo and Notes treat them alike.
+    const clearanceScene = createClearanceScene({
+      THREE, Line2, LineGeometry, LineSegments2, LineSegmentsGeometry, LineMaterial, modelsGroup, camera, renderer,
+      resolution: measureLineResolution, createLabel: createMeasureLabel, lineWidth: MEASURE_LINE_WIDTH,
+      labelPixels: MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT, markerGeometry: measureMarkerGeometry, markerPixels: MEASURE_MARKER_PIXELS,
+      tagsVisible: () => tagsVisibleRef.current, requestRender,
+      raycast: (x, y) => raycastVisibleRef.current(x, y),
+      visibleModels: () => [...modelsRef.current.values()].filter((e) => e.object.visible),
+      clippingPlanes: () => renderer.clippingPlanes,
+      sceneBox: () => fullSceneBox(),
+    });
+    clearanceSceneRef.current = clearanceScene;
+    if (import.meta.env.VITE_TEST_HOOK) { window.__ifcDebug.clearances = () => clearanceScene.debug(); window.__ifcDebug.castRay = (o, d) => clearanceScene.castRaw(o, d); }
+
     const measureManager = {
       // Returns "started" after recording point A, "completed" after B
       // finishes a measurement. `localNormal` is only ever used for B —
@@ -1678,6 +1700,7 @@ export function useIfcViewer() {
         requestRender();
       },
       remove: (id) => {
+        if (clearanceScene.remove(id)) return;
         const index = measurementsRuntime.findIndex((m) => m.id === id);
         if (index === -1) return;
         const [entry] = measurementsRuntime.splice(index, 1);
@@ -1717,8 +1740,10 @@ export function useIfcViewer() {
         entry.legUpLabel.material.dispose();
         requestRender();
       },
-      list: () =>
-        measurementsRuntime.map((m) => ({ id: m.id, depth: m.depth, horizontal: m.horizontal, vertical: m.vertical, length: m.length })),
+      list: () => [
+        ...measurementsRuntime.map((m) => ({ id: m.id, depth: m.depth, horizontal: m.horizontal, vertical: m.vertical, length: m.length })),
+        ...clearanceScene.list(),
+      ],
       // Repositions B to an exact known local-space point and recomputes
       // everything from it — used both by setLeg below and directly by
       // the edit feature's own undo/redo (which just replays a snapshot
@@ -2342,6 +2367,7 @@ export function useIfcViewer() {
       if (measureModeActiveRef.current) {
         measureModeActiveRef.current = false;
         setMeasureModeActiveState(false);
+        if (measureToolRef.current === "clearance") clearHighlight();
         return true;
       }
       if (tagToolActiveRef.current) {
@@ -3372,6 +3398,7 @@ export function useIfcViewer() {
     };
 
     refreshMeasurementsVisibilityRef.current = () => {
+      clearanceScene.refreshVisibility();
       for (const entry of measurementsRuntime) applyMeasurementEntryVisibility(entry);
       if (measurePendingMarker) measurePendingMarker.visible = tagsVisibleRef.current;
       if (measurePreviewEntry) {
@@ -3512,6 +3539,48 @@ export function useIfcViewer() {
       }
     };
 
+    // Clearance tool: a tap on an element measures up, down, left and right from the middle of that element.
+    // Left and right come from the camera at this moment and stay in the model afterwards.
+    let clearanceBusy = false;
+    const handleClearanceClick = async (raycastPromise) => {
+      const hit = raycastPromise ? await raycastPromise : null;
+      if (!hit) {
+        exitActiveTool();
+        return;
+      }
+      if (clearanceBusy) return;
+      clearanceBusy = true;
+      try {
+        showHighlightFill(hit).catch((err) => console.error("Highlight fill failed", err));
+        const [data] = await hit.fragments.getItemsData([hit.localId], { attributesDefault: true });
+        const name = data?.Name?.value || data?._category?.value || "Element";
+        const result = await clearanceScene.measure(hit, name);
+        if (!result) {
+          showToastRef.current("This element has no shape to measure from");
+          return;
+        }
+        const entry = clearanceScene.add(result);
+        const snapshot = clearanceScene.snapshot(entry.id);
+        const idBox = { id: entry.id };
+        setMeasurements(measureManager.list());
+        pushUndo({
+          undo: () => {
+            measureManager.remove(idBox.id);
+            setMeasurements(measureManager.list());
+          },
+          redo: () => {
+            idBox.id = clearanceScene.addSerialized(snapshot)?.id ?? idBox.id;
+            setMeasurements(measureManager.list());
+          },
+        });
+      } catch (err) {
+        console.error("Clearance measurement failed", err);
+        showToastRef.current("The clearance could not be measured");
+      } finally {
+        clearanceBusy = false;
+      }
+    };
+
     // Only pins the element whose hover dimension tag is currently
     // showing (per the spec: pinning is a Tag-tool click on an element
     // that already has a hover tag, not a general "click anything"
@@ -3611,7 +3680,7 @@ export function useIfcViewer() {
         const moved = Math.hypot(event.clientX - downClientX, event.clientY - downClientY);
         if (moved < CLICK_MOVE_THRESHOLD) {
           if (measureModeActiveRef.current) {
-            handleMeasureClick(pivotRaycastPromise);
+            (measureToolRef.current === "clearance" ? handleClearanceClick : handleMeasureClick)(pivotRaycastPromise);
           } else if (tagToolActiveRef.current) {
             handleTagToolClick(pivotRaycastPromise);
           } else if (categoryHideModeActiveRef.current) {
@@ -4398,12 +4467,14 @@ export function useIfcViewer() {
       enforcePinchLimits();
       pipelineRef.current?.fragments.core.update();
       pumpAnchorVisibility();
+      clearanceScene.pump();
       if (!needsRender) return;
       needsRender = false;
       scalePivotMarker();
       updatePressPin();
       scaleMeasureMarkers();
       layoutMeasureLabels();
+      clearanceScene.frame();
       scaleDimensionTags();
       if (clipPlanesRuntime.length > 0) {
         // Each plane is authored in modelsGroup's local frame so it
@@ -4741,6 +4812,7 @@ export function useIfcViewer() {
     setMeasureModeActiveState(next);
     if (!next) {
       measureManagerRef.current?.cancelPending();
+      if (measureToolRef.current === "clearance") clearHighlightRef.current();
     } else {
       if (tagToolActiveRef.current) {
         tagToolActiveRef.current = false;
@@ -4753,6 +4825,19 @@ export function useIfcViewer() {
       }
     }
   }, []);
+
+  // Picks which measure tool a tap uses and remembers it. `arm` also turns measuring on (the menu's choice).
+  const setMeasureTool = useCallback((tool, arm = false) => {
+    if (!MEASURE_TOOLS.some((t) => t.id === tool)) return;
+    if (measureToolRef.current !== tool) {
+      measureManagerRef.current?.cancelPending();
+      if (measureToolRef.current === "clearance") clearHighlightRef.current();
+      measureToolRef.current = tool;
+      setMeasureToolState(tool);
+      saveLastMeasureTool(tool);
+    }
+    if (arm && !measureModeActiveRef.current) toggleMeasureMode();
+  }, [toggleMeasureMode]);
 
   const toggleTagTool = useCallback(() => {
     const next = !tagToolActiveRef.current;
@@ -4816,6 +4901,24 @@ export function useIfcViewer() {
   const removeMeasurement = useCallback((id) => {
     const manager = measureManagerRef.current;
     if (!manager) return;
+    const clearance = clearanceSceneRef.current;
+    const clearanceSnapshot = clearance?.snapshot(id);
+    if (clearanceSnapshot) {
+      manager.remove(id);
+      setMeasurements(manager.list());
+      const box = { id };
+      pushUndo({
+        undo: () => {
+          box.id = clearance.addSerialized(clearanceSnapshot)?.id ?? box.id;
+          setMeasurements(manager.list());
+        },
+        redo: () => {
+          manager.remove(box.id);
+          setMeasurements(manager.list());
+        },
+      });
+      return;
+    }
     const snapshot = manager.getPointsSnapshot(id);
     manager.remove(id);
     setMeasurements(manager.list());
@@ -6283,6 +6386,8 @@ export function useIfcViewer() {
     measurements,
     measureModeActive,
     toggleMeasureMode,
+    measureTool,
+    setMeasureTool,
     removeMeasurement,
     setMeasurementLeg,
     measureDeletePopup,

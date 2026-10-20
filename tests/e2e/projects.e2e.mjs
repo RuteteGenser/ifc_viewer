@@ -243,6 +243,7 @@ await suite("projects", [
       await call(page, "POST", "/folders", { name: "Target", parentId: null });
       assert.equal((await call(page, "POST", "/models?name=loose.ifc", ifc())).status, 201);
       await openApp(page);
+      await page.locator(".proj-card").first().waitFor();
       const cards = await page.locator(".proj-card").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
       assert.deepEqual(cards, ["Open project Target, 0 models", "Open project Unsorted, 1 model"], "Unsorted is last");
       await shot(page, project, "unsorted-browser");

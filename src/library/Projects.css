@@ -1,5 +1,5 @@
 /* Project browser and project page: the first screen when no model is open. Tokens only. */
-.empty-state--projects {
+.empty-state.empty-state--projects {
   align-items: flex-start;
   overflow-y: auto;
   pointer-events: auto;

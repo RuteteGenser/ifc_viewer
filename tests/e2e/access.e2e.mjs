@@ -96,6 +96,7 @@ await suite("access", [
         await page.unroute("**/api/session").catch(() => {});
         await page.route("**/api/session", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) }));
         await openApp(page);
+        if (expect) await banner(page).waitFor({ timeout: 10000 });
         await page.waitForTimeout(600);
         const text = (await banner(page).count()) ? await banner(page).innerText() : "";
         const shown = await page.evaluate(() => /\bleft\b/.test(document.querySelector('[data-testid="acc-banner"]')?.textContent || ""));

@@ -57,7 +57,7 @@ const requireReal = (skip) => { if (!REAL) skip("set ARGUS_ADMIN and ARGUS_CLOCK
 const signup = async (page, email) => {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
-  await page.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
+  await page.getByRole("dialog", { name: "Create account" }).getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
   await page.getByRole("button", { name: "Create account" }).last().click();
 };
 
@@ -226,7 +226,7 @@ await suite("access", [
       const bad = [];
       page.on("response", (r) => /\/api\/(folders|models)/.test(r.url()) && r.status() >= 400 && bad.push(`${r.status()} ${r.url()}`));
       await openApp(page);
-      await page.locator(".lib--empty").waitFor();
+      await page.getByRole("heading", { level: 1, name: "No projects yet" }).waitFor();
       await page.waitForTimeout(2200); // the old client retried after 1.5 s
       assert.deepEqual(bad, []);
     },
@@ -359,7 +359,7 @@ await suite("access", [
       await shot(page, project, "signup");
       await page.getByLabel("Password", { exact: true }).fill("short");
       await page.getByLabel("Email").fill("t@example.com");
-      await page.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
+      await auth.getByRole("checkbox", { name: /I accept the Terms of Service/ }).check();
       await page.getByRole("button", { name: "Create account" }).last().click();
       await page.getByRole("alert").waitFor();
       assert.match(await page.getByRole("alert").innerText(), /longer password/);
@@ -401,21 +401,21 @@ await suite("access", [
     },
   },
   {
-    name: "samples are read-only in the list; Account button and quota line",
+    name: "the dummy project's sample is read-only; quota line on the project browser",
     fn: async ({ page, skip, project }) => {
       requireReal(skip);
       await fresh(page);
       await openApp(page);
       await banner(page).waitFor();
-      await page.locator(".lib--empty").waitFor();
-      assert.ok(await page.locator(".lib--empty").getByText("Samples").count(), "Samples label");
-      assert.match(await page.locator(".lib--empty").getByTestId("lib-quota").innerText(), /\d+ of 3 models, \d+ MB of 300 MB/);
-      const row = page.locator(".lib--empty .lib-row").filter({ has: page.locator(".lib-badge", { hasText: "Sample" }) }).first();
+      // A visitor with no projects starts on the project browser, which carries the plan usage line.
+      await page.getByRole("heading", { level: 1, name: "No projects yet" }).waitFor();
+      assert.match(await page.locator(".proj").getByTestId("lib-quota").innerText(), /\d+ of 3 models, \d+ MB of 300 MB/);
+      // The samples live in the Demo project: its rows have no Rename or Delete.
+      await page.getByRole("button", { name: "Try a dummy project" }).click();
+      const list = page.getByRole("list", { name: "Models" });
+      const row = list.locator(".lib-row").filter({ hasText: "Sample building" }).first();
       await row.waitFor();
-      await row.getByRole("button", { name: /More actions/ }).click();
-      const actions = row.locator(".lib-row__actions");
-      assert.equal(await actions.getByRole("button", { name: "Rename" }).count(), 0);
-      assert.equal(await actions.getByRole("button", { name: "Delete" }).count(), 0);
+      assert.equal(await row.getByRole("button", { name: /More actions|Rename|Delete/ }).count(), 0, "a sample row offers no actions");
       await shot(page, project, "library-samples");
     },
   },

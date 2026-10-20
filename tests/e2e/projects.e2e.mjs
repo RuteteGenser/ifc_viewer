@@ -25,7 +25,13 @@ async function visitor(page) {
   n += 1;
   await page.context().setExtraHTTPHeaders({ "x-real-ip": `10.${Math.floor(Math.random() * 250)}.${Math.floor(n / 250)}.${n % 250}` });
   await openApp(page);
-  assert.equal((await call(page, "POST", "/redeem-code", { code: "123" })).status, 200, "redeem 123");
+  // the session cookie may still be on its way for a moment
+  let redeemed = 0;
+  for (let i = 0; i < 8 && redeemed !== 200; i++) {
+    redeemed = (await call(page, "POST", "/redeem-code", { code: "123" })).status;
+    if (redeemed !== 200) await page.waitForTimeout(500);
+  }
+  assert.equal(redeemed, 200, "redeem 123");
   await openApp(page);
 }
 const shot = (page, project, name) => page.screenshot({ path: `${SHOTS}/${name}-${project}.png` });

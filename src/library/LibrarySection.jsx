@@ -261,7 +261,7 @@ export function SampleItem() {
 }
 
 // Plan usage, the account button and the legal links under the list (only when the access system is on).
-export function LibAccount() {
+export function LibAccount({ button = true }) {
   const access = useAccess();
   if (!access) return null;
   return (
@@ -272,7 +272,7 @@ export function LibAccount() {
           <span className="lib__meter-fill" style={{ width: `${Math.round(quotaRatio(access.session) * 100)}%` }} />
         </span>
       )}
-      <AccountButton />
+      {button && <AccountButton />}
       <LegalLinks docs={["terms", "privacy"]} />
     </div>
   );

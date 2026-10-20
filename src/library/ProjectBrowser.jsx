@@ -161,7 +161,7 @@ function BrowserBody({ onOpenFiles, titleRef }) {
           {t("proj.viewOnly")}
         </button>
         <CodeLink />
-        <LibAccount />
+        <LibAccount button={false} />
         {dialog}
       </section>
     );
@@ -180,7 +180,7 @@ function BrowserBody({ onOpenFiles, titleRef }) {
         ))}
       </ul>
       {quiet}
-      <LibAccount />
+      <LibAccount button={false} />
       {dialog}
     </section>
   );
@@ -318,7 +318,7 @@ function ProjectPage({ projectId, onOpenFiles, titleRef }) {
         </div>
       )}
       <ModelList models={models} folders={library.folders} projectId={projectId} emptyText={real ? "No models yet. Add a model to open it and save it here." : null} />
-      <LibAccount />
+      <LibAccount button={false} />
     </section>
   );
 }

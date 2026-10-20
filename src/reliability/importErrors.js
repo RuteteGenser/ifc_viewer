@@ -113,8 +113,8 @@ export function describeFailure(error, { name, reloading = false, retried = fals
       return `Could not read "${name}" from this device. Is the file still there?`;
     default:
       return retried
-        ? `Argus hit an unexpected error opening "${name}", even after trying again. This is Argus's problem, not your file's. Open Details for the technical message.`
-        : `Argus hit an unexpected error opening "${name}". Open Details for the technical message.`;
+        ? `Argus hit an unexpected error opening "${name}", even after trying again. Retry, or reload the page. Details has the technical message.`
+        : `Argus hit an unexpected error opening "${name}". Details has the technical message.`;
   }
 }
 

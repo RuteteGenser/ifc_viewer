@@ -5628,14 +5628,14 @@ export function useIfcViewer() {
             allSchemas,
             stallMs,
             onProgress: (fraction, process) => {
-              const stage = { geometries: "geometry", attributes: "properties", relations: "relations", conversion: "finishing" }[process];
-              if (stage) setLoadingLabel(`Reading ${shortName}: ${stage} ${Math.min(99, Math.floor(fraction * 100))}%`);
+              const stage = { geometries: "shapes", attributes: "properties", relations: "structure", conversion: "finishing" }[process];
+              if (stage) setLoadingLabel(`Opening ${shortName}: ${stage} ${Math.min(99, Math.floor(fraction * 100))}%`);
             },
           });
           cancelImport = importJob.cancel;
           const loadPromise = importJob.promise.then(async ({ fragments, source: originalBytes }) => {
             sourceBytes = originalBytes;
-            setLoadingLabel(`Building ${shortName}…`);
+            setLoadingLabel(`Drawing ${shortName}…`);
             const core = pipeline.fragments.core; // read now: a restart replaces it
             core.settings.autoCoordinate = true;
             buildCore = core;
@@ -5838,7 +5838,7 @@ export function useIfcViewer() {
           const retryFile = new File([blob], baseName);
           retryFile.argusIntent = currentIntent;
           retryFile.argusBatch = currentBatch;
-          setLoadingLabel(`Parsing ${baseName}…`);
+          setLoadingLabel(`Reading ${baseName}…`);
           await loadOneIfc(blob, baseName, retryFile);
           if (abandoned()) return;
         }

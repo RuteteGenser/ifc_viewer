@@ -6,6 +6,7 @@ import { startupIntent } from "../reliability/recovery";
 import { legalHash } from "../legal/route";
 import { t } from "./copy";
 import LogoMark from "../components/LogoMark";
+import { ghostExit } from "../usePresence";
 import { NAME } from "../brand";
 
 // The first screen of the app, shown once per device while a free trial is running and the
@@ -29,6 +30,7 @@ export default function Welcome({ hasWork }) {
   const [legal, setLegal] = useState(onLegal);
   const frozenRef = useRef(null); // { ms }: the length shown, fixed at the first render that shows it
   const startRef = useRef(null);
+  const rootRef = useRef(null);
   const show = !!a && a.state === "anonymous_trial" && !acked && !skip && !hasWork && !legal;
 
   if (show && !frozenRef.current) frozenRef.current = { ms: Date.parse(a.session.entitlement.endsAt) - a.nowMs };
@@ -51,10 +53,11 @@ export default function Welcome({ hasWork }) {
 
   if (!show) return null;
   const d = durationParts(frozenRef.current.ms);
-  const start = () => { remember(); setAcked(true); };
+  // The welcome fades out over the viewer (an inert copy; the real screen is gone at once).
+  const start = () => { ghostExit(rootRef.current, "fade")?.removeAttribute("data-testid"); remember(); setAcked(true); };
   const open = (dialog) => a.open({ ...dialog, from: "welcome" });
   return createPortal(
-    <div className="acc-welcome" role="region" aria-labelledby="acc-welcome-title" data-testid="welcome">
+    <div className="acc-welcome" ref={rootRef} role="region" aria-labelledby="acc-welcome-title" data-testid="welcome">
       <div className="acc-welcome__card">
         <div className="acc-welcome__brand" aria-hidden="true"><LogoMark /><span>{NAME}</span></div>
         <h1 id="acc-welcome-title" className="acc-welcome__title">{t("welcome.title", { duration: t(d.key, { n: d.n }) })}</h1>

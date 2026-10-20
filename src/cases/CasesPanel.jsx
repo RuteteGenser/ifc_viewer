@@ -1,5 +1,5 @@
 // The Cases menu: list of cases, new case, import, storage notices. A bottom sheet on phones, a panel on the right on desktop.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import usePresence from "../usePresence";
 import useSheetSwipe from "../ui/useSheetSwipe";
@@ -93,6 +93,18 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
   const modelName = models[0]?.name || "";
   const closed = state === "closed";
   const swipe = useSheetSwipe(onClose, ref);
+  // Tablet and desktop: the panel starts under the tool row, so the tools stay in reach.
+  const [top, setTop] = useState(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const bar = window.innerWidth > 768 ? document.querySelector(".toolbar") : null;
+      const b = bar?.getBoundingClientRect().bottom;
+      setTop(b && b > 0 && b < window.innerHeight / 3 ? Math.round(b + 8) : null);
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, []);
 
   useEffect(() => {
     if (closed) return undefined;
@@ -125,7 +137,7 @@ function Sheet({ state, onClose, cases, viewer, models, showToast, onSaveSnapsho
   }, [shown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return createPortal(
-    <div className="cases" data-state={state} data-surface-sheet="cases" role="dialog" aria-label={COPY.title} ref={ref}>
+    <div className="cases" data-state={state} data-surface-sheet="cases" role="dialog" aria-label={COPY.title} ref={ref} style={top ? { top } : undefined}>
       <div className="cases__head" {...swipe.head}>
         <h2 className="cases__title">{COPY.title}</h2>
         <button type="button" className="cases__btn cases__btn--quiet" onClick={onClose}>{COPY.done}</button>

@@ -74,8 +74,10 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
   --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-2xs: 11px;   /* micro labels: badges, swatch captions, dense tabs */
   --text-xs: 12px;    /* captions, meta */
   --text-sm: 13px;    /* secondary text, banner */
+  --text-ui: 14px;    /* dense controls: sidebar buttons, panel rows */
   --text-base: 15px;  /* body, buttons */
   --text-md: 16px;    /* inputs (no iOS zoom) */
   --text-lg: 17px;    /* row titles */

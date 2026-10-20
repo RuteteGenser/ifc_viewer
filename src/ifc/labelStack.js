@@ -18,3 +18,12 @@ export function stackUp(rects, gap = 4) {
   });
   return dy;
 }
+
+// A leg label needs its leg to be long enough on screen to carry it. Show at 90 percent of the label width; once
+// shown keep it down to 70 percent, so a leg that shrinks and grows a little with the view angle (an uneven
+// surface) does not make the label pop in and out. Pure; px in, boolean out.
+export const LEG_LABEL_SHOW_AT = 0.9;
+export const LEG_LABEL_KEEP_AT = 0.7;
+export function legLabelFits(legPx, labelWidth, wasShown) {
+  return legPx >= labelWidth * (wasShown ? LEG_LABEL_KEEP_AT : LEG_LABEL_SHOW_AT);
+}

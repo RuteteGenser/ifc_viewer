@@ -245,6 +245,7 @@ export default function RightPanel({
             </button>
           ))}
         </div>
+        {onCollapse && (
         <button
           type="button"
           className="element-panel__collapse"
@@ -254,6 +255,8 @@ export default function RightPanel({
         >
           <span aria-hidden="true">&rsaquo;</span>
         </button>
+        )}
+        {onClose && (
         <button
           type="button"
           className="element-panel__close"
@@ -262,6 +265,7 @@ export default function RightPanel({
         >
           ✕
         </button>
+        )}
       </div>
 
       <div className="element-panel__body" ref={bodyRef} role="tabpanel" id="rp-tabpanel" aria-labelledby={`rp-tab-${activeTab}`}>

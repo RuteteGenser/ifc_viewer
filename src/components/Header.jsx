@@ -16,6 +16,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
         </svg>
       </button>
 
+      {onToggleCollapsed && (
       <button
         type="button"
         className="sidebar-collapse"
@@ -29,6 +30,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
           <path d="M9 4v16" />
         </svg>
       </button>
+      )}
 
       <div className="header__brand">
         <LogoMark />

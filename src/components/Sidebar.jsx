@@ -4,7 +4,6 @@ import { LegalLinks } from "../legal/LegalPage";
 import ModelInfo from "./ModelInfo";
 import ModelName from "./ModelName";
 import { disciplineOf, splitModelName } from "../ifc/modelLabel";
-import ModelTree from "./ModelTree";
 import { SaveRowButton } from "../library/SaveControls";
 import { hapticsEnabled, setHapticsEnabled } from "../haptics";
 import "./Models.css";
@@ -126,8 +125,6 @@ export default function Sidebar({
   hiddenCategories,
   onShowCategory,
   browser,
-  selectedId,
-  onPickElement,
   onRequestClose,
   onOpenHelp,
   onOpenCases,
@@ -157,7 +154,7 @@ export default function Sidebar({
     },
   };
   return (
-    <aside className={`sidebar ${className}`.trim()} data-surface-sheet={className.includes("sidebar--open") ? "menu" : undefined} aria-label="Models and structure" {...swipe}>
+    <aside className={`sidebar ${className}`.trim()} data-surface-sheet={className.includes("sidebar--open") ? "menu" : undefined} aria-label="Loaded models" {...swipe}>
       <section className="sb-group" aria-labelledby="sb-loaded-title">
         <div className="sb-group__head">
           <h2 className="sidebar__section-title" id="sb-loaded-title">Loaded models</h2>
@@ -239,13 +236,6 @@ export default function Sidebar({
             </label>
           )}
         </section>
-      )}
-
-      {browser && models.length > 0 && (
-        <>
-          <div className="sidebar__section-title">Structure</div>
-          <ModelTree browser={browser} selectedId={selectedId} onPick={onPickElement} />
-        </>
       )}
 
       {hiddenCategories.length > 0 && (

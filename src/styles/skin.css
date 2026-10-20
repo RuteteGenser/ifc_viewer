@@ -1587,10 +1587,8 @@ select.acc-input {
 }
 
 .sb-group,
-.sidebar > .lib--sidebar,
 .sidebar > .mi,
-.sidebar > .clip-control,
-.sidebar > .model-tree {
+.sidebar > .clip-control {
   display: flex;
   flex-direction: column;
   gap: 8px;

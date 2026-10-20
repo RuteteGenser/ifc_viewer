@@ -88,7 +88,7 @@ suite("a11y", [
     },
   },
   {
-    name: "keyboard: open sample, select by search and by structure tree, focus never falls to the page",
+    name: "keyboard: open sample, select by search, focus never falls to the page",
     projects: desktop,
     fn: async ({ page }) => {
       await openApp(page);
@@ -109,22 +109,6 @@ suite("a11y", [
       await page.getByText("Hide this element").waitFor({ timeout: 10000 });
       assert.ok(!(await isBody(page)), "focus stays in the search field after selecting");
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "combobox");
-      // structure tree: arrows walk the rows (Right opens a node), Enter on an element selects it
-      await press(page, "Escape");
-      const tree = page.getByRole("tree", { name: "Model structure" });
-      await tree.locator("[role=treeitem][tabindex='0']").focus();
-      let onElement = false;
-      for (let i = 0; i < 60 && !onElement; i++) {
-        onElement = await page.evaluate(() => document.activeElement?.classList.contains("mt-row--element"));
-        if (!onElement) {
-          await press(page, "ArrowRight");
-          await press(page, "ArrowDown");
-        }
-      }
-      assert.ok(onElement, "arrow keys reach an element row");
-      await press(page, "Enter");
-      await page.getByText("Hide this element").waitFor({ timeout: 10000 });
-      assert.equal(await tree.locator("[aria-selected=true]").count(), 1, "the row is marked selected");
     },
   },
   {

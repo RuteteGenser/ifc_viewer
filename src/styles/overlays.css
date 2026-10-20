@@ -1268,25 +1268,22 @@
     border-radius: 0 0 22px 22px;
   }
 
-  .view-tools .view-tools__button.is-open {
-    border-color: var(--accent);
-  }
-
+  /* A vertical capsule, like the column above it: a row would run into the first-run hint. */
   .history-buttons {
-    flex-direction: row;
+    flex-direction: column;
     gap: 0;
   }
 
   .history-buttons .history-buttons__button {
-    border-radius: 22px 0 0 22px;
-    border-right-color: transparent;
+    border-radius: 22px 22px 0 0;
+    border-bottom-color: var(--line);
     box-shadow: var(--shadow-sm);
   }
 
   .history-buttons .history-buttons__button + .history-buttons__button {
-    border-radius: 0 22px 22px 0;
-    border-right-color: var(--line-control);
-    border-left-color: var(--line);
+    border-radius: 0 0 22px 22px;
+    border-top-color: transparent;
+    border-bottom-color: var(--line-control);
   }
 
   .history-buttons .history-buttons__button:disabled {
@@ -1298,9 +1295,19 @@
 
 /* Touch tablets keep the captions under Views and Share: the column is a little wider. */
 @media (min-width: 769px) and (pointer: coarse) and (not (max-height: 500px)) {
-  .view-tools .view-tools__button {
+  .view-tools .view-tools__button,
+  .history-buttons .history-buttons__button {
     width: 52px;
   }
+
+  .history-buttons .history-buttons__button:first-child {
+    border-radius: 18px 18px 0 0;
+  }
+
+  .history-buttons .history-buttons__button + .history-buttons__button {
+    border-radius: 0 0 18px 18px;
+  }
+
 
   .view-tools .view-tools__button--cap {
     height: 52px;
@@ -1475,5 +1482,63 @@
   .toolbar .search-bar:not(:focus-within) .search-bar__input:not(:placeholder-shown) {
     background: var(--accent-wash);
     box-shadow: inset 0 0 0 1px var(--accent-soft);
+  }
+}
+
+/* Touch tablets: the plane switch sat on top of the compass and its north-offset field. */
+@media (min-width: 769px) and (pointer: coarse) and (not (max-height: 500px)) {
+  .plane-switch {
+    bottom: calc(16px + 56px + 6px + 44px + 12px);
+  }
+}
+
+/* ---------- Views panel: the six standard views as one segmented control ---------- */
+
+.view-tools__chips:not(.view-tools__chips--scroll):not(.view-tools__chips--three) {
+  gap: 0;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.view-tools__chips:not(.view-tools__chips--scroll):not(.view-tools__chips--three) .view-tools__chip {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--text-sm);
+}
+
+.view-tools__chips:not(.view-tools__chips--scroll):not(.view-tools__chips--three) .view-tools__chip + .view-tools__chip {
+  border-left: 1px solid var(--line);
+}
+
+.view-tools__chips:not(.view-tools__chips--scroll):not(.view-tools__chips--three) .view-tools__chip:hover {
+  background: var(--hover);
+}
+
+.view-tools__chips:not(.view-tools__chips--scroll):not(.view-tools__chips--three) .view-tools__chip:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Touch tablets with the collapsed search: it gets the same caption as the tools beside it. */
+@media (min-width: 769px) and (max-width: 1180px) and (pointer: coarse) and (not (max-height: 500px)) {
+  .toolbar .search-bar:not(:focus-within)::after {
+    content: "Search" / "";
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    bottom: 1px;
+    font-size: 11px;
+    line-height: 1;
+    text-align: center;
+    color: var(--ink);
+    pointer-events: none;
+  }
+
+  .toolbar .search-bar:not(:focus-within) .search-bar__icon {
+    top: 6px;
   }
 }

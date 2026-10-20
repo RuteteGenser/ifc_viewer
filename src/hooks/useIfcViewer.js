@@ -3069,10 +3069,12 @@ export function useIfcViewer() {
     const onHandPointerDown = (event) => {
       clickedEl = event.target;
     };
+    // A dialog that is fading out is an inert ghost copy still in the DOM; it no longer owns Space.
+    const openDialog = () => [...document.querySelectorAll(DIALOG_SELECTOR)].find((el) => !el.closest("[inert]")) ?? null;
     const onHandKeyDown = (event) => {
       if (event.key === "Tab") clickedEl = null;
       if (TOUCH_UI || event.code !== "Space" || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (spaceBelongsToPage(document.activeElement, document.querySelector(DIALOG_SELECTOR), !!clickedEl && !!document.activeElement?.contains?.(clickedEl))) return;
+      if (spaceBelongsToPage(document.activeElement, openDialog(), !!clickedEl && !!document.activeElement?.contains?.(clickedEl))) return;
       event.preventDefault(); // no page scroll
       if (!event.repeat) setHand(true);
     };

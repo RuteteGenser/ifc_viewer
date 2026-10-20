@@ -275,3 +275,19 @@
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   padding-right: 24px;
 }
+
+/* Empty state on phones, lower half: the library heading, New folder and Samples sit closer,
+   so the sample building row shows on the first screen. */
+@media (max-width: 768px) and (max-height: 760px) {
+  .empty-state .lib--empty {
+    margin-top: 0;
+    padding-top: 4px;
+  }
+  .empty-state .lib--empty .lib-folderbar {
+    margin-block: -6px -4px;
+  }
+  .empty-state .lib--empty .lib__group:first-child {
+    margin-top: 0;
+    padding-top: 4px;
+  }
+}

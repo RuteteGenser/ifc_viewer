@@ -31,6 +31,7 @@ import { sheetRect, PLANE_COLORS, SHEET_OPACITY, planesToDrop, activeAfterRemove
 import { stackUp } from "../ifc/labelStack";
 import { createPressRings } from "../ifc/pressRings";
 import { visibleByHit, stepVisibility, onScreen } from "../ifc/anchorVisibility";
+import { spaceBelongsToPage, DIALOG_SELECTOR } from "../handTool";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format is a plain ZIP archive containing one or
@@ -2924,9 +2925,12 @@ export function useIfcViewer() {
     let nameHoverText = null; // { name, category } for nameHoverKey
     let nameHoverPos = { x: 0, y: 0 };
     let lastCursor = "";
+    // Hand tool (mouse only): Space held turns left-drag into OrbitControls' own pan.
+    let handHeld = false;
+    let handDragId = null;
     const applyCursor = (overElement) => {
       const tool = measureModeActiveRef.current || tagToolActiveRef.current;
-      const cursor = tool ? "crosshair" : categoryHideModeActiveRef.current ? "not-allowed" : overElement ? "pointer" : "";
+      const cursor = handHeld ? (handDragId !== null ? "grabbing" : "grab") : tool ? "crosshair" : categoryHideModeActiveRef.current ? "not-allowed" : overElement ? "pointer" : "";
       if (cursor !== lastCursor) {
         lastCursor = cursor;
         renderer.domElement.style.cursor = cursor;
@@ -3005,6 +3009,54 @@ export function useIfcViewer() {
     renderer.domElement.addEventListener("pointerleave", clearNameHover);
     renderer.domElement.addEventListener("pointerdown", clearNameHover);
     renderer.domElement.addEventListener("wheel", clearNameHover, { passive: true });
+
+    const setHand = (on) => {
+      if (handHeld === on) return;
+      handHeld = on;
+      controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : null; // read by OrbitControls at pointerdown, so a drag in progress keeps panning
+      applyCursor(false);
+    };
+    let clickedEl = null; // last pointer-pressed element; Tab hands focus back to the keyboard
+    const onHandPointerDown = (event) => {
+      clickedEl = event.target;
+    };
+    const onHandKeyDown = (event) => {
+      if (event.key === "Tab") clickedEl = null;
+      if (TOUCH_UI || event.code !== "Space" || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (spaceBelongsToPage(document.activeElement, document.querySelector(DIALOG_SELECTOR), !!clickedEl && !!document.activeElement?.contains?.(clickedEl))) return;
+      event.preventDefault(); // no page scroll
+      if (!event.repeat) setHand(true);
+    };
+    const onHandKeyUp = (event) => {
+      if (event.code !== "Space" || !handHeld) return;
+      event.preventDefault(); // a clicked-then-focused button must not fire on release
+      setHand(false);
+    };
+    const releaseHand = () => setHand(false);
+    const onHandVisibility = () => {
+      if (document.hidden) setHand(false);
+    };
+    const endHandDrag = (event) => {
+      if (event.pointerId !== handDragId) return;
+      handDragId = null;
+      applyCursor(false);
+      window.removeEventListener("pointerup", endHandDrag);
+      window.removeEventListener("pointercancel", endHandDrag);
+    };
+    // True when this press is a hand pan: the other pointerdown handlers then stand aside.
+    const startHandPan = (event) => {
+      if (!handHeld || event.pointerType !== "mouse" || event.button !== 0) return false;
+      handDragId = event.pointerId;
+      applyCursor(false);
+      window.addEventListener("pointerup", endHandDrag);
+      window.addEventListener("pointercancel", endHandDrag);
+      return true;
+    };
+    window.addEventListener("pointerdown", onHandPointerDown, true);
+    window.addEventListener("keydown", onHandKeyDown);
+    window.addEventListener("keyup", onHandKeyUp);
+    window.addEventListener("blur", releaseHand);
+    document.addEventListener("visibilitychange", onHandVisibility);
 
     const applyRotation = (ndc) => {
       const theta = startTheta - Math.PI * ROTATE_GAIN * gainX * (ndc.x - startNdcX);
@@ -4024,7 +4076,7 @@ export function useIfcViewer() {
     // beside the other gestures and never swallows the event.
     let sheetTap = null;
     const onSheetTapDown = (event) => {
-      sheetTap = clipPlanesRuntime.length > 1 && event.isPrimary && event.button === 0
+      sheetTap = clipPlanesRuntime.length > 1 && !(handHeld && event.pointerType === "mouse") && event.isPrimary && event.button === 0
         ? { id: event.pointerId, x: event.clientX, y: event.clientY, t: performance.now() }
         : null;
     };
@@ -4042,6 +4094,7 @@ export function useIfcViewer() {
     window.addEventListener("pointerup", onSheetTapUp, true);
 
     const onRotateStart = (event) => {
+      if (startHandPan(event)) return; // Space + left drag pans; never rotates, selects or places a point
       if (tryStartMeasureMarkerDrag(event)) return;
       if (tryClickMeasureLegLabel(event)) return;
       if (tryStartMeasureMarkerDrag(event, true)) return;
@@ -4525,6 +4578,13 @@ export function useIfcViewer() {
       window.removeEventListener("blur", onMiddleButtonReset);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onMeasureKeyDown);
+      window.removeEventListener("pointerdown", onHandPointerDown, true);
+      window.removeEventListener("keydown", onHandKeyDown);
+      window.removeEventListener("keyup", onHandKeyUp);
+      window.removeEventListener("blur", releaseHand);
+      document.removeEventListener("visibilitychange", onHandVisibility);
+      window.removeEventListener("pointerup", endHandDrag);
+      window.removeEventListener("pointercancel", endHandDrag);
       window.removeEventListener("wheel", onZoomWheel, { capture: true });
       window.removeEventListener("pointerup", onTouchPointerUp);
       window.removeEventListener("pointercancel", onTouchPointerUp);

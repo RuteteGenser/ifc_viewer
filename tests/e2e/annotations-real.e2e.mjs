@@ -198,6 +198,7 @@ await suite("annotations-real", [
       await openCases(page);
       // The marks load from IndexedDB after the jump: poll for the number rather than wait a fixed time.
       const count = async (n) => { await page.waitForFunction((n) => document.querySelectorAll(".ann-item").length === n, n, { timeout: 15000 }).catch(() => {}); await frames(page); return page.locator(".ann-item").count(); };
+      await panel(page).getByRole("option", { selected: true }).first().waitFor({ state: "visible", timeout: 5000 }); // the strip marks the current snapshot a moment after the panel opens
       assert.equal(await panel(page).getByRole("option", { selected: true }).count(), 1);
       await panel(page).getByRole("button", { name: "Previous" }).click();
       assert.equal(await count(5), 5, "A shows its five marks");

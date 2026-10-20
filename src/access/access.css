@@ -41,7 +41,7 @@
 .lib__group { margin: 8px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint, #72685a); }
 .lib__quota { margin: 2px 0 6px; font-size: 12px; color: var(--ink-faint, #72685a); }
 .lib__account { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
-@media (max-width: 600px) { .acc-account-btn--header { display: none; } .acc-backdrop { align-items: flex-end; padding: 8px; } }
+@media (max-width: 600px) { .acc-account-btn--header { padding: 0 12px; margin-right: 0; } .acc-backdrop { align-items: flex-end; padding: 8px; } }
 .acc-demobar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; padding: 0 12px; background: var(--ink); color: var(--on-accent); font-size: 12px; flex-shrink: 0; }
 .acc-demobar .acc-link { color: var(--on-accent); min-height: 28px; }
 @media (pointer: coarse) { .acc-demobar .acc-link { min-height: 44px; } }

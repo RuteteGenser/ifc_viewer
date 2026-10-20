@@ -42,7 +42,7 @@ const MoreIcon = () => (
 );
 
 // One name field: Enter saves, Escape cancels.
-function NameForm({ label, initial = "", submitLabel, onSubmit, onDone }) {
+export function NameForm({ label, initial = "", submitLabel, onSubmit, onDone }) {
   const [value, setValue] = useState(initial);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

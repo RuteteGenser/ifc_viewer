@@ -250,24 +250,6 @@ input[type="range"] {
   height: 22px;
 }
 
-.models-chip {
-  background: var(--surface);
-  border: 1px solid var(--line-control);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.005em;
-}
-
-.models-chip:hover {
-  background: var(--paper-white);
-}
-
-.models-chip[aria-expanded="true"] {
-  border-color: var(--accent);
-  background: var(--accent-wash);
-}
-
 /* ---------- Toolbar: tools are ghost buttons; the armed one is washed in accent ---------- */
 
 .toolbar {
@@ -740,7 +722,7 @@ input[type="range"] {
   }
 }
 
-/* The header's two controls (Account, the models chip) share one shape. */
+/* The header's Account control is a pill. */
 .acc-account-btn--header {
   border-radius: var(--radius-pill);
 }

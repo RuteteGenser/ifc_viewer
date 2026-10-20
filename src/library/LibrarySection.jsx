@@ -87,7 +87,7 @@ function RenameForm({ item, onDone }) {
   );
 }
 
-function ModelItem({ item, showPath }) {
+export function ModelItem({ item, showPath }) {
   const library = useLibraryContext();
   const frozen = useFrozen();
   const [moving, setMoving] = useState(false);
@@ -237,7 +237,7 @@ function ModelItem({ item, showPath }) {
   );
 }
 
-function SampleItem() {
+export function SampleItem() {
   const library = useLibraryContext();
   const loaded = library.loadedNames.has("Sample building");
   return (
@@ -260,11 +260,29 @@ function SampleItem() {
   );
 }
 
+// Plan usage, the account button and the legal links under the list (only when the access system is on).
+export function LibAccount() {
+  const access = useAccess();
+  if (!access) return null;
+  return (
+    <div className="lib__account">
+      <span className="lib__quota" data-testid="lib-quota">{quotaText(access.session)}</span>
+      {quotaRatio(access.session) !== null && (
+        <span className="lib__meter" aria-hidden="true">
+          <span className="lib__meter-fill" style={{ width: `${Math.round(quotaRatio(access.session) * 100)}%` }} />
+        </span>
+      )}
+      <AccountButton />
+      <LegalLinks docs={["terms", "privacy"]} />
+    </div>
+  );
+}
+
 const SIDEBAR_ROWS = 3;
 
 // While the first fetch is pending: two rows the size of real ones. It appears only if the answer is
 // slow (so a fast answer never flashes it) and is replaced in place by the list.
-function LibrarySkeleton() {
+export function LibrarySkeleton({ label = "Loading my models" }) {
   const [show, setShow] = useState(false);
   useEffect(() => {
     const id = setTimeout(() => setShow(true), 300);
@@ -272,7 +290,7 @@ function LibrarySkeleton() {
   }, []);
   if (!show) return null;
   return (
-    <ul className="lib-list lib-skel" role="status" aria-label="Loading my models">
+    <ul className="lib-list lib-skel" role="status" aria-label={label}>
       {[0, 1].map((i) => (
         <li className="lib-row lib-row--skel" key={i} aria-hidden="true">
           <div className="lib-skel__bar" />
@@ -354,18 +372,7 @@ export default function LibrarySection({ variant }) {
               <ModelItem key={item.id} item={item} showPath={searching} />
             ))}
           </ul>
-          {access && (
-            <div className="lib__account">
-              <span className="lib__quota" data-testid="lib-quota">{quotaText(access.session)}</span>
-              {quotaRatio(access.session) !== null && (
-                <span className="lib__meter" aria-hidden="true">
-                  <span className="lib__meter-fill" style={{ width: `${Math.round(quotaRatio(access.session) * 100)}%` }} />
-                </span>
-              )}
-              <AccountButton />
-              <LegalLinks docs={["terms", "privacy"]} />
-            </div>
-          )}
+          <LibAccount />
           {isSidebar && own.length > SIDEBAR_ROWS && (
             <button type="button" className="lib-btn lib-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
               {showAll ? "Show fewer" : `Show all ${own.length} (${hidden} more)`}

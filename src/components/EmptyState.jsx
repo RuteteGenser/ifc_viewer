@@ -1,6 +1,6 @@
 import LibrarySection from "../library/LibrarySection";
 import { useLibraryContext } from "../library/LibraryContext";
-import { SaveToggle } from "../library/SaveControls";
+import ProjectsHome from "../library/ProjectBrowser";
 import { CodeLink } from "../access/AccessUI";
 
 // The one screen shown before any model is open: a single primary action
@@ -8,6 +8,9 @@ import { CodeLink } from "../access/AccessUI";
 // (the library's own, or the same single row when there is no library).
 export default function EmptyState({ onOpenFiles, onLoadSample }) {
   const library = useLibraryContext();
+  // A backend with folders: the first screen is the project browser. Without folders (an older API, offline,
+  // signed out) or when the list failed, the plain start card below stays as it was.
+  if (library?.available && (library.status === "loading" || (library.status === "ready" && library.folders))) return <ProjectsHome onOpenFiles={onOpenFiles} />;
   return (
     <div className="empty-state">
       <div className="empty-state__card" onClick={onOpenFiles}>
@@ -27,7 +30,6 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
         <button type="button" className="empty-state__primary" onClick={(e) => { e.stopPropagation(); onOpenFiles(); }}>
           Open IFC file
         </button>
-        <SaveToggle />
         <p className="empty-state__drop">Drop an IFC file here or click to browse</p>
         {!library?.available && (
           <ul className="lib-list empty-state__samples" aria-label="Samples">

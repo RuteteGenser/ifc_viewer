@@ -50,7 +50,7 @@ export const isTouch = (project) => project !== "desktop";
 export const isPhone = (project) => project === "iphone13" || project === "pixel7" || project === "small320";
 
 // ARGUS_TIMEOUT_SCALE=3 gives every wait and every case three times as long, for a busy runner.
-export const TIME_SCALE = Number(process.env.ARGUS_TIMEOUT_SCALE) || 1;
+export const TIME_SCALE = Number(process.env.ARGUS_TIMEOUT_SCALE) || Number(process.env.ARGUS_TIMEOUT_X) || 1;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
@@ -85,8 +85,11 @@ export async function settle(page, ms = 600) {
 }
 
 export async function loadSample(page) {
-  // The sample building is a row in the Samples list (the library's, or one built-in row without a library).
+  // The sample building lives in the dummy project (or is the one built-in row when there is no library).
+  const dummy = page.getByRole("button", { name: "Try a dummy project" });
   const row = page.getByRole("button", { name: "Open Sample building" });
+  await dummy.or(row).first().waitFor();
+  if (await dummy.isVisible()) await dummy.click();
   await waitForModelAfter(page, () => row.click());
 }
 

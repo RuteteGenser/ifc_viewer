@@ -4,14 +4,16 @@ import { suite, openApp, loadSample, canvasStats, bannerText } from "./lib.mjs";
 
 await suite("first-open", [
   {
-    name: "empty state shows the start card and Open IFC file opens a file chooser",
+    name: "first screen is the project browser (no projects yet) and Open a file without saving opens a file chooser",
     fn: async ({ page }) => {
       await openApp(page);
-      await page.getByRole("heading", { name: "Open a building model" }).waitFor();
+      await page.getByRole("heading", { name: "No projects yet" }).waitFor();
+      await page.getByRole("button", { name: "New project", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Try a dummy project" }).waitFor();
       assert.match(await page.title(), /Argus/);
       assert.match(await page.locator(".header__title").innerText(), /^Argus$/);
       const chooser = page.waitForEvent("filechooser", { timeout: 10000 });
-      await page.getByRole("button", { name: "Open IFC file" }).click();
+      await page.getByRole("button", { name: "Open a file without saving" }).click();
       const fc = await chooser;
       assert.equal(fc.isMultiple(), true, "several files can be picked");
       assert.equal(await bannerText(page), "");
@@ -22,7 +24,7 @@ await suite("first-open", [
     fn: async ({ page }) => {
       await openApp(page);
       await loadSample(page);
-      assert.equal(await page.getByRole("heading", { name: "Open a building model" }).count(), 0, "empty state is gone");
+      assert.equal(await page.getByRole("heading", { name: "No projects yet" }).count(), 0, "empty state is gone");
       assert.match(await page.locator(".header__title").innerText(), /^Argus$/);
       const s = await canvasStats(page);
       assert.ok(s.variance > 200, `canvas looks empty (variance ${s.variance.toFixed(1)})`);

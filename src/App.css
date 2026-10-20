@@ -42,6 +42,69 @@
   flex-shrink: 0;
 }
 
+/* Where you are: Projects > project > model. One quiet line that gives way to the brand and the Account button. */
+.header__crumbs {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.header__crumbs ol {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.header__crumbs li {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.header__crumbs li + li::before {
+  content: "/";
+  padding: 0 6px;
+  flex: none;
+  color: var(--ink-faint);
+}
+.header__crumbs li:last-child {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.header__crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+/* On a phone the line is "Projects / model": the project in between gives way. */
+@media (max-width: 600px) {
+  .header__crumbs li:not(:first-child):not(:last-child) {
+    display: none;
+  }
+  .header__crumbs li:first-child {
+    flex: none;
+  }
+}
+button.header__crumb {
+  min-height: 44px;
+  padding: 0 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-control);
+}
+button.header__crumb:hover {
+  color: var(--text);
+}
+
 .logo-mark {
   flex-shrink: 0;
   border-radius: 6px;

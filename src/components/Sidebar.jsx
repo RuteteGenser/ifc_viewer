@@ -1,13 +1,20 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import ClipPlaneControl from "./ClipPlaneControl";
 import { LegalLinks } from "../legal/LegalPage";
 import ModelInfo from "./ModelInfo";
 import ModelName from "./ModelName";
 import { disciplineOf, splitModelName } from "../ifc/modelLabel";
-import ModelTree from "./ModelTree";
-import LibrarySection from "../library/LibrarySection";
-import { SaveToggle, SaveRowButton } from "../library/SaveControls";
-import { TrashIcon } from "./ModelsSheet";
+import { SaveRowButton } from "../library/SaveControls";
+import { hapticsEnabled, setHapticsEnabled } from "../haptics";
+import "./Models.css";
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+    </svg>
+  );
+}
 
 function ModelRow({ model, onToggleVisible, onRemove, onSetColor }) {
   const discipline = disciplineOf(model.name);
@@ -118,12 +125,12 @@ export default function Sidebar({
   hiddenCategories,
   onShowCategory,
   browser,
-  selectedId,
-  onPickElement,
   onRequestClose,
   onOpenHelp,
   onOpenCases,
+  onRemoveAll,
 }) {
+  const [haptics, setHaptics] = useState(hapticsEnabled);
   // Swiping the open drawer to the left closes it again.
   const swipeRef = useRef(null);
   const swipe = {
@@ -147,7 +154,7 @@ export default function Sidebar({
     },
   };
   return (
-    <aside className={`sidebar ${className}`.trim()} data-surface-sheet={className.includes("sidebar--open") ? "menu" : undefined} aria-label="Models and structure" {...swipe}>
+    <aside className={`sidebar ${className}`.trim()} data-surface-sheet={className.includes("sidebar--open") ? "menu" : undefined} aria-label="Loaded models" {...swipe}>
       <section className="sb-group" aria-labelledby="sb-loaded-title">
         <div className="sb-group__head">
           <h2 className="sidebar__section-title" id="sb-loaded-title">Loaded models</h2>
@@ -200,11 +207,12 @@ export default function Sidebar({
         {models.length > 0 && (
           <p className="sidebar__hint">Opening a model replaces the current one. Add another model to view several together.</p>
         )}
-
-        <SaveToggle />
+        {models.length > 1 && (
+          <button type="button" className="lib-btn sidebar__remove-all" onClick={onRemoveAll}>
+            Remove all
+          </button>
+        )}
       </section>
-
-      <LibrarySection variant="sidebar" />
 
       {browser && models.length > 0 && <ModelInfo models={models} trees={browser.trees} />}
 
@@ -228,13 +236,6 @@ export default function Sidebar({
             </label>
           )}
         </section>
-      )}
-
-      {browser && models.length > 0 && (
-        <>
-          <div className="sidebar__section-title">Structure</div>
-          <ModelTree browser={browser} selectedId={selectedId} onPick={onPickElement} />
-        </>
       )}
 
       {hiddenCategories.length > 0 && (
@@ -272,6 +273,14 @@ export default function Sidebar({
           </svg>
           <span>Help: how to move around</span>
         </button>
+
+        <label className="models-sheet__haptics">
+          <input type="checkbox" checked={haptics} onChange={(e) => { setHaptics(e.target.checked); setHapticsEnabled(e.target.checked); }} />
+          <span>
+            Haptics
+            <small>A light buzz on main buttons. Works on most Android phones; iPhone has no vibration for web pages.</small>
+          </span>
+        </label>
 
         <LegalLinks docs={["terms", "privacy", "cookies"]} className="sidebar__legal" />
       </div>

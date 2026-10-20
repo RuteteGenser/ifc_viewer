@@ -1,4 +1,5 @@
-// Library sort / filter / search. Read-only against the real models; it uploads up to 6 throwaway
+// Library sort / filter / search. This list is the plain start card of a backend WITHOUT projects (an older API), so the
+// case answers GET /api/folders with 404; with projects the project browser replaces it. Read-only against the real models; it uploads up to 6 throwaway
 // __org_<random> files and deletes exactly those (by their own ids) in a finally block.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -60,7 +61,9 @@ await suite("library-organize", [
     name: "sort, filter and search the library; real models untouched",
     projects: ["desktop", "iphone13"],
     timeout: 240000,
+    allowErrors: [/api\/folders/, /Failed to load resource/],
     fn: async ({ page }) => {
+      await page.route("**/api/folders", (r) => r.fulfill({ status: 404, body: "not found", contentType: "text/plain" }));
       const realBefore = (await (await api.get("/models")).json()).map((m) => m.id).sort();
       await withSet(async ({ tag, recs }) => {
         await openApp(page);

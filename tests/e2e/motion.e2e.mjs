@@ -4,20 +4,17 @@ import { suite, loadSample, openApp, sleep } from "./lib.mjs";
 
 suite("motion", [
   {
-    name: "sheet is hit-testable at once and unmounts after exit",
+    name: "dialog is hit-testable at once and unmounts after exit",
     fn: async ({ page }) => {
       await openApp(page);
-      await loadSample(page);
-      const chip = page.locator(".models-chip");
-      if (!(await chip.isVisible())) return;
-      await chip.click();
+      await page.getByRole("button", { name: "New project", exact: true }).click();
       const hit = await page.evaluate(() => {
-        const b = document.querySelector(".models-sheet__close"), r = b.getBoundingClientRect();
-        return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) && getComputedStyle(b.closest(".models-sheet")).pointerEvents !== "none";
+        const b = [...document.querySelectorAll(".acc-dialog button")].find((x) => x.textContent.trim() === "Cancel"), r = b.getBoundingClientRect();
+        return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) && getComputedStyle(b.closest(".acc-dialog")).pointerEvents !== "none";
       });
-      assert.ok(hit, "sheet button hit-testable immediately");
-      await page.locator(".models-sheet__close").click();
-      await page.waitForSelector(".models-sheet", { state: "detached", timeout: 2000 });
+      assert.ok(hit, "dialog button hit-testable immediately");
+      await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+      await page.waitForSelector(".acc-dialog", { state: "detached", timeout: 2000 });
     },
   },
   {
@@ -145,12 +142,12 @@ suite("motion", [
     },
   },
   {
-    name: "models sheet has the Haptics toggle with the iPhone note",
+    name: "the menu drawer has the Haptics toggle with the iPhone note",
     projects: ["iphone13"],
     fn: async ({ page }) => {
       await openApp(page);
       await loadSample(page);
-      await page.locator(".models-chip").click();
+      await page.getByRole("button", { name: "Open menu" }).click();
       const box = page.locator(".models-sheet__haptics");
       assert.match(await box.innerText(), /iPhone has no vibration/);
       assert.ok((await box.boundingBox()).height >= 44);

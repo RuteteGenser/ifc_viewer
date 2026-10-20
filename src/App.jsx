@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIfcViewer } from "./hooks/useIfcViewer";
 import Viewport from "./components/Viewport";
 import Sidebar from "./components/Sidebar";
@@ -24,7 +24,6 @@ import ViewTools from "./components/ViewTools";
 import Compass from "./components/Compass";
 import EmptyState from "./components/EmptyState";
 import Toast from "./components/Toast";
-import ModelsSheet from "./components/ModelsSheet";
 import usePresence from "./usePresence";
 import ToolHint from "./components/ToolHint";
 import PlaneSwitch from "./components/PlaneSwitch";
@@ -36,6 +35,7 @@ import FirstRunHint from "./components/FirstRunHint";
 import { pageTitle } from "./a11y";
 import { useLibrary } from "./library/useLibrary";
 import { LibraryContext } from "./library/LibraryContext";
+import { DUMMY_ID, DUMMY_NAME, UNSORTED_ID, UNSORTED_NAME } from "./library/projects";
 import TransferBar from "./library/TransferBar";
 import CasesPanel from "./cases/CasesPanel";
 import { useCases } from "./cases/useCases";
@@ -51,6 +51,7 @@ import "./components/Library.css";
 const COARSE_POINTER = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 const SAMPLE_NAME = "Sample building";
 const DRAWER_QUERY = PHONE_QUERY;
+const FIXED_QUERY = "(min-width: 1024px) and (pointer: fine)";
 import "./App.css";
 // Test builds only (VITE_TEST_HOOK=1): exposes window.__annotations. Removed from production builds.
 if (import.meta.env.VITE_TEST_HOOK) import("./annotations/mountForTests");
@@ -210,7 +211,6 @@ function App() {
   const [dropShift, setDropShift] = useState(false);
   // Sheets live in the surface manager (src/ui/surfaces.js): on a phone opening one closes the one before.
   const [sidebarOpen, setSidebarOpen] = useSurfaceFlag("menu");
-  const [modelsOpen, setModelsOpen] = useSurfaceFlag("models");
   const [casesOpen, setCasesOpen] = useSurfaceFlag("cases");
   const casesState = useCases();
   const casesStateRef = useRef(casesState);
@@ -229,9 +229,8 @@ function App() {
   const openCases = useCallback(() => {
     setAnnotating(null);
     setSidebarOpen(false);
-    setModelsOpen(false);
     setCasesOpen(true);
-  }, [setSidebarOpen, setModelsOpen, setCasesOpen]);
+  }, [setSidebarOpen, setCasesOpen]);
   const backdrop = usePresence(sidebarOpen, 160);
   const [multiNotice, setMultiNotice] = useState(false);
   const [helpOpen, setHelpOpen] = useSurfaceFlag("help");
@@ -249,6 +248,21 @@ function App() {
   // A tablet in portrait has no room for both side columns and the model: there the model list starts folded away.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readPref("ifcViewer.sidebarCollapsed", window.innerWidth < 1024 ? "1" : "0") === "1");
   const [panelCollapsed, setPanelCollapsed] = useState(() => readPref("ifcViewer.panelCollapsed", "0") === "1");
+  // A desktop (wide, fine pointer) always shows both side columns and has no controls to fold them away;
+  // a remembered "folded" choice is ignored there, so nobody is stuck with a hidden panel.
+  const [fixedColumns, setFixedColumns] = useState(() => !!window.matchMedia?.(FIXED_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(FIXED_QUERY);
+    if (!mq) return undefined;
+    const update = () => setFixedColumns(mq.matches);
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+  useEffect(() => {
+    if (!fixedColumns) return;
+    writePref("ifcViewer.sidebarCollapsed", "0");
+    writePref("ifcViewer.panelCollapsed", "0");
+  }, [fixedColumns]);
   const [panelWidth, setPanelWidth] = useState(() => {
     const n = Number(readPref("ifcViewer.panelWidth", "320"));
     return Number.isFinite(n) ? Math.min(PANEL_MAX, Math.max(PANEL_MIN, n)) : 320;
@@ -315,7 +329,7 @@ function App() {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [panelOpen, panelExpanded, hasNoModels, setViewInsets, panelCollapsed, panelWidth]);
+  }, [panelOpen, panelExpanded, hasNoModels, setViewInsets, panelCollapsed, fixedColumns, panelWidth]);
 
   const handleClosePanel = useCallback(() => {
     clearSelection();
@@ -423,6 +437,21 @@ function App() {
 
   const library = useLibrary({ loadFiles, models, onLoadSample: handleLoadSample, onOpened: () => setSidebarOpen(false), onRenamed: renameLoadedModel, canSave: () => !accessRef.current?.expired });
 
+  // The header says where you are: Projects > project > model. Only a backend with projects has the first two.
+  const [confirmProjects, setConfirmProjects] = useState(false);
+  const crumbs = useMemo(() => {
+    const out = [];
+    const inProjects = library.available && !!library.folders;
+    const projectName = library.projectId === DUMMY_ID ? DUMMY_NAME : library.projectId === UNSORTED_ID ? UNSORTED_NAME : library.folders?.find((f) => f.id === library.projectId)?.name;
+    if (inProjects) {
+      const toProjects = models.length ? () => setConfirmProjects(true) : library.projectId ? () => library.openProject(null) : null;
+      out.push({ label: "Projects", onClick: toProjects });
+      if (projectName) out.push({ label: projectName });
+    }
+    if (models.length === 1) out.push({ label: models[0].name });
+    return out;
+  }, [library.available, library.folders, library.projectId, library.openProject, models, removeAllModels]);
+
   const autoSampleRef = useRef(false);
   useEffect(() => {
     if (autoSampleRef.current) return;
@@ -455,14 +484,13 @@ function App() {
     fileInputRef.current?.click();
   }, []);
 
-  // Nothing left in the list: close it. Phones always show the Models chip; a wide
-  // screen shows it from two models on (the sidebar lists them there).
   useEffect(() => {
-    if (models.length === 0) setModelsOpen(false);
-  }, [models.length]);
+    if (sidebarOpen) setMultiNotice(false);
+  }, [sidebarOpen]);
+  // The last model was removed: the drawer that held its row would only cover the project browser.
   useEffect(() => {
-    if (modelsOpen) setMultiNotice(false);
-  }, [modelsOpen]);
+    if (models.length === 0) setSidebarOpen(false);
+  }, [models.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // First time two models are loaded together this session: say how to remove one.
   useEffect(() => {
     if (models.length < 2) return;
@@ -594,21 +622,15 @@ function App() {
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onToggleCollapsed={fixedColumns ? undefined : toggleSidebarCollapsed}
         sidebarCollapsed={sidebarCollapsed}
-        onToggleCollapsed={toggleSidebarCollapsed}
-        modelCount={models.length}
-        showModelsChip={drawerLayout || models.length > 1}
-        modelsOpen={modelsOpen}
-        onToggleModels={() => {
-          setSidebarOpen(false);
-          setModelsOpen((v) => !v);
-        }}
+        crumbs={crumbs}
       />
       <AccessUI hasWork={models.length > 0} />
       <LegalRoute />
 
       <div
-        className={`app-body${sidebarCollapsed ? " app-body--no-sidebar" : ""}${panelCollapsed ? " app-body--no-panel" : ""}`}
+        className={`app-body${sidebarCollapsed && !fixedColumns ? " app-body--no-sidebar" : ""}${panelCollapsed && !fixedColumns ? " app-body--no-panel" : ""}`}
         style={{ "--panel-w": `${panelWidth}px` }}
         data-sheet={hasNoModels ? "none" : sheetMode === "hidden" ? "hidden" : sheetMode === "full" ? "full" : "open"}
       >
@@ -645,14 +667,13 @@ function App() {
           hiddenCategories={hiddenCategories}
           onShowCategory={(category) => setCategoryHidden(category, false)}
           browser={browser}
-          selectedId={browser.selectedId}
-          onPickElement={() => setSidebarOpen(false)}
           onRequestClose={() => setSidebarOpen(false)}
           onOpenHelp={() => {
             setSidebarOpen(false);
             setHelpOpen(true);
           }}
           onOpenCases={openCases}
+          onRemoveAll={removeAllModels}
         />
 
         <main
@@ -754,15 +775,15 @@ function App() {
           <Toast toast={toast} />
           {multiNotice && models.length > 1 && !surfaces.anySheet && (
             <div className="multi-notice" role="status">
-              <span>{models.length} models are loaded together. Use Models to remove one.</span>
+              <span>{models.length} models are loaded together. Open the menu to remove one.</span>
               <button
                 type="button"
                 onClick={() => {
                   setMultiNotice(false);
-                  setModelsOpen(true);
+                  setSidebarOpen(true);
                 }}
               >
-                Models
+                Menu
               </button>
               <button type="button" aria-label="Dismiss" onClick={() => setMultiNotice(false)}>
                 OK
@@ -778,7 +799,7 @@ function App() {
             </button>
           )}
           <div className="hover-label" ref={hoverLabelRef} hidden aria-hidden="true" />
-          {panelCollapsed && !hasNoModels && (
+          {panelCollapsed && !fixedColumns && !hasNoModels && (
             <button type="button" className="panel-reveal" aria-label="Show details panel" onClick={() => setPanelCollapsedSaved(false)}>
               <span aria-hidden="true">&lsaquo;</span>
             </button>
@@ -805,11 +826,11 @@ function App() {
           onModeChange={setSheetMode}
           onTabChange={handleTabChange}
           onToggleOpen={() => setSheetMode(sheetMode === "full" ? "compact" : "full")}
-          collapsed={panelCollapsed}
-          onCollapse={() => setPanelCollapsedSaved(true)}
+          collapsed={panelCollapsed && !fixedColumns}
+          onCollapse={fixedColumns ? undefined : () => setPanelCollapsedSaved(true)}
           width={panelWidth}
           onResize={changePanelWidth}
-          onClose={handleClosePanel}
+          onClose={fixedColumns ? undefined : handleClosePanel}
           onHideElement={hideSelectedElement}
           onToast={showToast}
           element={selectedElement}
@@ -850,24 +871,6 @@ function App() {
           />
         )}
 
-        {models.length > 0 && (
-          <ModelsSheet
-            open={modelsOpen}
-            models={models}
-            isLoading={isLoading}
-            onClose={() => setModelsOpen(false)}
-            onToggleVisible={setVisible}
-            onSetColor={setModelColor}
-            onRemove={removeModel}
-            onRemoveAll={removeAllModels}
-            onAdd={() => {
-              setModelsOpen(false);
-              addFilePicker();
-            }}
-            onOpenCases={openCases}
-          />
-        )}
-
         <CasesPanel open={casesOpen} onClose={() => setCasesOpen(false)} cases={casesState} viewer={casesViewer} models={models} showToast={showToast} onSaveSnapshot={handleSaveSnapshot} resume={lastSnapRef.current} onShowSnapshot={setShownSnap} onAnnotate={startAnnotating} />
 
         {helpOpen && COARSE_POINTER && <GestureSheet onClose={() => setHelpOpen(false)} />}
@@ -881,6 +884,22 @@ function App() {
             initialFocus="cancel"
             onConfirm={leaveGuard.leave}
             onCancel={leaveGuard.stay}
+          />
+        )}
+
+        {confirmProjects && (
+          <ConfirmDialog
+            title="Go to Projects?"
+            message="The open models are closed and you lose your current view and measurements."
+            confirmLabel="Go to Projects"
+            cancelLabel="Stay"
+            initialFocus="cancel"
+            onConfirm={() => {
+              setConfirmProjects(false);
+              removeAllModels();
+              library.openProject(null);
+            }}
+            onCancel={() => setConfirmProjects(false)}
           />
         )}
 

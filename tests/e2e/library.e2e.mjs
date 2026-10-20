@@ -6,6 +6,8 @@ import { buildIfc } from "../fixtures/generate.mjs";
 
 const makeIfc = (tag) => buildIfc({ schema: "IFC4", unit: "m", name: tag, storeys: [{ name: "Ground", elevation: 0 }, { name: "First", elevation: 3 }], wall: [4, 0.2, 2.8] });
 const row = (page, name) => page.getByRole("button", { name: `Open ${name}`, exact: true });
+// Models saved without a project sit in the virtual Unsorted project; its page lists them with the same rows as always.
+const openUnsortedPage = async (page) => page.getByRole("button", { name: /^Open project Unsorted/ }).click();
 const exists = async (id) => (await api.get(`/models/${encodeURIComponent(id)}`)).status === 200;
 
 async function withThrowaway(fn) {
@@ -19,13 +21,15 @@ async function withThrowaway(fn) {
 
 await suite("library", [
   {
-    name: "the list shows the saved models and the built-in sample (read-only)",
-    fn: async ({ page }) => {
-      const models = await (await api.get("/models")).json();
+    name: "saved models without a project are listed under Unsorted; the sample building is in the dummy project",
+    fn: async ({ page }) => withThrowaway(async (rec) => {
       await openApp(page);
+      await openUnsortedPage(page);
+      await row(page, rec.name).waitFor({ timeout: 10000 });
+      await page.getByRole("button", { name: /^Projects$/ }).first().click();
+      await page.getByRole("button", { name: "Try a dummy project" }).click();
       await page.getByRole("button", { name: "Open Sample building" }).waitFor();
-      for (const m of models.slice(0, 4)) await row(page, m.name).waitFor({ timeout: 10000 });
-    },
+    }),
   },
   {
     name: "?model=<id> opens that library model",
@@ -46,6 +50,7 @@ await suite("library", [
     timeout: 120000,
     fn: async ({ page }) => withThrowaway(async (rec) => {
       await openApp(page);
+      await openUnsortedPage(page);
       await waitForModelAfter(page, () => row(page, rec.name).click());
       assert.ok((await canvasStats(page)).variance > 100, "model did not render");
     }),
@@ -56,6 +61,7 @@ await suite("library", [
     timeout: 120000,
     fn: async ({ page }) => withThrowaway(async (rec) => {
       await openApp(page);
+      await openUnsortedPage(page);
       const newName = rec.name.replace(".ifc", "_renamed.ifc");
       await page.getByRole("button", { name: `More actions for ${rec.name}` }).click();
       await page.getByRole("button", { name: "Rename", exact: true }).click();
@@ -82,7 +88,7 @@ await suite("library", [
       await page.getByText("That model is no longer saved.").waitFor({ timeout: 15000 });
       assert.ok(!page.url().includes("model="), `address bar still has ${page.url()}`);
       assert.equal(await page.locator(".loading-overlay").count(), 0, "no stuck spinner");
-      await page.getByRole("heading", { name: "Open a building model" }).waitFor();
+      await page.getByRole("heading", { name: "No projects yet" }).or(page.getByRole("heading", { name: "Projects", level: 1 })).first().waitFor();
     },
   },
   {
@@ -92,6 +98,7 @@ await suite("library", [
     timeout: 120000,
     fn: async ({ page }) => withThrowaway(async (rec) => {
       await openApp(page);
+      await openUnsortedPage(page);
       let dropped = 0;
       await page.route("**/api/models/*/file", (route) => (dropped++ === 0 ? route.abort("connectionreset") : route.continue()));
       const before = await markCount(page, "model-shown");

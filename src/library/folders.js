@@ -96,20 +96,3 @@ export function scopeModels(own, { folderId = null, searching = false, enabled =
   if (!enabled || searching) return own;
   return own.filter((m) => (m.folderId ?? null) === (folderId ?? null));
 }
-
-const KEY = "ifcViewer.libraryFolder";
-export function loadFolder() {
-  try {
-    return sessionStorage.getItem(KEY) || null;
-  } catch {
-    return null;
-  }
-}
-export function saveFolder(id) {
-  try {
-    if (id) sessionStorage.setItem(KEY, id);
-    else sessionStorage.removeItem(KEY);
-  } catch {
-    // private mode: the folder is just not remembered
-  }
-}

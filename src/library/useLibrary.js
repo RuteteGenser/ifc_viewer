@@ -14,7 +14,6 @@ import {
   listFolders,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
-  moveFolder as apiMoveFolder,
   deleteFolder as apiDeleteFolder,
   moveModel as apiMoveModel,
   listModels,
@@ -22,16 +21,8 @@ import {
   uploadModel,
 } from "./api";
 import { whenSessionSettled } from "../access/api";
-import { folderMessage, loadFolder, saveFolder, pathOf } from "./folders";
-
-const PREF_KEY = "ifcViewer.alsoSaveToLibrary";
-const readPref = () => {
-  try {
-    return localStorage.getItem(PREF_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
+import { folderMessage } from "./folders";
+import { isRealProject } from "./projects";
 
 // Everything about the server model library in one place. The only link
 // to the viewer is loadFiles(files); the library is optional, so a status
@@ -43,9 +34,8 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const [download, setDownload] = useState(null); // { name, percent|null }
   const [upload, setUpload] = useState(null); // { name, percent, more }
   const [notice, setNotice] = useState(null); // { id, tone, text }
-  const [alsoSave, setAlsoSaveState] = useState(readPref);
   const [folderData, setFolderData] = useState(null); // null = this backend has no folders: no folder UI at all
-  const [folderId, setFolderIdState] = useState(loadFolder); // the folder being looked at, null = top level
+  const [projectId, setProjectId] = useState(null); // the open project: a folder id, UNSORTED_ID, DUMMY_ID or null (the project browser)
 
   const abortDownloadRef = useRef(null);
   const waitingRecordsRef = useRef([]); // library models clicked while another downloads
@@ -78,9 +68,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
       // The first visit waits for the session call so the device cookie exists (no 401 in the console).
       await whenSessionSettled();
       if (seq !== refreshSeqRef.current) return;
-      listFolders().then((fol) => seq === refreshSeqRef.current && setFolderData(fol));
-      const data = await listModels();
+      const [fol, data] = await Promise.all([listFolders(), listModels()]);
       if (seq !== refreshSeqRef.current) return;
+      setFolderData(fol);
       setItems(data);
       setStatus("ready");
     } catch (err) {
@@ -107,15 +97,6 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
       window.removeEventListener("argus:library-refresh", refresh);
     };
   }, [refresh]);
-
-  const setAlsoSave = useCallback((value) => {
-    setAlsoSaveState(value);
-    try {
-      localStorage.setItem(PREF_KEY, value ? "1" : "0");
-    } catch {
-      // private mode: the choice just isn't remembered
-    }
-  }, []);
 
   const loadedNames = useMemo(() => new Set(models.map((m) => m.name)), [models]);
 
@@ -214,17 +195,27 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     uploadingRef.current = true;
     let saved = 0;
     let dup = 0;
+    let savedTo = null;
     try {
       while (uploadQueueRef.current.length) {
-        const file = uploadQueueRef.current.shift();
+        const { file, target } = uploadQueueRef.current.shift();
         const more = uploadQueueRef.current.length;
         setUpload({ name: file.name, percent: 0, more });
         const job = uploadModel(file, (fraction) => setUpload((u) => (u ? { ...u, percent: Math.floor(fraction * 100) } : u)));
         abortUploadRef.current = job.abort;
         try {
-          const { duplicate } = await job.promise;
+          const { record, duplicate } = await job.promise;
+          // The server stores a model first and files it second: into the project, unless it already sits in one.
+          if (target && record?.id && !record.folderId) {
+            try {
+              await apiMoveModel(record.id, target);
+            } catch (err) {
+              say(`${file.name} was saved but could not be put in the project: ${folderMessage(err)}`, "error");
+            }
+          }
           if (duplicate) dup += 1;
           else saved += 1;
+          savedTo = target || savedTo;
         } catch (err) {
           if (err?.aborted) {
             uploadQueueRef.current = [];
@@ -236,7 +227,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
         abortUploadRef.current = null;
       }
       if (saved || dup) {
-        say(saved && dup ? "Saved to my models. Some were already there." : saved ? "Saved to my models." : "Already saved.", "ok");
+        const where = foldersRef.current?.find((f) => f.id === savedTo)?.name;
+        const to = where ? `Saved to ${where}.` : "Saved to my models.";
+        say(saved && dup ? `${to} Some were already there.` : saved ? to : "Already saved.", "ok");
         refresh();
       }
     } finally {
@@ -246,7 +239,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   }, [refresh, say]);
 
   const saveFiles = useCallback(
-    (files) => {
+    (files, target = null) => {
       const ok = [];
       for (const file of files) {
         if (!ALLOWED.includes(extensionOf(file.name))) {
@@ -260,7 +253,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
         }
       }
       if (!ok.length) return;
-      uploadQueueRef.current.push(...ok);
+      uploadQueueRef.current.push(...ok.map((file) => ({ file, target })));
       runUploads();
     },
     [runUploads, say],
@@ -268,16 +261,16 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
 
   const cancelUpload = useCallback(() => abortUploadRef.current?.(), []);
 
-  // Local file picker / drop: open as before, optionally save too.
+  // Local file picker / drop: opens the file; inside a project it is saved into that project, anywhere else it is only viewed.
   const openLocal = useCallback(
     (fileList, { add = false } = {}) => {
       const files = Array.from(fileList);
       for (const f of files) localFilesRef.current.set(f.name, f);
       loadFilesRef.current(files, { add });
       // Without an active plan the server would refuse; the file still opens, it just is not saved.
-      if (alsoSave && status !== "hidden" && status !== "loading" && serverSavingAllowed?.() !== false) saveFiles(files);
+      if (isRealProject(projectId) && folderData && status === "ready" && serverSavingAllowed?.() !== false) saveFiles(files, projectId);
     },
-    [alsoSave, status, saveFiles, serverSavingAllowed],
+    [projectId, folderData, status, saveFiles, serverSavingAllowed],
   );
 
   const savedNames = useMemo(() => new Set(items.map((i) => i.name)), [items]);
@@ -316,15 +309,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
 
   // ---- folders: each returns "" on success or a sentence about what went wrong ----
   const folders = folderData?.folders ?? null;
+  const foldersRef = useRef(null);
+  foldersRef.current = folders;
   const folderLimit = folderData?.limit ?? 0;
-  const setFolder = useCallback((id) => {
-    setFolderIdState(id || null);
-    saveFolder(id || null);
-  }, []);
-  // A folder that is gone (deleted on another device) sends the view back to the top.
-  useEffect(() => {
-    if (folders && folderId && !folders.some((f) => f.id === folderId)) setFolder(null);
-  }, [folders, folderId, setFolder]);
   const reloadFolders = useCallback(async () => {
     const fol = await listFolders();
     if (fol) setFolderData(fol);
@@ -342,20 +329,8 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     },
     [folderData?.limit, reloadFolders],
   );
-  const createFolder = useCallback((name, parentId) => folderAction(() => apiCreateFolder(name.trim(), parentId)), [folderAction]);
   const renameFolder = useCallback((id, name) => folderAction(() => apiRenameFolder(id, name.trim())), [folderAction]);
-  const moveFolder = useCallback((id, parentId) => folderAction(() => apiMoveFolder(id, parentId)), [folderAction]);
-  const deleteFolder = useCallback(
-    (id) =>
-      folderAction(
-        () => apiDeleteFolder(id),
-        async () => {
-          if (pathOf(folders || [], folderId).some((f) => f.id === id)) setFolder(pathOf(folders, id).at(-2)?.id ?? null);
-          await refresh();
-        },
-      ),
-    [folderAction, folders, folderId, refresh, setFolder],
-  );
+  const deleteFolder = useCallback((id) => folderAction(() => apiDeleteFolder(id), () => refresh()), [folderAction, refresh]);
   const moveModel = useCallback(
     (item, target) =>
       folderAction(
@@ -365,6 +340,25 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     [folderAction],
   );
 
+  // ---- projects: a project is a top level folder ----
+  const openProject = useCallback((id) => setProjectId(id || null), []);
+  // A project deleted on another device sends the view back to the browser.
+  useEffect(() => {
+    if (folders && isRealProject(projectId) && !folders.some((f) => f.id === projectId)) setProjectId(null);
+  }, [folders, projectId]);
+  // { folder, error }: the new folder, or a sentence about what went wrong.
+  const createProject = useCallback(
+    async (name) => {
+      try {
+        const folder = await apiCreateFolder(name.trim(), null);
+        await reloadFolders();
+        return { folder, error: "" };
+      } catch (err) {
+        return { folder: null, error: folderMessage(err, folderData?.limit) };
+      }
+    },
+    [folderData?.limit, reloadFolders],
+  );
   const copyLink = useCallback(
     async (item) => {
       const ok = await copyText(linkFor(item.id));
@@ -381,8 +375,9 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     download,
     upload,
     notice,
-    alsoSave,
-    setAlsoSave,
+    projectId,
+    openProject,
+    createProject,
     loadedNames,
     hasModels: models.length > 0,
     savedNames,
@@ -402,11 +397,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     copyLink,
     folders,
     folderLimit,
-    folderId,
-    setFolder,
-    createFolder,
     renameFolder,
-    moveFolder,
     deleteFolder,
     moveModel,
   };

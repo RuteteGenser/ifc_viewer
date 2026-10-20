@@ -53,9 +53,8 @@ await suite("welcome", [
       await shot(page, project, "welcome");
       await openViewerBtn(page).click();
       await welcome(page).waitFor({ state: "detached" });
-      await page.getByRole("button", { name: "Open Sample building" }).waitFor();
-      assert.equal(await page.getByRole("heading", { name: "Samples" }).count() + (await page.getByText("Samples", { exact: true }).count()) > 0, true, "Samples group in the viewer's empty state");
-      await page.getByRole("button", { name: "Open IFC file" }).waitFor();
+      await page.getByRole("button", { name: "Try a dummy project" }).waitFor();
+      await page.getByRole("button", { name: "New project", exact: true }).waitFor();
       await shot(page, project, "viewer");
       await page.reload();
       await page.waitForTimeout(1200);
@@ -91,7 +90,7 @@ await suite("welcome", [
       await page.getByText(/30 days of access added/).waitFor();
       await welcome(page).waitFor({ state: "detached" });
       await page.getByRole("dialog").waitFor({ state: "detached" });
-      await page.getByRole("button", { name: "Open IFC file" }).waitFor();
+      await page.getByRole("button", { name: "New project", exact: true }).waitFor();
     },
   },
   {

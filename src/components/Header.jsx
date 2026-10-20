@@ -1,9 +1,8 @@
 import LogoMark from "./LogoMark";
 import { NAME } from "../brand";
-import { ModelsChip } from "./ModelsSheet";
 import { AccountButton } from "../access/AccessUI";
 
-export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed, onToggleCollapsed, modelCount = 0, showModelsChip = false, modelsOpen = false, onToggleModels }) {
+export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed, onToggleCollapsed, crumbs = [] }) {
   return (
     <header className="header">
       <button
@@ -17,6 +16,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
         </svg>
       </button>
 
+      {onToggleCollapsed && (
       <button
         type="button"
         className="sidebar-collapse"
@@ -30,14 +30,34 @@ export default function Header({ sidebarOpen, onToggleSidebar, sidebarCollapsed,
           <path d="M9 4v16" />
         </svg>
       </button>
+      )}
 
       <div className="header__brand">
         <LogoMark />
         <span className="header__title">{NAME}</span>
       </div>
 
+      {crumbs.length > 0 && (
+        <nav className="header__crumbs" aria-label="Where you are">
+          <ol>
+            {crumbs.map((c, i) => (
+              <li key={i}>
+                {c.onClick ? (
+                  <button type="button" className="header__crumb" onClick={c.onClick}>
+                    {c.label}
+                  </button>
+                ) : (
+                  <span className="header__crumb" aria-current={i === crumbs.length - 1 ? "page" : undefined}>
+                    {c.label}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+
       <AccountButton className="acc-account-btn--header" />
-      {showModelsChip && modelCount > 0 && <ModelsChip count={modelCount} open={modelsOpen} onClick={onToggleModels} />}
     </header>
   );
 }

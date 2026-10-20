@@ -67,26 +67,4 @@ await suite("selection", [
       await same(page, before, "search result");
     },
   },
-  {
-    name: "a structure tree row keeps the camera and the model exactly where they were",
-    timeout: 120000,
-    fn: async ({ page, project, skip }) => {
-      await prepare(page, skip);
-      const menu = page.getByRole("button", { name: "Open menu" });
-      if (await menu.isVisible()) await menu.click();
-      const tree = page.getByRole("tree", { name: "Model structure" });
-      await tree.waitFor({ state: "visible", timeout: 10000 });
-      // open every group until an element row shows
-      for (let i = 0; i < 8 && (await tree.locator(".mt-row--element").count()) === 0; i++) {
-        const chev = tree.locator('[role=treeitem][aria-expanded="false"] > .mt-row__chev').first();
-        if (!(await chev.count())) break;
-        await chev.click();
-      }
-      await page.waitForTimeout(800);
-      const before = await page.evaluate(pose);
-      await tree.locator(".mt-row--element .mt-row__label").first().click();
-      await expectSelected(page);
-      await same(page, before, "tree row");
-    },
-  },
 ]);

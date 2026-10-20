@@ -88,10 +88,13 @@ suite("a11y", [
     },
   },
   {
-    name: "keyboard: open sample, select by search and by structure tree, focus never falls to the page",
+    name: "keyboard: open sample, select by search, focus never falls to the page",
     projects: desktop,
     fn: async ({ page }) => {
       await openApp(page);
+      await page.getByRole("button", { name: "Try a dummy project" }).waitFor();
+      await tabTo(page, () => document.activeElement?.textContent === "Try a dummy project");
+      await page.keyboard.press("Enter");
       await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Open Sample building");
       await page.keyboard.press("Enter");
       await page.locator(".loading-overlay").waitFor({ state: "detached", timeout: 60000 }).catch(() => {});
@@ -109,22 +112,6 @@ suite("a11y", [
       await page.getByText("Hide this element").waitFor({ timeout: 10000 });
       assert.ok(!(await isBody(page)), "focus stays in the search field after selecting");
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "combobox");
-      // structure tree: arrows walk the rows (Right opens a node), Enter on an element selects it
-      await press(page, "Escape");
-      const tree = page.getByRole("tree", { name: "Model structure" });
-      await tree.locator("[role=treeitem][tabindex='0']").focus();
-      let onElement = false;
-      for (let i = 0; i < 60 && !onElement; i++) {
-        onElement = await page.evaluate(() => document.activeElement?.classList.contains("mt-row--element"));
-        if (!onElement) {
-          await press(page, "ArrowRight");
-          await press(page, "ArrowDown");
-        }
-      }
-      assert.ok(onElement, "arrow keys reach an element row");
-      await press(page, "Enter");
-      await page.getByText("Hide this element").waitFor({ timeout: 10000 });
-      assert.equal(await tree.locator("[aria-selected=true]").count(), 1, "the row is marked selected");
     },
   },
   {
@@ -199,17 +186,6 @@ suite("a11y", [
       await press(page, "Escape");
       await page.waitForFunction(() => !document.querySelector(".view-tools__panel"));
       assert.equal(await focusDesc(page), "button|Save image or copy view link");
-      // library More actions: Esc folds it away and focus stays on the More button
-      const more = page.getByRole("button", { name: /^More actions for AC20/ });
-      if (await more.count()) {
-        await more.focus();
-        await press(page, "Enter");
-        assert.equal(await more.getAttribute("aria-expanded"), "true");
-        await press(page, "Tab");
-        await press(page, "Escape");
-        assert.equal(await more.getAttribute("aria-expanded"), "false");
-        assert.ok(await more.evaluate((el) => el === document.activeElement), "focus returns to More");
-      }
     },
   },
   {
@@ -381,8 +357,6 @@ suite("a11y", [
         await page.keyboard.press("Escape");
         await page.locator(".element-panel__tab").nth(1).click();
         await scan("measurements tab");
-        await page.getByRole("button", { name: /^More actions for AC20/ }).click();
-        await scan("library actions");
         // a hover tooltip (hotkey chip)
         await page.getByRole("button", { name: "Toggle tag tool" }).hover();
         await scan("tooltip");

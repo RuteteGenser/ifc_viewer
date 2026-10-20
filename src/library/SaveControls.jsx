@@ -1,27 +1,61 @@
+import { useState } from "react";
+import Dialog from "../access/Dialog";
+import { t } from "../access/copy";
 import { useLibraryContext } from "./LibraryContext";
+import { useFrozen } from "./FolderUI";
+import { NewProjectDialog, useProjects } from "./ProjectBrowser";
+import { isRealProject } from "./projects";
 
-// "Also save to my models" next to the Open button. Off by default.
-export function SaveToggle({ className = "" }) {
+// Choose a project (or make one) for a model that is only being viewed.
+function SaveToProjectDialog({ model, onClose }) {
   const library = useLibraryContext();
-  if (!library || library.status !== "ready") return null;
+  const { projects } = useProjects();
+  const [creating, setCreating] = useState(false);
+  const real = projects.filter((p) => isRealProject(p.id));
+  const save = (id) => {
+    library.openProject(id);
+    library.saveFiles([library.fileFor(model.name)], id);
+    onClose();
+  };
+  if (creating || real.length === 0) return <NewProjectDialog title={t("proj.saveTo")} submitLabel="Create and save" onClose={onClose} onCreated={(f) => save(f.id)} />;
   return (
-    <label className={`lib-toggle ${className}`.trim()} onClick={(e) => e.stopPropagation()}>
-      <input type="checkbox" checked={library.alsoSave} onChange={(e) => library.setAlsoSave(e.target.checked)} />
-      <span>Also save to my models</span>
-    </label>
+    <Dialog title={t("proj.saveTo")} onClose={onClose}>
+      <ul className="fpick" aria-label="Projects">
+        {real.map((p) => (
+          <li key={p.id}>
+            <button type="button" className="fpick__row" onClick={() => save(p.id)}>
+              <span className="fpick__name">{p.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="acc-btn acc-btn--full" onClick={() => setCreating(true)}>
+        {t("proj.new")}
+      </button>
+    </Dialog>
   );
 }
 
-// Shown under a loaded model that came from this device.
+// A quiet action under a loaded model that came from this device and is not in a project yet.
 export function SaveRowButton({ model }) {
   const library = useLibraryContext();
+  const frozen = useFrozen();
+  const [choosing, setChoosing] = useState(false);
   if (!library || !library.canSave(model.name)) return null;
-  if (library.savedNames.has(model.name)) return <span className="lib-saved">Saved to my models</span>;
-  const file = library.fileFor(model.name);
+  // Models are saved inside a project; a backend without projects saves nothing.
+  if (!library.folders || library.savedNames.has(model.name)) return null;
   const saving = library.upload?.name === model.name;
   return (
-    <button type="button" className="lib-btn lib-save-btn" disabled={saving} onClick={() => library.saveFiles([file])}>
-      {saving ? "Saving…" : "Save to my models"}
-    </button>
+    <>
+      <button
+        type="button"
+        className="lib-btn lib-save-btn"
+        disabled={saving || frozen}
+        onClick={() => setChoosing(true)}
+      >
+        {saving ? "Saving…" : t("proj.saveTo")}
+      </button>
+      {choosing && <SaveToProjectDialog model={model} onClose={() => setChoosing(false)} />}
+    </>
   );
 }

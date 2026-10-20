@@ -14,7 +14,6 @@ import {
   listFolders,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
-  moveFolder as apiMoveFolder,
   deleteFolder as apiDeleteFolder,
   moveModel as apiMoveModel,
   listModels,
@@ -22,7 +21,7 @@ import {
   uploadModel,
 } from "./api";
 import { whenSessionSettled } from "../access/api";
-import { folderMessage, loadFolder, saveFolder, pathOf } from "./folders";
+import { folderMessage } from "./folders";
 import { isRealProject } from "./projects";
 
 // Everything about the server model library in one place. The only link
@@ -36,7 +35,6 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const [upload, setUpload] = useState(null); // { name, percent, more }
   const [notice, setNotice] = useState(null); // { id, tone, text }
   const [folderData, setFolderData] = useState(null); // null = this backend has no folders: no folder UI at all
-  const [folderId, setFolderIdState] = useState(loadFolder); // the folder being looked at, null = top level
   const [projectId, setProjectId] = useState(null); // the open project: a folder id, UNSORTED_ID, DUMMY_ID or null (the project browser)
 
   const abortDownloadRef = useRef(null);
@@ -314,14 +312,6 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
   const foldersRef = useRef(null);
   foldersRef.current = folders;
   const folderLimit = folderData?.limit ?? 0;
-  const setFolder = useCallback((id) => {
-    setFolderIdState(id || null);
-    saveFolder(id || null);
-  }, []);
-  // A folder that is gone (deleted on another device) sends the view back to the top.
-  useEffect(() => {
-    if (folders && folderId && !folders.some((f) => f.id === folderId)) setFolder(null);
-  }, [folders, folderId, setFolder]);
   const reloadFolders = useCallback(async () => {
     const fol = await listFolders();
     if (fol) setFolderData(fol);
@@ -339,20 +329,8 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     },
     [folderData?.limit, reloadFolders],
   );
-  const createFolder = useCallback((name, parentId) => folderAction(() => apiCreateFolder(name.trim(), parentId)), [folderAction]);
   const renameFolder = useCallback((id, name) => folderAction(() => apiRenameFolder(id, name.trim())), [folderAction]);
-  const moveFolder = useCallback((id, parentId) => folderAction(() => apiMoveFolder(id, parentId)), [folderAction]);
-  const deleteFolder = useCallback(
-    (id) =>
-      folderAction(
-        () => apiDeleteFolder(id),
-        async () => {
-          if (pathOf(folders || [], folderId).some((f) => f.id === id)) setFolder(pathOf(folders, id).at(-2)?.id ?? null);
-          await refresh();
-        },
-      ),
-    [folderAction, folders, folderId, refresh, setFolder],
-  );
+  const deleteFolder = useCallback((id) => folderAction(() => apiDeleteFolder(id), () => refresh()), [folderAction, refresh]);
   const moveModel = useCallback(
     (item, target) =>
       folderAction(
@@ -419,11 +397,7 @@ export function useLibrary({ loadFiles, models, onLoadSample, onOpened, onRename
     copyLink,
     folders,
     folderLimit,
-    folderId,
-    setFolder,
-    createFolder,
     renameFolder,
-    moveFolder,
     deleteFolder,
     moveModel,
   };

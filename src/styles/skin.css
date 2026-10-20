@@ -1003,9 +1003,10 @@ select.acc-input {
 .search-bar__input:focus,
 .search-bar__input:focus-visible,
 .toolbar .search-bar__input:focus {
-  outline: none;
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
+  box-shadow: 0 0 0 4px var(--accent-ring);
 }
 
 .acc-input[aria-invalid="true"] {
@@ -1581,14 +1582,8 @@ select.acc-input {
   font-variant-numeric: tabular-nums;
 }
 
-.element-panel__tabbar {
-  gap: 4px;
-  padding: 0 8px;
-}
-
 .element-panel__tab {
   color: var(--ink-muted);
-  font-size: var(--text-sm);
 }
 
 .element-panel__tab--active {
@@ -2271,7 +2266,7 @@ select.acc-input {
 }
 
 /* Wide layouts: Home carries its icon like the tools beside it. */
-@media (pointer: fine) {
+@media (pointer: fine) and (min-width: 769px) {
   .toolbar .top-bar__home-button {
     display: inline-flex;
     align-items: center;

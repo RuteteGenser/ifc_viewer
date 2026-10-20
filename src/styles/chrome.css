@@ -47,8 +47,8 @@
   .toolbar {
     flex-wrap: nowrap;
     justify-content: space-between;
-    gap: 2px;
-    padding: 4px calc(6px + var(--safe-right)) 4px calc(6px + var(--safe-left));
+    gap: 0;
+    padding: 4px calc(4px + var(--safe-right)) 4px calc(4px + var(--safe-left));
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -147,7 +147,9 @@
     height: 48px;
     min-height: 48px;
     padding: 0;
-    color: transparent;
+    color: var(--ink);
+    text-indent: 200px;
+    overflow: hidden;
     caret-color: transparent;
     background: transparent;
     border-color: transparent;
@@ -156,7 +158,7 @@
   }
 
   .toolbar .search-bar__input::placeholder {
-    color: transparent;
+    color: var(--ink-faint);
   }
 
   /* A search is running: the cell says so with the active wash. */
@@ -193,6 +195,7 @@
     height: 44px;
     min-height: 44px;
     color: var(--ink);
+    text-indent: 0;
     caret-color: auto;
     cursor: text;
     padding: 0 12px 0 40px;
@@ -244,6 +247,15 @@
   /* ---------- Floating controls: the edges, never the middle ---------- */
   .view-tools {
     top: calc(var(--toolbar-h, 52px) + 12px + var(--hud-h, 0px));
+  }
+
+  /* The "Isolating N elements" banner sits under the tool row: the controls step below it. */
+  .view-tools.view-tools--lower {
+    top: calc(var(--toolbar-h, 52px) + 70px + var(--hud-h, 0px));
+  }
+
+  .app:has(.view-tools--lower) .acc-slim:not(.acc-slim--warn) {
+    top: calc(var(--header-height) + var(--toolbar-h, 52px) + 70px + var(--hud-h, 0px));
   }
 
   .view-tools__buttons,
@@ -403,6 +415,7 @@
     margin-top: 2px;
     padding: 0 12px 0 40px;
     color: var(--ink);
+    text-indent: 0;
     caret-color: auto;
     cursor: text;
     background: var(--surface);
@@ -442,6 +455,6 @@
   }
 
   .viewport-wrapper[data-annotating] .compass {
-    visibility: hidden;
+    display: none;
   }
 }

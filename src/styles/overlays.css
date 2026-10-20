@@ -66,13 +66,8 @@
   color: var(--ink);
 }
 
-.compass__offset input:focus {
-  outline: none;
-}
-
 .compass__offset:focus-within {
   border-color: var(--accent);
-  box-shadow: var(--shadow-sm), 0 0 0 3px var(--accent-ring);
 }
 
 @media (pointer: coarse) {
@@ -449,10 +444,6 @@
   font-size: var(--text-xl);
   letter-spacing: var(--tracking-title);
   line-height: var(--leading-tight);
-}
-
-.cases__name .cases__linklike {
-  min-height: 32px;
 }
 
 .cases__meta {
@@ -1222,6 +1213,16 @@
   .acc-plan {
     padding: 16px;
   }
+  /* Subscribe stays in reach at the bottom of the sheet (pass 2); the price line rides just above
+     it, so the price is always read before the button. */
+  .acc-plan .acc-price-line {
+    position: sticky;
+    bottom: calc(48px + 6px);
+    z-index: 1;
+    margin: 14px -16px 0;
+    padding: 8px 16px 6px;
+    background: var(--surface);
+  }
   .acc-plan .acc-price {
     font-size: 22px;
   }
@@ -1382,11 +1383,9 @@
   background-color: var(--surface);
 }
 
-.lib-org__input:focus,
-.lib-org__select:focus {
-  outline: none;
+.lib-org__input:focus-visible,
+.lib-org__select:focus-visible {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .lib-org__count {

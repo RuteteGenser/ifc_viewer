@@ -1630,7 +1630,6 @@ export function useIfcViewer() {
       resolution: measureLineResolution, createLabel: createMeasureLabel, lineWidth: MEASURE_LINE_WIDTH,
       labelPixels: MEASURE_LEG_LABEL_SMALL_PIXEL_HEIGHT, markerGeometry: measureMarkerGeometry, markerPixels: MEASURE_MARKER_PIXELS,
       tagsVisible: () => tagsVisibleRef.current, requestRender,
-      raycast: (x, y) => raycastVisibleRef.current(x, y),
       visibleModels: () => [...modelsRef.current.values()].filter((e) => e.object.visible),
       clippingPlanes: () => renderer.clippingPlanes,
       sceneBox: () => fullSceneBox(),

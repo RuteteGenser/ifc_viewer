@@ -16,6 +16,8 @@ const LABEL_MUTED = "#9aa0a6"; // the existing secondary style: lighter text on 
 const TICK_PIXELS = 12;
 const RAYS_PER_FRAME = 3;
 const FADE_MS = 120;
+const DRAW_ORDER = 1001; // above the element highlight (999), so the soft fill never tints the lines
+
 
 export function createClearanceScene(d) {
   const { THREE, modelsGroup, camera, renderer } = d;
@@ -27,7 +29,7 @@ export function createClearanceScene(d) {
   const rayCamera = new THREE.PerspectiveCamera(8, 1, 0.01, 1e6);
   const rayDom = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }), clientWidth: 100, clientHeight: 100 };
   const rayMouse = new THREE.Vector2(50, 50);
-  const castWorldRay = async (originWorld, dirWorld) => {
+  const castWorldRay = async (originWorld, dirWorld, retries = 2) => {
     rayCamera.position.copy(originWorld);
     rayCamera.up.set(0, Math.abs(dirWorld.y) > 0.9 ? 0 : 1, Math.abs(dirWorld.y) > 0.9 ? 1 : 0);
     rayCamera.lookAt(originWorld.clone().add(dirWorld));
@@ -37,7 +39,7 @@ export function createClearanceScene(d) {
     // The worker answers a cast that overlaps another one (a hover pick, a label check) with nothing, which looks
     // exactly like open air: ask again a couple of times before believing an empty answer.
     let all = [];
-    for (let attempt = 0; attempt < 3 && all.length === 0; attempt++) {
+    for (let attempt = 0; attempt <= retries && all.length === 0; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 60));
       for (const entry of d.visibleModels()) {
         const hits = await entry.model.raycastAll(data);
@@ -128,24 +130,25 @@ export function createClearanceScene(d) {
       const material = new d.LineMaterial({ color: open ? OPEN_INK : INK, depthTest: false, linewidth: d.lineWidth, resolution: d.resolution, dashed: open, dashSize: 0.12, gapSize: 0.1 });
       const line = new d.Line2(geometry, material);
       line.computeLineDistances();
-      line.renderOrder = 999;
+      line.renderOrder = DRAW_ORDER;
       line.frustumCulled = false;
       modelsGroup.add(line);
       lines[dir] = line;
       const label = d.createLabel(labelLines(c, dir), "center", 0.5);
       label.position.copy(centre).lerp(end, 0.5);
+      label.renderOrder = DRAW_ORDER + 1;
       modelsGroup.add(label);
       labels[dir] = label;
-      anchors[dir] = { vis: { shown: true, agree: 0 }, seen: -1, tries: 0, fade: 1 };
+      anchors[dir] = { vis: { shown: true, agree: 0 }, seen: -1, tries: 0, fade: 1, modelId: c.modelId, localId: c.localId };
     }
     const ticksGeometry = new d.LineSegmentsGeometry();
     ticksGeometry.setPositions(new Array(24).fill(0));
     const ticks = new d.LineSegments2(ticksGeometry, new d.LineMaterial({ color: INK, depthTest: false, linewidth: d.lineWidth, resolution: d.resolution }));
-    ticks.renderOrder = 999;
+    ticks.renderOrder = DRAW_ORDER;
     ticks.frustumCulled = false;
     modelsGroup.add(ticks);
     const dot = new THREE.Mesh(d.markerGeometry, new THREE.MeshBasicMaterial({ color: INK, depthTest: false }));
-    dot.renderOrder = 999;
+    dot.renderOrder = DRAW_ORDER;
     dot.position.copy(centre);
     modelsGroup.add(dot);
     const entry = { id, data: c, lines, ticks, dot, labels, anchors };
@@ -276,14 +279,18 @@ export function createClearanceScene(d) {
   const check = async (due, v) => {
     busy = true;
     try {
-      const rect = renderer.domElement.getBoundingClientRect();
       for (const { label, a } of due.slice(0, RAYS_PER_FRAME)) {
         const ndc = ndcOf(label);
         if (!onScreen(ndc)) continue;
         const world = label.getWorldPosition(new THREE.Vector3());
-        const anchorDistance = camera.position.distanceTo(world);
-        const hit = await d.raycast(rect.left + (ndc.x * 0.5 + 0.5) * rect.width, rect.top + (-ndc.y * 0.5 + 0.5) * rect.height);
-        const seen = visibleByHit(anchorDistance, hit ? camera.position.distanceTo(hit.point) : null);
+        const toLabel = world.clone().sub(camera.position);
+        const anchorDistance = toLabel.length();
+        // What stands between the camera and the label, other than the measured element itself (the label sits
+        // inside its volume: its own surface must not hide it).
+        const hits = await castWorldRay(camera.position, toLabel.normalize(), 0);
+        const own = (h) => h.fragments?.modelId === a.modelId && h.localId === a.localId;
+        const nearest = nearestHit(hits.map((h) => ({ h, distance: camera.position.distanceTo(h.point) })), { isSelf: (m) => own(m.h), epsilon: 0, maxRange: Infinity });
+        const seen = visibleByHit(anchorDistance, nearest ? nearest.distance : Infinity);
         if (seen === null) {
           if (++a.tries >= 3) { a.seen = v; a.tries = 0; }
           continue;

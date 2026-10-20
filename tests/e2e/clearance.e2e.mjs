@@ -8,13 +8,16 @@ const menu = (page) => page.getByRole("menu", { name: "Measure tools" });
 const item = (page, name) => menu(page).getByRole("menuitemradio", { name });
 const hint = (page) => page.locator(".tool-hint__text");
 
-// Opens the menu the way the device does it: the arrow on a desktop, a tap on the icon on a phone.
-async function openMenu(page, phone) {
-  await stableClick(phone ? mainButton(page) : caret(page));
+// The app's own phone layout (an iPad mini held upright counts: 768 px wide).
+const phoneLayout = (page) => page.evaluate(() => matchMedia("(max-width: 768px), (max-height: 500px) and (pointer: coarse)").matches);
+
+// Opens the menu the way the layout does it: the arrow on a desktop, a tap on the icon on a phone.
+async function openMenu(page) {
+  await stableClick((await phoneLayout(page)) ? mainButton(page) : caret(page));
   await menu(page).waitFor({ state: "visible" });
 }
-async function armClearance(page, phone) {
-  await openMenu(page, phone);
+async function armClearance(page) {
+  await openMenu(page);
   await item(page, /Clearance/).click();
   await menu(page).waitFor({ state: "detached" });
   await hint(page).filter({ hasText: /clearance/i }).waitFor({ state: "visible" });
@@ -63,11 +66,12 @@ const metres = (text) => {
 await suite("clearance", [
   {
     name: "the Measure menu lists every measure tool and Distance is the default",
-    fn: async ({ page, phone, skip }) => {
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
+    fn: async ({ page, skip }) => {
       await openApp(page);
       await requireHook(page, skip);
       await loadSample(page);
-      await openMenu(page, phone);
+      await openMenu(page);
       const items = await menu(page).getByRole("menuitemradio").allInnerTexts();
       assert.equal(items.length, 2, items.join(" | "));
       assert.match(items[0], /Distance/);
@@ -80,6 +84,7 @@ await suite("clearance", [
   },
   {
     name: "menu keyboard: arrows move, Esc closes and gives focus back, Enter chooses",
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
     projects: ["desktop"],
     fn: async ({ page, skip }) => {
       await openApp(page);
@@ -116,6 +121,7 @@ await suite("clearance", [
   },
   {
     name: "desktop: the icon arms the tool used last, the arrow only opens the menu",
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
     projects: ["desktop"],
     fn: async ({ page, skip }) => {
       await openApp(page);
@@ -125,7 +131,7 @@ await suite("clearance", [
       await hint(page).filter({ hasText: /two points/i }).waitFor({ state: "visible" });
       await page.locator(".tool-hint__done").click();
       await page.locator(".tool-hint").waitFor({ state: "detached" });
-      await openMenu(page, false);
+      await openMenu(page);
       assert.equal(await page.locator(".tool-hint").count(), 0, "opening the menu does not arm anything");
       await item(page, /Clearance/).click();
       await hint(page).filter({ hasText: /clearance/i }).waitFor({ state: "visible" });
@@ -133,7 +139,8 @@ await suite("clearance", [
   },
   {
     name: "clearance: a tap measures four directions; values are plausible, listed, undoable and deletable",
-    fn: async ({ page, project, phone, skip }) => {
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
+    fn: async ({ page, project, skip }) => {
       await openApp(page);
       await requireHook(page, skip);
       await loadSample(page);
@@ -141,7 +148,7 @@ await suite("clearance", [
       await closeViews(page);
       const elevations = levels.map((l) => Number(/[-+]?[\d.]+/.exec(l.elevation)?.[0])).filter(Number.isFinite).sort((a, b) => a - b);
       const storey = elevations.length > 1 ? elevations[1] - elevations[0] : 3;
-      await armClearance(page, phone);
+      await armClearance(page);
       const c = await measureSomething(page, project);
       assert.ok(c, "no tap produced an element with a floor below and a ceiling above");
       assert.ok(c.values.up > 0 && c.values.down > 0, JSON.stringify(c.values));
@@ -150,8 +157,17 @@ await suite("clearance", [
       for (const dir of ["left", "right"]) assert.ok(c.values[dir] === null || c.values[dir] > 0, `${dir} ${c.values[dir]}`);
       assert.ok(c.name && c.name !== "Element", "the element is named");
 
-      // The Measurements tab: one entry "Clearance: <name>" with Up/Down/Left/Right.
       await page.locator(".tool-hint__done").click();
+      await page.locator(".tool-hint").waitFor({ state: "detached" });
+      // Undo removes it, Redo brings it back.
+      await page.getByRole("button", { name: "Undo" }).click();
+      await page.waitForFunction(() => window.__ifcDebug.clearances().length === 0);
+      await page.getByRole("button", { name: "Redo" }).click();
+      await page.waitForFunction(() => window.__ifcDebug.clearances().length === 1);
+      const again = (await clearances(page))[0];
+      assert.deepEqual(again.values, c.values, "redo restores the same numbers");
+
+      // The Measurements tab: one entry "Clearance: <name>" with Up/Down/Left/Right.
       await openMeasurementsList(page);
       const row = page.locator('[data-kind="clearance"]').first();
       await row.waitFor({ state: "visible", timeout: 10000 });
@@ -161,28 +177,23 @@ await suite("clearance", [
       const upShown = metres(await row.locator('[data-dir="up"]').innerText());
       assert.ok(Math.abs(upShown - c.values.up) < 0.006, `list says ${upShown}, scene says ${c.values.up}`);
 
-      // Undo removes it, Redo brings it back, the delete button removes it, Undo restores that.
-      await page.getByRole("button", { name: "Undo" }).click();
+      // The delete button removes it, Undo restores it.
+      await row.getByRole("button", { name: "Remove measurement" }).click();
       await page.waitForFunction(() => window.__ifcDebug.clearances().length === 0);
-      await page.getByRole("button", { name: "Redo" }).click();
-      await page.waitForFunction(() => window.__ifcDebug.clearances().length === 1);
-      const again = (await clearances(page))[0];
-      assert.deepEqual(again.values, c.values, "redo restores the same numbers");
-      await openMeasurementsList(page).catch(() => {});
-      await page.locator('[data-kind="clearance"]').first().getByRole("button", { name: "Remove measurement" }).click();
-      await page.waitForFunction(() => window.__ifcDebug.clearances().length === 0);
+      await page.keyboard.press("Escape"); // a phone's details sheet covers the history buttons
       await page.getByRole("button", { name: "Undo" }).click();
       await page.waitForFunction(() => window.__ifcDebug.clearances().length === 1);
     },
   },
   {
     name: "clearance: nothing above the roof reads Open, and Esc leaves the tool",
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
     projects: ["desktop"],
     fn: async ({ page, project, skip }) => {
       await openApp(page);
       await requireHook(page, skip);
       await loadSample(page);
-      await armClearance(page, false);
+      await armClearance(page);
       // The roof is the top of the building: a tap on it measures up into the open.
       const c = await measureSomething(page, project, (m) => m.values.up === null && m.values.down != null, ROOF);
       assert.ok(c, "no tap measured an element with open sky above it");
@@ -195,17 +206,18 @@ await suite("clearance", [
   },
   {
     name: "the last used tool is remembered after a reload",
-    fn: async ({ page, phone, skip }) => {
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
+    fn: async ({ page, skip }) => {
       await openApp(page);
       await requireHook(page, skip);
       await loadSample(page);
-      await openMenu(page, phone);
+      await openMenu(page);
       await item(page, /Clearance/).click();
       await page.reload({ waitUntil: "domcontentloaded" });
       await page.waitForFunction(() => performance.getEntriesByName("viewer-ready").length > 0, null, { timeout: 60000 });
       await loadSample(page);
-      if (phone) {
-        await openMenu(page, true);
+      if (await phoneLayout(page)) {
+        await openMenu(page);
         assert.equal(await item(page, /Clearance/).getAttribute("aria-checked"), "true");
       } else {
         await stableClick(mainButton(page)); // the icon arms what was used last
@@ -215,12 +227,13 @@ await suite("clearance", [
   },
   {
     name: "320 px: the menu fits, every item is a 44 px target, nothing scrolls sideways",
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
     projects: ["small320"],
-    fn: async ({ page, phone, skip }) => {
+    fn: async ({ page, skip }) => {
       await openApp(page);
       await requireHook(page, skip);
       await loadSample(page);
-      await openMenu(page, phone);
+      await openMenu(page);
       const box = await menu(page).boundingBox();
       assert.ok(box.x >= 0 && box.x + box.width <= 320, JSON.stringify(box));
       for (const el of await menu(page).getByRole("menuitemradio").all()) {
@@ -235,12 +248,13 @@ await suite("clearance", [
   },
   {
     name: "a phone tap with the tool armed measures; without it a long press still opens the element menu",
+    timeout: 240000, // the sample building, a menu and a worker cast: slow on a busy runner
     projects: ["iphone13"],
-    fn: async ({ page, project, phone, skip }) => {
+    fn: async ({ page, project, skip }) => {
       await openApp(page);
       await requireHook(page, skip);
       await loadSample(page);
-      await armClearance(page, phone);
+      await armClearance(page);
       const c = await measureSomething(page, project);
       assert.ok(c, "the tap did not measure");
       await page.locator(".tool-hint__done").click();

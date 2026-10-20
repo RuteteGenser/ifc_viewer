@@ -7,7 +7,7 @@ const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), select
 // model when a newly added file shares its name. Behaves as a real modal:
 // labelled dialog, focus moves in and stays in, Esc cancels, and focus goes
 // back to whatever had it before.
-export default function ConfirmDialog({ title, message, confirmLabel = "Replace", cancelLabel = "Cancel", onConfirm, onCancel, initialFocus = "confirm" }) {
+export default function ConfirmDialog({ title, message, confirmLabel = "Replace", cancelLabel = "Cancel", onConfirm, onCancel, initialFocus = "confirm", danger = false }) {
   const dialogRef = useRef(null);
   const backdropRef = useRef(null);
   useExitGhost(backdropRef, "fade", ".confirm-dialog");
@@ -78,7 +78,7 @@ export default function ConfirmDialog({ title, message, confirmLabel = "Replace"
           <button type="button" className="confirm-dialog__cancel" ref={cancelRef} onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button type="button" className="confirm-dialog__confirm" ref={confirmRef} onClick={onConfirm}>
+          <button type="button" className={`confirm-dialog__confirm${danger ? " confirm-dialog__confirm--danger" : ""}`} ref={confirmRef} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

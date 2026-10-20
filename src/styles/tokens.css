@@ -29,6 +29,10 @@
   --accent-pressed: #6c4720;
   --accent-soft: #f0e4d0;
   --accent-wash: #f7efe2;   /* selected rows, active tools */
+  --accent-ring: rgba(150, 101, 47, 0.22); /* the soft halo around a focused field */
+
+  --success: #1b6b3a;
+  --success-bg: #e8f2ea;
 
   --danger: #b42318;
   --danger-bg: #fbeae1;
@@ -65,7 +69,7 @@
 
   /* Type. UI text is the platform's own face (SF on Apple, Segoe on Windows); Fraunces is
      the brand's display face, for titles only. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
   --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 12px;    /* captions, meta */

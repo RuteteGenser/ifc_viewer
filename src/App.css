@@ -968,12 +968,6 @@
   color: var(--text-faint);
 }
 
-.search-bar__input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-  border-color: var(--border-strong);
-}
-
 .search-bar__dropdown {
   position: absolute;
   top: calc(100% + 6px);
@@ -3157,17 +3151,6 @@
     letter-spacing: -0.03em;
     white-space: nowrap;
   }
-}
-
-/* Disabled buttons: a dashed outline and dark grey text (4.7:1 on the paper
-   colours) instead of a faded look, so the label is still readable. */
-.sidebar__save-button:disabled,
-.sidebar__reset-visibility-button:disabled,
-.lib-btn:disabled {
-  opacity: 1;
-  background: var(--bg-subtle);
-  color: var(--ink-faint);
-  border: 1px dashed var(--border-strong);
 }
 
 .sidebar__reset-visibility-button--primary {

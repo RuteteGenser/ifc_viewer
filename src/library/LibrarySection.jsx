@@ -11,7 +11,7 @@ import { childrenOf, pathLabel, scopeModels } from "./folders";
 import { useAccess } from "../access/AccessProvider";
 import { AccountButton } from "../access/AccessUI";
 import { LegalLinks } from "../legal/LegalPage";
-import { quotaText } from "../access/AccountPage";
+import { quotaRatio, quotaText } from "../access/AccountPage";
 import { t } from "../access/copy";
 import { useListSwap } from "../usePresence";
 
@@ -223,6 +223,7 @@ function ModelItem({ item, showPath }) {
             title="Delete this model?"
             message={`"${item.name}" will be removed from my models on every device. Files on your devices are not affected.`}
             confirmLabel="Delete"
+            danger
             initialFocus="cancel"
             onCancel={() => setConfirming(false)}
             onConfirm={() => {
@@ -356,6 +357,11 @@ export default function LibrarySection({ variant }) {
           {access && (
             <div className="lib__account">
               <span className="lib__quota" data-testid="lib-quota">{quotaText(access.session)}</span>
+              {quotaRatio(access.session) !== null && (
+                <span className="lib__meter" aria-hidden="true">
+                  <span className="lib__meter-fill" style={{ width: `${Math.round(quotaRatio(access.session) * 100)}%` }} />
+                </span>
+              )}
               <AccountButton />
               <LegalLinks docs={["terms", "privacy"]} />
             </div>

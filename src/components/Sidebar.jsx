@@ -148,68 +148,86 @@ export default function Sidebar({
   };
   return (
     <aside className={`sidebar ${className}`.trim()} data-surface-sheet={className.includes("sidebar--open") ? "menu" : undefined} aria-label="Models and structure" {...swipe}>
-      <div className="sidebar__top-buttons">
-        <button
-          type="button"
-          className="sidebar__add-button"
-          onClick={onAddFiles}
-          disabled={isLoading}
-        >
-          {isLoading ? loadingLabel || "Loading…" : models.length > 0 ? "Add another model" : "Open IFC file"}
-        </button>
-        <button
-          type="button"
-          className="sidebar__save-button"
-          onClick={onSaveIfcZip}
-          disabled={models.length === 0}
-          title="Save all loaded models as a single .ifcZIP"
-        >
-          Save .ifcZIP
-        </button>
-      </div>
+      <section className="sb-group" aria-labelledby="sb-loaded-title">
+        <div className="sb-group__head">
+          <h2 className="sidebar__section-title" id="sb-loaded-title">Loaded models</h2>
+          <button
+            type="button"
+            className="sidebar__save-button"
+            onClick={onSaveIfcZip}
+            disabled={models.length === 0}
+            title="Save all loaded models as a single .ifcZIP"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 4v11M7 10.5l5 5 5-5M5 20h14" />
+            </svg>
+            <span>Save .ifcZIP</span>
+          </button>
+        </div>
 
-      {models.length > 0 && (
-        <p className="sidebar__hint">Opening a model replaces the current one. Add another model to view several together.</p>
-      )}
+        {models.length === 0 ? (
+          <p className="sidebar__empty">No models open yet.</p>
+        ) : (
+          <ul className="model-list">
+            {models.map((model) => (
+              <ModelRow
+                key={model.id}
+                model={model}
+                onToggleVisible={onToggleVisible}
+                onRemove={onRemove}
+                onSetColor={onSetModelColor}
+              />
+            ))}
+          </ul>
+        )}
 
-      <SaveToggle />
+        <div className="sidebar__top-buttons">
+          <button
+            type="button"
+            className={`sidebar__add-button${models.length > 0 ? " sidebar__add-button--secondary" : ""}`}
+            onClick={onAddFiles}
+            disabled={isLoading}
+          >
+            {!isLoading && (
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            )}
+            <span>{isLoading ? loadingLabel || "Loading…" : models.length > 0 ? "Add another model" : "Open IFC file"}</span>
+          </button>
+        </div>
 
-      <div className="sidebar__section-title">Loaded models</div>
+        {models.length > 0 && (
+          <p className="sidebar__hint">Opening a model replaces the current one. Add another model to view several together.</p>
+        )}
 
-      {models.length === 0 ? (
-        <p className="sidebar__empty">No models open yet.</p>
-      ) : (
-        <ul className="model-list">
-          {models.map((model) => (
-            <ModelRow
-              key={model.id}
-              model={model}
-              onToggleVisible={onToggleVisible}
-              onRemove={onRemove}
-              onSetColor={onSetModelColor}
-            />
-          ))}
-        </ul>
-      )}
+        <SaveToggle />
+      </section>
 
       <LibrarySection variant="sidebar" />
 
       {browser && models.length > 0 && <ModelInfo models={models} trees={browser.trees} />}
 
-      <button
-        type="button"
-        className="sidebar__reset-visibility-button"
-        onClick={onResetVisibility}
-        disabled={models.length === 0}
-        title="Show any elements you have hidden"
-      >
-        Reset visibility
-      </button>
-      {spaceControl?.available && (
-        <label className="sidebar__show-spaces">
-          <input type="checkbox" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />
-          <span>Show spaces</span>
-        </label>
+      {models.length > 0 && (
+        <section className="sb-group sb-group--view" aria-labelledby="sb-view-title">
+          <div className="sb-group__head">
+            <h2 className="sidebar__section-title" id="sb-view-title">View</h2>
+            <button
+              type="button"
+              className="sidebar__reset-visibility-button"
+              onClick={onResetVisibility}
+              title="Show any elements you have hidden"
+            >
+              Reset visibility
+            </button>
+          </div>
+          {spaceControl?.available && (
+            <label className="sidebar__show-spaces">
+              <span>Show spaces</span>
+              <input type="checkbox" className="ui-switch" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />
+            </label>
+          )}
+        </section>
       )}
 
       {browser && models.length > 0 && (
@@ -239,15 +257,24 @@ export default function Sidebar({
         onSelectClipPlane={onSelectClipPlane}
       />
 
-      <button type="button" className="sidebar__help-button" onClick={onOpenCases}>
-        Cases: saved views of the model
-      </button>
+      <div className="sb-footer">
+        <button type="button" className="sidebar__help-button" onClick={onOpenCases}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h4l2 2h7A1.5 1.5 0 0 1 20 9.5v8A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" />
+          </svg>
+          <span>Cases: saved views of the model</span>
+        </button>
 
-      <button type="button" className="sidebar__help-button" onClick={onOpenHelp}>
-        Help: how to move around
-      </button>
+        <button type="button" className="sidebar__help-button" onClick={onOpenHelp}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.6 9.3a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2-2.4 3.6M12 17.2h.01" />
+          </svg>
+          <span>Help: how to move around</span>
+        </button>
 
-      <LegalLinks docs={["terms", "privacy", "cookies"]} className="sidebar__legal" />
+        <LegalLinks docs={["terms", "privacy", "cookies"]} className="sidebar__legal" />
+      </div>
     </aside>
   );
 }

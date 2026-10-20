@@ -244,7 +244,8 @@ function App() {
     return () => mq.removeEventListener?.("change", update);
   }, []);
   // Wide layouts only: fold the model list / details panel away, and resize the panel.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readPref("ifcViewer.sidebarCollapsed", "0") === "1");
+  // A tablet in portrait has no room for both side columns and the model: there the model list starts folded away.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readPref("ifcViewer.sidebarCollapsed", window.innerWidth < 1024 ? "1" : "0") === "1");
   const [panelCollapsed, setPanelCollapsed] = useState(() => readPref("ifcViewer.panelCollapsed", "0") === "1");
   const [panelWidth, setPanelWidth] = useState(() => {
     const n = Number(readPref("ifcViewer.panelWidth", "320"));

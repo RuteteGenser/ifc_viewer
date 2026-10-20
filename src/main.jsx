@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.jsx'
 import ErrorBoundary, { CrashProbe } from './ErrorBoundary.jsx'
 import './styles/skin.css' // after App: the shared look of controls (tokens applied)
+import './styles/chrome.css' // after the skin: where the phone's controls sit
 import './motion.css' // after App so its rules win over component CSS
 import fragmentsWorkerUrl from '@thatopen/fragments/worker?url'
 import { startEngineDownloads } from './ifc/engineDownloads'

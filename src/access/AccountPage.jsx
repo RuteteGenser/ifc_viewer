@@ -18,6 +18,16 @@ export function quotaText(session) {
     : t("account.quotaOpen", { used: u.storedModels, bytes: mb(u.bytes) });
 }
 
+// How full the plan is (the larger of models and bytes), 0 to 1; null when the plan has no cap.
+export function quotaRatio(session) {
+  const { limits = {} } = session.entitlement;
+  const u = session.usage || {};
+  if (!limits.maxStoredModels) return null;
+  const byModels = (u.storedModels || 0) / limits.maxStoredModels;
+  const byBytes = limits.maxBytesTotal ? (u.bytes || 0) / limits.maxBytesTotal : 0;
+  return Math.min(1, Math.max(byModels, byBytes));
+}
+
 function stateLine(access) {
   const e = access.session.entitlement;
   const s = access.state;

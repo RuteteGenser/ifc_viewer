@@ -6,6 +6,7 @@ import { useSurfaces } from "../ui/surfaces";
 import { nextIndex } from "../a11y";
 import { STANDARD_VIEWS } from "../ifc/viewHelpers";
 import { formatElevation } from "../ifc/storeys";
+import { hoverNamesOn, setHoverNames, subscribeHoverNames } from "../handTool";
 import "./ViewTools.css";
 
 const svgProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
@@ -73,6 +74,8 @@ const SECTION_KINDS = [
 const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 
 function ViewsPanel({ views, spaceControl, onClose }) {
+  const [hoverNames, setHoverNamesState] = useState(hoverNamesOn);
+  useEffect(() => subscribeHoverNames(setHoverNamesState), []);
   const panelRef = useRef(null);
   useExitGhost(panelRef);
   const { flat, setFlatProjection, goToView, levels, levelSel, showLevels, showAllLevels } = views;
@@ -193,6 +196,12 @@ function ViewsPanel({ views, spaceControl, onClose }) {
         </div>
       )}
 
+      {!COARSE && (
+        <label className="view-tools__switch">
+          <input type="checkbox" checked={hoverNames} onChange={(e) => setHoverNames(e.target.checked)} />
+          <span>Show names on hover</span>
+        </label>
+      )}
       {spaceControl?.available && (
         <label className="view-tools__switch">
           <input type="checkbox" checked={spaceControl.shown} onChange={(e) => spaceControl.setShown(e.target.checked)} />

@@ -31,7 +31,7 @@ import { sheetRect, PLANE_COLORS, SHEET_OPACITY, planesToDrop, activeAfterRemove
 import { stackUp } from "../ifc/labelStack";
 import { createPressRings } from "../ifc/pressRings";
 import { visibleByHit, stepVisibility, onScreen } from "../ifc/anchorVisibility";
-import { spaceBelongsToPage, DIALOG_SELECTOR } from "../handTool";
+import { hoverNamesOn, subscribeHoverNames, spaceBelongsToPage, DIALOG_SELECTOR } from "../handTool";
 
 const IFC_EXTENSION = /\.ifc$/i;
 // buildingSMART's ifcZIP format is a plain ZIP archive containing one or
@@ -2971,6 +2971,7 @@ export function useIfcViewer() {
     };
     const onNameHoverMove = (event) => {
       if (event.pointerType !== "mouse") return;
+      if (!hoverNamesOn()) return; // names on hover are opt-in; no raycast, label or pointer cursor
       if (event.buttons !== 0 || pivotPending || rotating || draggingMeasurePoint) {
         clearNameHover();
         return;
@@ -3009,6 +3010,7 @@ export function useIfcViewer() {
     renderer.domElement.addEventListener("pointerleave", clearNameHover);
     renderer.domElement.addEventListener("pointerdown", clearNameHover);
     renderer.domElement.addEventListener("wheel", clearNameHover, { passive: true });
+    const unsubscribeHoverNames = subscribeHoverNames(() => clearNameHover());
 
     const setHand = (on) => {
       if (handHeld === on) return;
@@ -4578,6 +4580,7 @@ export function useIfcViewer() {
       window.removeEventListener("blur", onMiddleButtonReset);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onMeasureKeyDown);
+      unsubscribeHoverNames();
       window.removeEventListener("pointerdown", onHandPointerDown, true);
       window.removeEventListener("keydown", onHandKeyDown);
       window.removeEventListener("keyup", onHandKeyUp);

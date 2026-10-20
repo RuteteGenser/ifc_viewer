@@ -485,6 +485,10 @@ function App() {
   useEffect(() => {
     if (sidebarOpen) setMultiNotice(false);
   }, [sidebarOpen]);
+  // The last model was removed: the drawer that held its row would only cover the project browser.
+  useEffect(() => {
+    if (models.length === 0) setSidebarOpen(false);
+  }, [models.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // First time two models are loaded together this session: say how to remove one.
   useEffect(() => {
     if (models.length < 2) return;

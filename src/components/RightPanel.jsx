@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import ElementInfoPanel from "./ElementInfoPanel";
 import { nextIndex } from "../a11y";
 import MeasureControl from "./MeasureControl";
@@ -81,6 +81,15 @@ export default function RightPanel({
   const tabbarRef = useRef(null);
   const compactProbeRef = useRef(null);
   const dragRef = useRef(null);
+  // A tab change cross-fades the content (opacity and a 4 px rise; nothing moves in layout).
+  const bodyRef = useRef(null);
+  const firstTabRef = useRef(true);
+  useLayoutEffect(() => {
+    if (firstTabRef.current) { firstTabRef.current = false; return; }
+    const el = bodyRef.current;
+    if (!el || typeof el.animate !== "function" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate([{ opacity: 0, translate: "0 4px" }, { opacity: 1, translate: "0 0" }], { duration: 180, easing: "cubic-bezier(0, 0, 0, 1)" });
+  }, [activeTab]);
   const swipedRef = useRef(false);
   const sideways = () => !!window.matchMedia?.("(max-height: 500px) and (pointer: coarse)").matches;
   // Offsets (px) of each snap point along the drag axis, 0 = fully shown.
@@ -255,7 +264,7 @@ export default function RightPanel({
         </button>
       </div>
 
-      <div className="element-panel__body" role="tabpanel" id="rp-tabpanel" aria-labelledby={`rp-tab-${activeTab}`}>
+      <div className="element-panel__body" ref={bodyRef} role="tabpanel" id="rp-tabpanel" aria-labelledby={`rp-tab-${activeTab}`}>
         {activeTab === "info" ? (
           <ElementInfoPanel element={element} loading={loading} onHide={onHideElement} onToast={onToast} />
         ) : activeTab === "measurements" ? (

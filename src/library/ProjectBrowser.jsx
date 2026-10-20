@@ -305,11 +305,13 @@ function ProjectPage({ projectId, onOpenFiles, titleRef }) {
         {real && <ProjectMenu project={{ id: projectId, name }} onDeleted={() => library.openProject(null)} />}
       </PageHead>
       <p className="proj__meta" data-testid="proj-count">{countText(models.length)}</p>
-      {real && (
+      {(real || models.length > 1) && (
         <div className="proj__actions">
-          <button type="button" className="acc-btn acc-btn--primary" disabled={frozen} title={frozen ? READ_ONLY : undefined} onClick={onOpenFiles}>
-            {t("proj.add")}
-          </button>
+          {real && (
+            <button type="button" className="acc-btn acc-btn--primary" disabled={frozen} title={frozen ? READ_ONLY : undefined} onClick={onOpenFiles}>
+              {t("proj.add")}
+            </button>
+          )}
           {models.length > 1 && (
             <button type="button" className="acc-btn" disabled={!!library.download} onClick={openAll}>
               {t("proj.openAll")}

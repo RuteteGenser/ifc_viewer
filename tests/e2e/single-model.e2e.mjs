@@ -70,7 +70,8 @@ await suite("single-model", [
         await expectModels(page, ["Sample building"]);
         await menuIfNeeded(page);
         await page.getByRole("button", { name: "Remove Sample building" }).click();
-        await page.getByRole("heading", { name: "No projects yet" }).or(page.getByRole("heading", { name: "Projects", level: 1 })).first().waitFor();
+        // the dummy project is still the open page: back to the browser, then Unsorted
+        await page.getByRole("button", { name: /^.?\s*Projects$/ }).first().click();
         await openUnsorted(page);
         await waitForModelAfter(page, () => page.getByRole("button", { name: `Open ${lib.name}`, exact: true }).click());
         const v = await view(page);

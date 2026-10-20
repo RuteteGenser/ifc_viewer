@@ -56,7 +56,8 @@ export { sleep };
 
 export const markCount = (page, name) => page.evaluate((n) => performance.getEntriesByName(n).length, name);
 
-export async function waitForMark(page, name, above = 0, timeout = 60000) {
+const SCALE = Number(process.env.ARGUS_TIMEOUT_X) || 1;
+export async function waitForMark(page, name, above = 0, timeout = 60000 * SCALE) {
   await page.waitForFunction(([n, a]) => performance.getEntriesByName(n).length > a, [name, above], { timeout });
 }
 
@@ -69,7 +70,7 @@ export async function openApp(page, { query = "", hash = "" } = {}) {
 // Runs `action`, then waits until the viewer reports one more model on screen
 // ("model-shown" mark) and the loading overlay is gone. Works on phones, where
 // the sidebar rows are inside a closed drawer.
-export async function waitForModelAfter(page, action, timeout = 60000) {
+export async function waitForModelAfter(page, action, timeout = 60000 * SCALE) {
   const before = await markCount(page, "model-shown");
   await action();
   await waitForMark(page, "model-shown", before, timeout);
@@ -213,7 +214,7 @@ export const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 // ------------------------------------------------------------------- runner
 
 // ARGUS_TIMEOUT_X=2 doubles every case timeout (a loaded machine renders slowly).
-const timeoutOf = (c) => (c.timeout ?? 90000) * (Number(process.env.ARGUS_TIMEOUT_X) || 1);
+const timeoutOf = (c) => (c.timeout ?? 90000) * SCALE;
 
 function allowed(list, text) {
   return list.some((p) => (p instanceof RegExp ? p.test(text) : text.includes(p)));

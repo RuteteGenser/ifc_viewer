@@ -13,6 +13,7 @@ const SHORTCUTS = [
   { keys: "Double-click", description: "Zoom to the element" },
   { keys: "Right-click / press and hold", description: "Menu: zoom, isolate, hide, cut a section" },
   { keys: "Scroll / pinch", description: "Zoom at a steady speed, to the cursor" },
+  { keys: "Space + drag", description: "Hand tool: move the view sideways (hold Space, drag with the left button)" },
   { keys: "+ / -", description: "Zoom in / out" },
   { keys: "0", description: "Fit the whole model (Home)" },
   { keys: "F", description: "Zoom to the selected element" },

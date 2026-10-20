@@ -20,6 +20,7 @@ const MOUSE_ROWS = [
   ["Drag", "turns"],
   ["Scroll", "zooms"],
   ["Click", "selects"],
+  ["Space + drag", "moves"],
 ];
 
 // One dismissible card, shown the first time a model opens.

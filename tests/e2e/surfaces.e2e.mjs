@@ -9,13 +9,17 @@ const click = (loc) => loc.dispatchEvent("click"); // bypasses hit-testing: what
 
 const views = (page) => page.getByRole("button", { name: "Views and levels" });
 const share = (page) => page.getByRole("button", { name: "Save image or copy view link" });
-const helpBtn = (page) => page.getByRole("button", { name: "Help: how to move around" });
+// The toolbar's icon and the drawer's row share the name; the toolbar one is the sheet's opener when it is there.
+const helpBtn = (page) => page.locator('button.top-bar__icon-button[aria-label="Help: how to move around"]');
+const drawerHelp = (page) => page.locator("aside.sidebar").getByRole("button", { name: "Help: how to move around" });
 // The toolbar has no room for Help on the narrowest phones: it is in the menu drawer there.
 async function openHelp(page) {
-  if (!(await helpBtn(page).count())) await click(menu(page));
-  await click(helpBtn(page));
+  if (await helpBtn(page).count()) return click(helpBtn(page));
+  await click(menu(page));
+  await click(drawerHelp(page));
 }
-const menu = (page) => page.getByRole("button", { name: /^(Open|Close) menu$/ });
+// The header's toggle (the open drawer also has a full-screen "Close menu" backdrop button).
+const menu = (page) => page.getByRole("banner").getByRole("button", { name: /^(Open|Close) menu$/ });
 const casesBtn = (page) => page.getByRole("button", { name: /^Cases/ });
 const measure = (page) => page.getByRole("button", { name: "Toggle measure mode" });
 // On a phone the Measure icon opens the Measure menu; choosing Distance arms the tool.
@@ -223,7 +227,7 @@ await suite("surfaces", [
     fn: async ({ page, skip }) => {
       await page.goto("about:blank");
       await ready(page, skip);
-      await page.touchscreen.tap(8, 8); // the first gesture arms the guard
+      await page.touchscreen.tap(8, 300); // the first gesture arms the guard (the corner is the header's menu button now)
       await sleep(300);
       await click(menu(page));
       assert.deepEqual(await sheetsAre(page, ["menu"]), ["menu"]);

@@ -63,6 +63,7 @@ await suite("library-folders", [
       const dlg = page.getByRole("dialog");
       await dlg.getByRole("button", { name: "Top level" }).waitFor();
       assert.equal(await dlg.getByRole("button", { name: "Top level" }).getAttribute("aria-current"), "true", "the current place is marked");
+      await page.waitForTimeout(500); // the dialog scales in; measured mid-animation a 44 px row reads 43
       const small = await dlg.evaluate((el) => [...el.querySelectorAll("button")].map((b) => [b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44));
       assert.deepEqual(small, [], "targets under 44 px");
       await noOverflow(page);

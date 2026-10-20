@@ -37,7 +37,7 @@ await suite("crash", [
     name: "without the crash flag the app renders normally and no crash screen exists",
     fn: async ({ page }) => {
       await page.goto(APP, { waitUntil: "domcontentloaded" });
-      await page.getByRole("heading", { name: "Open a building model" }).waitFor({ timeout: 30000 });
+      await page.getByRole("heading", { name: /^(Open a building model|No projects yet)$/ }).waitFor({ timeout: 30000 });
       assert.equal(await page.getByTestId("crash-screen").count(), 0);
     },
   },

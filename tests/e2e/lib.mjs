@@ -49,6 +49,8 @@ const DEFAULT_PROJECTS = ["desktop", "iphone13", "ipad-mini"];
 export const isTouch = (project) => project !== "desktop";
 export const isPhone = (project) => project === "iphone13" || project === "pixel7" || project === "small320";
 
+// ARGUS_TIMEOUT_SCALE=3 gives every wait and every case three times as long, for a busy runner.
+export const TIME_SCALE = Number(process.env.ARGUS_TIMEOUT_SCALE) || 1;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
@@ -56,20 +58,20 @@ export { sleep };
 
 export const markCount = (page, name) => page.evaluate((n) => performance.getEntriesByName(n).length, name);
 
-export async function waitForMark(page, name, above = 0, timeout = 60000) {
+export async function waitForMark(page, name, above = 0, timeout = 60000 * TIME_SCALE) {
   await page.waitForFunction(([n, a]) => performance.getEntriesByName(n).length > a, [name, above], { timeout });
 }
 
 // The viewer engine is up (empty state is interactive).
 export async function openApp(page, { query = "", hash = "" } = {}) {
   await page.goto(`${APP}${query}${hash}`, { waitUntil: "domcontentloaded" });
-  await waitForMark(page, "viewer-ready", 0, 60000);
+  await waitForMark(page, "viewer-ready", 0, 60000 * TIME_SCALE);
 }
 
 // Runs `action`, then waits until the viewer reports one more model on screen
 // ("model-shown" mark) and the loading overlay is gone. Works on phones, where
 // the sidebar rows are inside a closed drawer.
-export async function waitForModelAfter(page, action, timeout = 60000) {
+export async function waitForModelAfter(page, action, timeout = 60000 * TIME_SCALE) {
   const before = await markCount(page, "model-shown");
   await action();
   await waitForMark(page, "model-shown", before, timeout);
@@ -209,7 +211,7 @@ export const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 
 // ------------------------------------------------------------------- runner
 
-const timeoutOf = (c) => c.timeout ?? 90000;
+const timeoutOf = (c) => (c.timeout ?? 90000) * TIME_SCALE;
 
 function allowed(list, text) {
   return list.some((p) => (p instanceof RegExp ? p.test(text) : text.includes(p)));

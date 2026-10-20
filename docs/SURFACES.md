@@ -22,7 +22,7 @@ same pixels, header + toolbar already 25 percent of a 568 px screen.
 | Floating: zoom, undo/redo, compass, plane switch, details FAB | 15-17 | 44 px | corners |
 
 ## Rules
-1. **One sheet.** `sheet` slot: menu, models, details, cases, views, share, help. Opening one replaces the open one (existing exit animation). Only `src/ui/surfaces.js` holds this state; `useSurfaceFlag(id)` is the only way a component opens one.
+1. **One sheet.** `sheet` slot: menu, models, details, cases, views, share, help, measure (the Measure menu). Opening one replaces the open one (existing exit animation). Only `src/ui/surfaces.js` holds this state; `useSurfaceFlag(id)` is the only way a component opens one.
 2. **One tool.** `tool` slot: measure, tag, hide-category, section-move, camera-clip (annotate joins by `useSurfaceMirror`). Arming one disarms the others, and closes any sheet. Opening a sheet disarms the tool. Stricter than "coexist at peek": the details sheet already has hidden/half/full plus a FAB, a third "peek" height would be one more state to keep and the tool pill is the one compact bar.
 3. **Overlays** (context menu, measure popups, confirm dialogs) are modal and may sit above a sheet. They do not close it.
 4. **Height budget.** Modal bottom sheets stop at 60 percent of the canvas (`--sheet-max`), content scrolls; details opens at half (at most ~60 percent of the canvas) and goes full only when asked. Full hides the floating controls instead of overlapping them. The menu drawer is a navigation drawer (85 vw, full height, backdrop): exempt from the cap, still one at a time. Drag the head down to dismiss; tap the scrim, the canvas or press Esc/Back to close.

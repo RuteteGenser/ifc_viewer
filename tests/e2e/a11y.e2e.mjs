@@ -305,6 +305,7 @@ suite("a11y", [
       await settle(page, 600);
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Toggle measure mode" }).click();
+      await page.getByRole("menuitemradio", { name: /Distance/ }).click({ timeout: 1500 }).catch(() => {}); // a phone's icon opens the menu first
       await setFile(page, fx("not-ifc.txt"));
       await waitForBanner(page, /not an \.ifc/, 15000);
       await page.keyboard.press("Shift"); // keyboard modality: programmatic focus then matches :focus-visible

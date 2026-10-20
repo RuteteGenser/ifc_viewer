@@ -3,15 +3,7 @@ import CameraClipControl from "./CameraClipControl";
 import Tooltip from "./Tooltip";
 import SearchBar from "./SearchBar";
 import ShortcutsHelp from "./ShortcutsHelp";
-
-function MeasureIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
-      <rect x="3" y="9" width="18" height="6" rx="1" transform="rotate(-30 12 12)" />
-      <path d="M8.5 12.6 L9.7 10.6 M11.3 14.2 L12.5 12.2 M14 15.8 L15.2 13.8" transform="rotate(-30 12 12)" />
-    </svg>
-  );
-}
+import MeasureMenu from "./MeasureMenu";
 
 function TagIcon() {
   return (
@@ -66,6 +58,8 @@ export default function Toolbar({
   onResetView,
   measureModeActive,
   onToggleMeasureMode,
+  measureTool,
+  onChooseMeasureTool,
   cameraClipEnabled,
   onSetCameraClipEnabled,
   tagToolActive,
@@ -119,18 +113,14 @@ export default function Toolbar({
           <span className="top-bar__home-text">Home</span>
         </button>
       </Tooltip>
-      <Tooltip description={locked("Measure: click two points")} hotkey="M">
-        <button
-          type="button"
-          className={`top-bar__icon-button${measureModeActive ? " top-bar__icon-button--active" : ""}${hasModels ? "" : " is-blocked"}`}
-          onClick={hasModels ? onToggleMeasureMode : onBlocked}
-          aria-disabled={!hasModels}
-          aria-label="Toggle measure mode"
-        >
-          <MeasureIcon />
-          <span className="top-bar__caption" aria-hidden="true">Measure</span>
-        </button>
-      </Tooltip>
+      <MeasureMenu
+        hasModels={hasModels}
+        active={measureModeActive}
+        tool={measureTool}
+        onToggle={onToggleMeasureMode}
+        onChoose={onChooseMeasureTool}
+        onBlocked={onBlocked}
+      />
       <CameraClipControl
         cameraClipEnabled={cameraClipEnabled}
         onSetCameraClipEnabled={onSetCameraClipEnabled}

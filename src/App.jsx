@@ -132,6 +132,8 @@ function App() {
     clearSelection,
     measurements,
     measureModeActive,
+    measureTool,
+    setMeasureTool,
     toggleMeasureMode,
     removeMeasurement,
     setMeasurementLeg,
@@ -514,6 +516,7 @@ function App() {
     setPanelOpen(false);
     setPanelExpanded(false);
   }, [measureModeActive, toggleMeasureMode]);
+  const chooseMeasureTool = useCallback((id) => setMeasureTool(id, true), [setMeasureTool]);
   const startTagging = useCallback(() => {
     if (!tagToolActive) toggleTagTool();
     setPanelOpen(false);
@@ -678,6 +681,8 @@ function App() {
             onResetView={resetView}
             measureModeActive={measureModeActive}
             onToggleMeasureMode={toggleMeasureMode}
+            measureTool={measureTool}
+            onChooseMeasureTool={chooseMeasureTool}
             cameraClipEnabled={cameraClipEnabled}
             onSetCameraClipEnabled={setCameraClipEnabled}
             tagToolActive={tagToolActive}
@@ -702,7 +707,7 @@ function App() {
           <ViewTools views={viewFeatures} spaceControl={spaceControl} onSaveSnapshot={handleSaveSnapshot} onOpenCases={openCases} />
           <Hud>
             {surfaces.phone && banner}
-            <ToolHint tool={hintTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
+            <ToolHint tool={hintTool === "measure" && measureTool === "clearance" ? "clearance" : hintTool} onDone={exitArmedTool} plane={clipPlanes.length > 1 ? (clipPlanes.find((p) => p.active)?.index ?? 0) + 1 : 0} />
             <CameraClipPanel
               enabled={cameraClipEnabled}
               distance={cameraClipDistance}

@@ -8,8 +8,8 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 export const PHONE_QUERY = "(max-width: 768px), (max-height: 500px) and (pointer: coarse)";
-export const SHEETS = ["menu", "models", "details", "cases", "views", "share", "help"];
-const POPOVERS = ["views", "share"];
+export const SHEETS = ["menu", "models", "details", "cases", "views", "share", "help", "measure"];
+const POPOVERS = ["views", "share", "measure"];
 const BOTTOM_SHEETS = ["models", "cases", "help"]; // toasts sit above these
 
 export const initialState = { sheets: [], snap: {} };

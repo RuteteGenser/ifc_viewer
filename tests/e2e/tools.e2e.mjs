@@ -12,6 +12,9 @@ async function pointAt(page, project, fx, fy) {
 }
 async function startMeasure(page) {
   await stableClick(toggleMeasure(page));
+  // A phone's icon opens the Measure menu; Distance is the tool these cases are about.
+  const distance = page.getByRole("menuitemradio", { name: /Distance/ });
+  if (await distance.isVisible().catch(() => false)) await distance.click();
   await page.locator(".tool-hint").waitFor({ state: "visible" });
 }
 const views = (page) => page.getByRole("dialog", { name: "Views and levels" });

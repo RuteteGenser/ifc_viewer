@@ -76,6 +76,8 @@ await suite("library-folders", [
       await page.getByRole("button", { name: /More actions for .*alpha\.ifc/ }).click();
       await page.getByRole("button", { name: "Move to..." }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Top level" }).click();
+      await page.getByTestId("proj-empty").waitFor();
+      await page.getByRole("button", { name: /^.?\s*Projects$/ }).first().click();
       await page.getByRole("button", { name: "Open project Unsorted, 1 model" }).waitFor();
       assert.equal((await models(page))[0].folderId, null);
     },

@@ -112,7 +112,8 @@ await suite("projects", [
       const saved = await pollFor("the file in the project", async () => (await models(page)).find((m) => m.folderId === f.id));
       assert.equal(saved.name, "m-ifc4.ifc");
       assert.equal((await models(page)).length, 1);
-      await page.locator(".header").getByText("Harbour Street").waitFor();
+      // on a phone the project between "Projects" and the model gives way in the header
+      if (project === "desktop") await page.locator(".header").getByText("Harbour Street").waitFor();
       await page.locator(".header").getByText("m-ifc4.ifc").waitFor();
       await shot(page, project, "model-open");
       await openApp(page);

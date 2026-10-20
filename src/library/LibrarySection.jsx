@@ -343,7 +343,7 @@ export default function LibrarySection({ variant = "empty" }) {
         </p>
       ) : (
         <>
-          {result.total > 1 && <OrganizeBar id={`lib-org-${variant}`} state={result.state} setState={setState} result={result} canOpenNow={canOpenNow} searchTotal={own.length} />}
+          {result.total > 1 && <OrganizeBar id={`lib-org-${variant}`} state={result.state} setState={setState} result={result} canOpenNow={canOpenNow} searchTotal={result.total} />}
           <ul className="lib-list" ref={listRef} id={listId} aria-labelledby={headingId}>
             {access && <li className="lib__group" aria-hidden="true">{t("lib.samples")}</li>}
             {result.builtIn && <SampleItem />}

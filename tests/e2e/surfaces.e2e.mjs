@@ -7,7 +7,6 @@ const PHONES = ["iphone13", "pixel7", "small320"];
 const ALL = [...PHONES, "desktop"];
 const click = (loc) => loc.dispatchEvent("click"); // bypasses hit-testing: what a shortcut or assistive tech does
 
-const chip = (page) => page.getByRole("button", { name: /^\d+ models?$/ });
 const views = (page) => page.getByRole("button", { name: "Views and levels" });
 const share = (page) => page.getByRole("button", { name: "Save image or copy view link" });
 const helpBtn = (page) => page.getByRole("button", { name: "Help: how to move around" });
@@ -16,7 +15,8 @@ async function openHelp(page) {
   if (!(await helpBtn(page).count())) await click(menu(page));
   await click(helpBtn(page));
 }
-const menu = (page) => page.getByRole("button", { name: "Open menu" });
+const menu = (page) => page.getByRole("button", { name: /^(Open|Close) menu$/ });
+const casesBtn = (page) => page.getByRole("button", { name: /^Cases/ });
 const measure = (page) => page.getByRole("button", { name: "Toggle measure mode" });
 const tag = (page) => page.getByRole("button", { name: "Toggle tag tool" });
 const clip = (page) => page.getByRole("button", { name: "Toggle camera clip" });
@@ -100,8 +100,8 @@ await suite("surfaces", [
       await ready(page, skip);
       await select(page, project);
       assert.deepEqual(await sheetsAre(page, ["details"]), ["details"], "a selection opens the details sheet");
-      await click(chip(page));
-      assert.deepEqual(await sheetsAre(page, ["models"]), ["models"], "Models replaces details");
+      await click(menu(page));
+      assert.deepEqual(await sheetsAre(page, ["menu"]), ["menu"], "the menu replaces details");
       await click(views(page));
       assert.deepEqual(await sheetsAre(page, ["views"]), ["views"]);
       await click(share(page));
@@ -110,10 +110,8 @@ await suite("surfaces", [
       assert.deepEqual(await sheetsAre(page, ["help"]), ["help"]);
       await click(menu(page));
       assert.deepEqual(await sheetsAre(page, ["menu"]), ["menu"]);
-      await click(chip(page));
-      assert.deepEqual(await sheetsAre(page, ["models"]), ["models"]);
-      await click(page.getByRole("dialog", { name: "Models" }).getByRole("button", { name: "Cases", exact: true }));
-      assert.deepEqual(await sheetsAre(page, ["cases"]), ["cases"], "Cases replaces Models");
+      await click(casesBtn(page));
+      assert.deepEqual(await sheetsAre(page, ["cases"]), ["cases"], "Cases replaces the menu");
       assert.equal(await page.evaluate(() => window.__surfaces?.violations ?? 0), 0, "the test-build assertion saw two sheets at once");
       const dialogs = await page.evaluate(() =>
         [...document.querySelectorAll('[role="dialog"], [role="menu"], aside[aria-label="Details"]')]
@@ -134,10 +132,9 @@ await suite("surfaces", [
       await select(page, project);
       await settleSheets(page);
       assert.ok((await covered("details")) <= 0.6 + 0.01, `details half covers ${(await covered("details")).toFixed(2)} of the canvas`);
-      await click(chip(page));
+      await click(menu(page));
       await settleSheets(page);
-      assert.ok((await covered("models")) <= 0.61, `Models covers ${(await covered("models")).toFixed(2)}`);
-      await click(page.getByRole("dialog", { name: "Models" }).getByRole("button", { name: "Cases", exact: true }));
+      await click(casesBtn(page));
       await settleSheets(page);
       assert.ok((await covered("cases")) <= 0.61, `Cases covers ${(await covered("cases")).toFixed(2)}`);
       await page.keyboard.press("Escape");
@@ -165,9 +162,9 @@ await suite("surfaces", [
       await sleep(300);
       assert.ok(!(await armed(tag(page))), "Camera clip disarmed Tag");
       assert.equal(await page.locator(".tool-hint").count(), 0, "one compact bar: no tool pill beside the slider");
-      await click(chip(page));
+      await click(menu(page));
       await sleep(400);
-      assert.deepEqual(await sheetsAre(page, ["models"]), ["models"]);
+      assert.deepEqual(await sheetsAre(page, ["menu"]), ["menu"]);
       assert.equal(await page.locator(".camera-clip-popover").count(), 0, "a sheet disarmed the tool");
       await click(measure(page));
       await sleep(400);
@@ -222,15 +219,15 @@ await suite("surfaces", [
       await ready(page, skip);
       await page.touchscreen.tap(8, 8); // the first gesture arms the guard
       await sleep(300);
-      await click(chip(page));
-      assert.deepEqual(await sheetsAre(page, ["models"]), ["models"]);
+      await click(menu(page));
+      assert.deepEqual(await sheetsAre(page, ["menu"]), ["menu"]);
       await page.keyboard.press("Escape");
-      assert.deepEqual(await sheetsAre(page, []), [], "Esc closed Models");
+      assert.deepEqual(await sheetsAre(page, []), [], "Esc closed the menu");
       // Back with a sheet open closes it, no question
-      await click(chip(page));
+      await click(menu(page));
       await settleSheets(page);
       await page.evaluate(() => history.back());
-      assert.deepEqual(await sheetsAre(page, []), [], "Back closed Models");
+      assert.deepEqual(await sheetsAre(page, []), [], "Back closed the menu");
       assert.equal(await page.getByRole("dialog", { name: "Leave the viewer?" }).count(), 0, "closing a sheet asked about leaving");
       // Back with an armed tool disarms it, no question
       await click(measure(page));
@@ -267,29 +264,6 @@ await suite("surfaces", [
       await tapModel(page, project); // the first measure point: the tool's tap, not a dismissal
       await sleep(600);
       assert.ok(await armed(measure(page)), "a tap on the model in a tool is the tool's, it stays armed");
-    },
-  },
-  {
-    name: "phone: dragging the head of the Models sheet down dismisses it; a short drag springs back",
-    projects: ["iphone13"],
-    fn: async ({ page, skip }) => {
-      await ready(page, skip);
-      await click(chip(page));
-      await settleSheets(page);
-      const drag = (dy) =>
-        page.evaluate(async (dy) => {
-          const head = document.querySelector(".models-sheet__head");
-          const r = head.getBoundingClientRect();
-          const y0 = r.y + r.height / 2;
-          const fire = (type, y) => head.dispatchEvent(new PointerEvent(type, { pointerType: "touch", pointerId: 7, bubbles: true, cancelable: true, clientX: r.x + 40, clientY: y }));
-          fire("pointerdown", y0);
-          for (let i = 1; i <= 6; i++) { fire("pointermove", y0 + (dy * i) / 6); await new Promise((r2) => setTimeout(r2, 16)); }
-          fire("pointerup", y0 + dy);
-        }, dy);
-      await drag(30);
-      assert.deepEqual(await sheetsAre(page, ["models"]), ["models"], "a 30 px drag must not dismiss");
-      await drag(160);
-      assert.deepEqual(await sheetsAre(page, []), [], "a 160 px drag dismisses");
     },
   },
   {

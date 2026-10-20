@@ -8,6 +8,9 @@ import { suite, openApp, loadSample, requireHook, canvasBox, stableClick, isTouc
 
 async function twoPoints(page, project) {
   await stableClick(page.getByRole("button", { name: "Toggle measure mode" }));
+  // A phone's icon opens the Measure menu; Distance is the tool these cases are about.
+  const distance = page.getByRole("menuitemradio", { name: /Distance/ });
+  if (await distance.isVisible().catch(() => false)) await distance.click();
   await page.locator(".tool-hint").waitFor({ state: "visible" });
   const b = await canvasBox(page);
   for (const [fx, fy] of [[0.4, 0.5], [0.55, 0.62]]) {

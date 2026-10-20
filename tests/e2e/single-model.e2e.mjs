@@ -1,10 +1,11 @@
 // Flow 9: one model at a time by default. Opening replaces what is loaded; "Add to view" /
-// "Add another model" / Shift-drop add. The Models chip and sheet remove one. Read-only against
-// the real library (it opens existing models, never uploads or deletes).
+// "Add another model" / Shift-drop add. The sidebar (menu drawer on a phone) removes one. Library cases use throwaway models, so
+// ARGUS_URL must point at a scratch backend.
 // Emulated touch is not a real phone: these check layout, sizes and the logic, not iOS Safari itself.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { suite, openApp, loadFile, loadSample, setFile, waitForModelAfter, waitForBanner, canvasStats, fx, DEMO_FILE, api, devices } from "./lib.mjs";
+import { suite, openApp, loadFile, loadSample, setFile, waitForModelAfter, waitForBanner, canvasStats, fx, DEMO_FILE, api, devices, createThrowaway, removeThrowaway } from "./lib.mjs";
+import { buildIfc } from "../fixtures/generate.mjs";
 
 const stats = (page) => page.evaluate(() => window.__argusLoadStats());
 // What the viewer holds, read from the sidebar list (in the DOM on every layout) and the engine counters.
@@ -12,30 +13,25 @@ const view = (page) =>
   page.evaluate(() => ({
     names: [...document.querySelectorAll(".model-list .model-row__name")].map((e) => e.textContent.trim()),
     stats: window.__argusLoadStats(),
-    chip: document.querySelector(".models-chip")?.textContent.trim() ?? null,
   }));
 const expectModels = async (page, names) => {
   const v = await view(page);
   assert.deepEqual(v.names.slice().sort(), names.slice().sort(), `loaded: ${JSON.stringify(v)}`);
   assert.deepEqual({ engine: v.stats.engine, open: v.stats.open }, { engine: names.length, open: names.length }, `nothing leaked: ${JSON.stringify(v.stats)}`);
 };
-const libraryModel = async (pattern) => (await (await api.get("/models")).json()).find((m) => pattern.test(m.name));
+const makeIfc = (tag) => buildIfc({ schema: "IFC4", unit: "m", name: tag, storeys: [{ name: "Ground", elevation: 0 }], wall: [4, 0.2, 2.8] });
+// Library models are loose in the scratch library: they sit in the virtual Unsorted project.
+const openUnsorted = async (page) => page.getByRole("button", { name: /^Open project Unsorted/ }).click();
 const menuIfNeeded = async (page) => {
   const burger = page.getByRole("button", { name: "Open menu" });
   if ((await burger.isVisible()) && !(await page.locator(".sidebar--open").count())) await burger.click();
 };
-// "Add another model" through the real UI: the Models sheet where the chip is shown, else the sidebar button.
+// "Add another model" through the real UI: the sidebar button (in the menu drawer on a phone).
 async function addFiles(page, paths) {
   await waitForModelAfter(page, async () => {
-    const chip = page.locator(".models-chip");
     const chooser = page.waitForEvent("filechooser", { timeout: 10000 });
-    if (await chip.isVisible()) {
-      await chip.click();
-      await page.getByRole("dialog", { name: "Models" }).getByRole("button", { name: "Add another model" }).click();
-    } else {
-      await menuIfNeeded(page);
-      await page.getByRole("button", { name: "Add another model" }).click();
-    }
+    await menuIfNeeded(page);
+    await page.getByRole("button", { name: "Add another model" }).click();
     await (await chooser).setFiles(paths);
   });
 }
@@ -64,21 +60,27 @@ const names = { A: "m-ifc4", B: "mm-ifc2x3", C: "feet-ifc4", demo: "demo-buildin
 
 await suite("single-model", [
   {
-    name: "sample, then a library model: the scene holds exactly one model",
+    name: "sample, then a library model from its project page: the scene holds exactly one model",
     timeout: 120000,
-    fn: async ({ page, project }) => {
-      const lib = await libraryModel(/FZK/);
-      assert.ok(lib, "the library has the FZK model");
-      await openApp(page);
-      await loadSample(page);
-      await expectModels(page, ["Sample building"]);
-      await menuIfNeeded(page);
-      await waitForModelAfter(page, () => page.getByRole("button", { name: `Open ${lib.name}`, exact: true }).click());
-      const v = await view(page);
-      assert.equal(v.names.length, 1, JSON.stringify(v));
-      assert.match(v.names[0], /FZK/);
-      assert.equal(v.stats.engine, 1, "the sample was disposed");
-      assert.ok((await canvasStats(page)).variance > 100, "the new model renders");
+    fn: async ({ page }) => {
+      const lib = await createThrowaway(makeIfc);
+      try {
+        await openApp(page);
+        await loadSample(page);
+        await expectModels(page, ["Sample building"]);
+        await menuIfNeeded(page);
+        await page.getByRole("button", { name: "Remove Sample building" }).click();
+        await page.getByRole("heading", { name: "No projects yet" }).or(page.getByRole("heading", { name: "Projects", level: 1 })).first().waitFor();
+        await openUnsorted(page);
+        await waitForModelAfter(page, () => page.getByRole("button", { name: `Open ${lib.name}`, exact: true }).click());
+        const v = await view(page);
+        assert.equal(v.names.length, 1, JSON.stringify(v));
+        assert.equal(v.names[0], lib.name.replace(/\.ifc$/, ""));
+        assert.equal(v.stats.engine, 1, "the sample was disposed");
+        assert.ok((await canvasStats(page)).variance > 100, "the new model renders");
+      } finally {
+        await removeThrowaway(lib);
+      }
     },
   },
   {
@@ -107,49 +109,28 @@ await suite("single-model", [
     },
   },
   {
-    name: "Add to view in a library row's More menu gives two models; the chip shows the count",
-    timeout: 120000,
-    fn: async ({ page, project }) => {
-      const lib = await libraryModel(/FZK/);
-      await openApp(page);
-      await loadSample(page);
-      const chip = page.locator(".models-chip");
-      if (project === "desktop") assert.equal(await chip.count(), 0, "desktop: no chip while only one model is loaded");
-      else assert.equal((await chip.innerText()).trim(), "1 model");
-      await menuIfNeeded(page);
-      await page.getByRole("button", { name: `More actions for ${lib.name}` }).click();
-      assert.equal(await page.getByRole("button", { name: "Open", exact: true }).count(), 1, "Open sits next to Add to view");
-      await waitForModelAfter(page, () => page.getByRole("button", { name: "Add to view", exact: true }).click());
-      const v = await view(page);
-      assert.equal(v.names.length, 2, JSON.stringify(v));
-      assert.equal(v.stats.engine, 2);
-      assert.equal(v.chip, "2 models");
-      assert.ok(await chip.isVisible(), "the chip is visible with two models on every layout");
-    },
-  },
-  {
-    name: "a loaded library row shows Open, has no Add to view, and tapping it changes nothing",
-    timeout: 120000,
+    name: "Open all in a project loads every model of it together",
+    timeout: 180000,
+    projects: ["desktop", "iphone13"],
     fn: async ({ page }) => {
-      const lib = await libraryModel(/FZK/);
-      await openApp(page);
-      await loadSample(page);
-      await menuIfNeeded(page);
-      await waitForModelAfter(page, () => page.getByRole("button", { name: `Open ${lib.name}`, exact: true }).click());
-      await menuIfNeeded(page);
-      const row = page.getByRole("button", { name: `${lib.name}, already open` });
-      await row.waitFor();
-      assert.match(await row.innerText(), /Open/);
-      await row.click();
-      await page.waitForTimeout(500);
-      assert.equal((await view(page)).names.length, 1);
-      await menuIfNeeded(page);
-      await page.getByRole("button", { name: `More actions for ${lib.name}` }).click();
-      assert.equal(await page.getByRole("button", { name: "Add to view", exact: true }).count(), 0);
+      const one = await createThrowaway(makeIfc);
+      const two = await createThrowaway(makeIfc);
+      try {
+        await openApp(page);
+        await openUnsorted(page);
+        await page.getByRole("button", { name: "Open all" }).waitFor();
+        await waitForModelAfter(page, () => page.getByRole("button", { name: "Open all" }).click());
+        await page.waitForFunction(() => document.querySelectorAll(".model-list .model-row__name").length >= 2, null, { timeout: 60000 });
+        const v = await view(page);
+        assert.ok(v.names.length >= 2 && v.stats.engine === v.names.length, JSON.stringify(v));
+      } finally {
+        await removeThrowaway(one);
+        await removeThrowaway(two);
+      }
     },
   },
   {
-    name: "Add another model adds; removing through the Models sheet keeps the other and ends in the empty state",
+    name: "Add another model adds; removing in the sidebar keeps the other and ends in the project browser",
     timeout: 150000,
     fn: async ({ page, project }) => {
       await openApp(page);
@@ -159,23 +140,19 @@ await suite("single-model", [
       // the first-time notice
       const notice = page.locator(".multi-notice");
       await notice.waitFor({ timeout: 5000 });
-      assert.match(await notice.innerText(), /2 models are loaded together\. Use Models to remove one\./);
+      assert.match(await notice.innerText(), /2 models are loaded together\. Open the menu to remove one\./);
       await notice.getByRole("button", { name: "Dismiss" }).click();
       assert.equal(await notice.count(), 0);
+      assert.equal(await page.locator(".models-chip").count(), 0, "no Models chip in the header");
 
-      await page.locator(".models-chip").click();
-      const sheet = page.getByRole("dialog", { name: "Models" });
-      await sheet.waitFor();
-      await sheet.getByRole("button", { name: `Remove ${names.A}` }).click();
+      await menuIfNeeded(page);
+      await page.getByRole("button", { name: `Remove ${names.A}` }).click();
       await expectModels(page, [names.B]);
-      assert.ok(await sheet.isVisible(), "the sheet stays while a model is left");
-      // one left: no "Remove all" duplicate
-      assert.equal(await sheet.getByRole("button", { name: "Remove all" }).count(), 0);
-      await sheet.getByRole("button", { name: `Remove ${names.B}` }).click();
-      await sheet.waitFor({ state: "detached" });
-      await page.getByRole("heading", { name: "Open a building model" }).waitFor();
+      // one left: no "Remove all"
+      assert.equal(await page.getByRole("button", { name: "Remove all" }).count(), 0);
+      await page.getByRole("button", { name: `Remove ${names.B}` }).click();
+      await page.getByRole("heading", { name: "No projects yet" }).waitFor();
       assert.deepEqual((await stats(page)), { engine: 0, open: 0, queued: 0 });
-      await page.getByRole("heading", { name: "My models" }).first().waitFor();
       // the notice is once per session: two models again, no second notice
       await loadFile(page, A);
       await addFiles(page, C);
@@ -184,15 +161,15 @@ await suite("single-model", [
     },
   },
   {
-    name: "Remove all in the Models sheet",
+    name: "Remove all in the sidebar",
     fn: async ({ page }) => {
       await openApp(page);
       await loadFile(page, A);
       await addFiles(page, [B, C]);
       await expectModels(page, [names.A, names.B, names.C]);
-      await page.locator(".models-chip").click();
-      await page.getByRole("dialog", { name: "Models" }).getByRole("button", { name: "Remove all" }).click();
-      await page.getByRole("heading", { name: "Open a building model" }).waitFor();
+      await menuIfNeeded(page);
+      await page.getByRole("button", { name: "Remove all" }).click();
+      await page.getByRole("heading", { name: "No projects yet" }).waitFor();
       assert.deepEqual(await stats(page), { engine: 0, open: 0, queued: 0 });
     },
   },
@@ -275,57 +252,48 @@ await suite("single-model", [
     },
   },
   {
-    name: "no horizontal overflow and 44 px targets with the Models sheet open",
+    name: "phones and tablets: the header has no chip, stays inside the screen and keeps 44 px targets with two models",
     projects: ["iphone13", "ipad-mini"],
     timeout: 150000,
     fn: async ({ page }) => {
       await openApp(page);
       await loadFile(page, A);
       await addFiles(page, B);
-      const chip = page.locator(".models-chip");
-      assert.ok((await chip.boundingBox()).height >= 44, "chip is 44 px high");
-      await chip.tap();
-      const sheet = page.getByRole("dialog", { name: "Models" });
-      await sheet.waitFor();
-      const sizes = await sheet.evaluate((el) =>
-        [...el.querySelectorAll("button, label")].map((b) => ({ t: (b.getAttribute("aria-label") || b.textContent).trim().slice(0, 30), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) })),
-      );
-      for (const s of sizes) assert.ok(s.h >= 44 && s.w >= 44, `target too small: ${JSON.stringify(s)}`);
-      const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, sheet: document.querySelector(".models-sheet").scrollWidth, sheetW: document.querySelector(".models-sheet").clientWidth }));
+      assert.equal(await page.locator(".models-chip").count(), 0);
+      const o = await page.evaluate(() => ({
+        sw: document.documentElement.scrollWidth,
+        iw: window.innerWidth,
+        small: [...document.querySelectorAll(".header button")].filter((b) => b.offsetParent).map((b) => [b.getAttribute("aria-label") || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
+        right: Math.max(...[...document.querySelectorAll(".header > *")].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right)),
+      }));
       assert.ok(o.sw <= o.iw, `page scrolls sideways: ${JSON.stringify(o)}`);
-      assert.ok(o.sheet <= o.sheetW, `sheet scrolls sideways: ${JSON.stringify(o)}`);
-      await sheet.getByRole("button", { name: `Remove ${names.A}` }).tap();
+      assert.deepEqual(o.small, [], "header targets under 44 px");
+      assert.ok(o.right <= o.iw + 1, `header runs off screen: ${JSON.stringify(o)}`);
+      await menuIfNeeded(page);
+      await page.getByRole("button", { name: `Remove ${names.A}` }).click();
       await expectModels(page, [names.B]);
     },
   },
   {
-    name: "small phones (iPhone SE, Pixel 7): chip, sheet, remove, no overflow (emulated touch)",
+    name: "small phones (iPhone SE, Pixel 7): header, drawer, remove all, no overflow (emulated touch)",
     projects: ["desktop"],
     timeout: 240000,
     fn: async ({ browser }) => {
       for (const name of ["iPhone SE", "Pixel 7"]) {
         const ctx = await browser.newContext({ ...devices[name], httpCredentials: { username: "ifc", password: "123" } });
+        await ctx.addInitScript(() => localStorage.setItem("argus.welcome.v1", "1"));
         const page = await ctx.newPage();
         try {
           await openApp(page);
           await loadFile(page, A);
-          assert.equal((await page.locator(".models-chip").innerText()).trim(), "1 model", name);
           await addFiles(page, B);
-          assert.equal((await page.locator(".models-chip").innerText()).trim(), "2 models", name);
-          const box = await page.locator(".models-chip").boundingBox();
-          assert.ok(box.height >= 44, `${name}: chip height ${box.height}`);
-          const head = await page.evaluate(() => ({ brand: document.querySelector(".header__brand").getBoundingClientRect().right, chip: document.querySelector(".models-chip").getBoundingClientRect().left, iw: innerWidth, chipRight: document.querySelector(".models-chip").getBoundingClientRect().right }));
-          assert.ok(head.chip >= head.brand && head.chipRight <= head.iw, `${name}: chip placement ${JSON.stringify(head)}`);
-          await page.locator(".models-chip").tap();
-          const sheet = page.getByRole("dialog", { name: "Models" });
-          await sheet.waitFor();
-          for (const b of await sheet.locator("button, label").all()) {
-            const r = await b.boundingBox();
-            assert.ok(r.height >= 43.9 && r.width >= 43.9, `${name}: small target ${await b.innerText()} ${JSON.stringify(r)}`);
-          }
+          assert.equal(await page.locator(".models-chip").count(), 0, name);
+          const head = await page.evaluate(() => ({ iw: innerWidth, right: Math.max(...[...document.querySelectorAll(".header > *")].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right)), small: [...document.querySelectorAll(".header button")].filter((b) => b.offsetParent && b.getBoundingClientRect().height < 43.9).length }));
+          assert.ok(head.right <= head.iw + 1 && head.small === 0, `${name}: header ${JSON.stringify(head)}`);
           assert.ok((await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)), `${name}: horizontal overflow`);
-          await sheet.getByRole("button", { name: "Remove all" }).tap();
-          await page.getByRole("heading", { name: "Open a building model" }).waitFor();
+          await menuIfNeeded(page);
+          await page.getByRole("button", { name: "Remove all" }).tap();
+          await page.getByRole("heading", { name: "No projects yet" }).waitFor();
         } finally {
           await ctx.close();
         }

@@ -92,6 +92,9 @@ suite("a11y", [
     projects: desktop,
     fn: async ({ page }) => {
       await openApp(page);
+      await page.getByRole("button", { name: "Try a dummy project" }).waitFor();
+      await tabTo(page, () => document.activeElement?.textContent === "Try a dummy project");
+      await page.keyboard.press("Enter");
       await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Open Sample building");
       await page.keyboard.press("Enter");
       await page.locator(".loading-overlay").waitFor({ state: "detached", timeout: 60000 }).catch(() => {});
@@ -183,17 +186,6 @@ suite("a11y", [
       await press(page, "Escape");
       await page.waitForFunction(() => !document.querySelector(".view-tools__panel"));
       assert.equal(await focusDesc(page), "button|Save image or copy view link");
-      // library More actions: Esc folds it away and focus stays on the More button
-      const more = page.getByRole("button", { name: /^More actions for AC20/ });
-      if (await more.count()) {
-        await more.focus();
-        await press(page, "Enter");
-        assert.equal(await more.getAttribute("aria-expanded"), "true");
-        await press(page, "Tab");
-        await press(page, "Escape");
-        assert.equal(await more.getAttribute("aria-expanded"), "false");
-        assert.ok(await more.evaluate((el) => el === document.activeElement), "focus returns to More");
-      }
     },
   },
   {
@@ -364,8 +356,6 @@ suite("a11y", [
         await page.keyboard.press("Escape");
         await page.locator(".element-panel__tab").nth(1).click();
         await scan("measurements tab");
-        await page.getByRole("button", { name: /^More actions for AC20/ }).click();
-        await scan("library actions");
         // a hover tooltip (hotkey chip)
         await page.getByRole("button", { name: "Toggle tag tool" }).hover();
         await scan("tooltip");

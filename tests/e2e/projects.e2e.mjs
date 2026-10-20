@@ -235,7 +235,7 @@ await suite("projects", [
   },
   {
     name: "Unsorted shows loose models last; Move to... puts one in a project",
-    projects: ["desktop", "iphone13"],
+    projects: ["desktop", "iphone13", "small320", "ipad-mini"],
     timeout: 120000,
     allowErrors: NOISE,
     fn: async ({ page, project }) => {
@@ -247,6 +247,8 @@ await suite("projects", [
       const cards = await page.locator(".proj-card").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
       assert.deepEqual(cards, ["Open project Target, 0 models", "Open project Unsorted, 1 model"], "Unsorted is last");
       await shot(page, project, "unsorted-browser");
+      await noOverflow(page);
+      assert.deepEqual(await smallTargets(page, ".proj"), [], "targets under 44 px");
       await page.getByRole("button", { name: "Open project Unsorted, 1 model" }).click();
       await page.getByRole("button", { name: "Open loose.ifc" }).waitFor();
       await page.getByRole("button", { name: "More actions for loose.ifc" }).click();

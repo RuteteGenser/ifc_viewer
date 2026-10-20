@@ -84,6 +84,15 @@
   border: 0;
   padding: 0;
 }
+/* On a phone the line is "Projects / model": the project in between gives way. */
+@media (max-width: 600px) {
+  .header__crumbs li:not(:first-child):not(:last-child) {
+    display: none;
+  }
+  .header__crumbs li:first-child {
+    flex: none;
+  }
+}
 button.header__crumb {
   min-height: 44px;
   padding: 0 4px;

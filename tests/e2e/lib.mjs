@@ -83,8 +83,11 @@ export async function settle(page, ms = 600) {
 }
 
 export async function loadSample(page) {
-  // The sample building is a row in the Samples list (the library's, or one built-in row without a library).
+  // The sample building lives in the dummy project (or is the one built-in row when there is no library).
+  const dummy = page.getByRole("button", { name: "Try a dummy project" });
   const row = page.getByRole("button", { name: "Open Sample building" });
+  await dummy.or(row).first().waitFor();
+  if (await dummy.isVisible()) await dummy.click();
   await waitForModelAfter(page, () => row.click());
 }
 

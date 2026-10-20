@@ -199,9 +199,9 @@ export default function CaseView({ caseId, viewer, library, modelKey, controller
               </div>
             )}
             <div className="cases__row">
-              <button type="button" className="cases__btn cases__btn--primary" onClick={async () => { await jump(snap); onAnnotate?.({ caseId, snapshotId: snap.id }); }}>{COPY.annotate}</button>
+              <button type="button" className="cases__btn cases__btn--primary cases__annotate" onClick={async () => { await jump(snap); onAnnotate?.({ caseId, snapshotId: snap.id }); }}>{COPY.annotate}</button>
             </div>
-            <div className="cases__row">
+            <div className="cases__row cases__row--quiet">
               <button type="button" className="cases__btn" disabled={index === 0} onClick={() => { save(moveSnapshot(c, snap.id, -1)); }}>{COPY.moveLeft}</button>
               <button type="button" className="cases__btn" disabled={index === snaps.length - 1} onClick={() => { save(moveSnapshot(c, snap.id, 1)); }}>{COPY.moveRight}</button>
               <button type="button" className="cases__btn cases__btn--danger" onClick={() => setConfirm("snapshot")}>{COPY.deleteSnapshot}</button>
@@ -210,7 +210,7 @@ export default function CaseView({ caseId, viewer, library, modelKey, controller
         </>
       )}
 
-      <div className="cases__row">
+      <div className="cases__row cases__row--quiet cases__row--foot">
         <button type="button" className="cases__btn" onClick={() => controller.duplicate(c.id).then((d) => { showToast("Duplicated"); onOpen(d.id); })}>{COPY.duplicate}</button>
         <button type="button" className="cases__btn cases__btn--danger" onClick={() => setConfirm("case")}>{COPY.deleteCase}</button>
       </div>

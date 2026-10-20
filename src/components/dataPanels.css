@@ -684,7 +684,7 @@
 .sb-chip--on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .sb-chip__n {
@@ -801,7 +801,7 @@
 /* The existing :hover rule out-ranks --active and left white text on ivory. */
 .search-bar__mode-toggle-btn--active:hover {
   background: var(--accent-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* A row with a copyable value copies when pressed anywhere, label included. */

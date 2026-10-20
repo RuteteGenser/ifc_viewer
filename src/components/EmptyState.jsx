@@ -11,9 +11,16 @@ export default function EmptyState({ onOpenFiles, onLoadSample }) {
   return (
     <div className="empty-state">
       <div className="empty-state__card" onClick={onOpenFiles}>
-        <svg className="empty-state__icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" aria-hidden="true">
-          <path d="M24 5 41 14v20L24 43 7 34V14L24 5Z" />
-          <path d="M7 14l17 9 17-9M24 23v20" />
+        {/* An abstract building in wireframe: three storeys, one cut by a section plane, and a height dimension. */}
+        <svg className="empty-state__art" viewBox="0 0 160 128" fill="none" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+          <path className="empty-state__art-hidden" d="M80 14v56M80 70 45.4 90M80 70l48.5 28" />
+          <path className="empty-state__art-cut" d="M80 42l48.5 28-34.6 20-48.5-28z" />
+          <path className="empty-state__art-line" d="M80 14l48.5 28-34.6 20L45.4 34z" />
+          <path className="empty-state__art-line" d="M45.4 34v56l48.5 28 34.6-20V42M93.9 62v56" />
+          <path className="empty-state__art-floor" d="M45.4 52.7l48.5 28 34.6-20M45.4 71.3l48.5 28 34.6-20" />
+          <path className="empty-state__art-dim" d="M140 48v56M136.5 46l7 4M136.5 102l7 4" />
+          <circle className="empty-state__art-node" cx="80" cy="42" r="2.2" />
+          <circle className="empty-state__art-node" cx="128.5" cy="70" r="2.2" />
         </svg>
         <h1 className="empty-state__title">Open a building model</h1>
         <p className="empty-state__text">View, section and measure IFC files. {library?.available ? "Your files stay on your device unless you save them to My models." : "Everything stays on your device."}</p>

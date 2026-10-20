@@ -5,8 +5,8 @@ import * as THREE from "three";
 
 export const PHONE_MAX_PLANES = 2;
 export const SHEET_MARGIN = 1.05; // 5 percent beyond the scene's cross-section
-// Plane 1 uses the accent, plane 2 a second distinct hue.
-export const PLANE_COLORS = [0x3b82f6, 0xf59e0b];
+// Plane 1 is a calm slate blue (reads on warm walls and red roofs), plane 2 the brand's ochre family.
+export const PLANE_COLORS = [0x3f6fb5, 0xb7722c];
 export const colorCss = (hex) => `#${hex.toString(16).padStart(6, "0")}`;
 // Fill opacity of the 3D sheet: lighter when idle, darker when it is the active one.
 // Single plane keeps the original faint look.

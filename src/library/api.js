@@ -3,6 +3,7 @@
 import { checkDownload, expectedSha } from "../reliability/integrity";
 import { withBackoff } from "../reliability/retry";
 import { t } from "../access/copy";
+import { forgetConverted } from "../ifc/convertedCache";
 
 const API = import.meta.env.VITE_LIBRARY_API || "/api";
 export const MAX_BYTES = 250 * 1024 * 1024;
@@ -180,6 +181,7 @@ export async function forgetModel(id) {
   if (!cache) return;
   await cache.delete(fileKey(id));
   await cache.delete(recordKey(id));
+  forgetConverted(id);
   const used = readUsed();
   delete used[id];
   writeUsed(used);

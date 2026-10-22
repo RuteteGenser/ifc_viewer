@@ -20,6 +20,7 @@ import {
 import { formatDimensionTag } from "../ifc/dimensionTagFormat";
 import { cueStep } from "../ifc/zoomCue";
 import { importIfcInWorker, releaseImporterMemory } from "../ifc/ifcImportClient";
+import { readConverted, writeConverted, dropConverted } from "../ifc/convertedCache";
 import { KIND, ImportError, classifyFailure, describeFailure, failureDetails, isRetryable, toImportError } from "../reliability/importErrors";
 import { isStaleBuild, refreshFailedAssets, registerOpenWork, reloadResuming, runningBuildId, startupIntent } from "../reliability/recovery";
 import { BACKOFF_MS, attemptText, sleep, stallLimitMs } from "../reliability/retry";
@@ -5807,9 +5808,25 @@ export function useIfcViewer() {
         const { wasm, webIfc } = pipeline.ifcLoader.settings; // see setupComponents.js
         // One attempt: a worker converts the file, the result goes to the
         // fragments worker. `fresh` skips the prewarmed worker.
+        let cacheTried = false;
         const runImport = async (fresh, allSchemas) => {
+          // A library model converted before: its fragments come from the device, the conversion is skipped.
+          // `cacheEntry` is only set for files whose id says they never change; a cached copy that fails to
+          // build is dropped and the file is converted as usual.
+          const intent = source.argusIntent;
+          const cacheEntry = intent?.type === "library" && intent.id && source.size ? { id: intent.id, size: source.size, settings: { ...webIfc, doubleSided: true } } : null;
+          const cachedJob = cacheEntry && !fresh && !cacheTried
+            ? (async () => {
+                const stored = await readConverted(cacheEntry);
+                if (!stored) return null;
+                const original = source instanceof Blob ? new Uint8Array(await source.arrayBuffer()) : source.slice();
+                return { fragments: stored, source: original };
+              })()
+            : null;
+          cacheTried = true;
           const input = source instanceof Blob ? { file: source } : { bytes: source.slice() };
-          const importJob = importIfcInWorker(input, {
+          const fromCache = cachedJob ? await cachedJob.catch(() => null) : null;
+          const importJob = fromCache ? { promise: Promise.resolve(fromCache), cancel() {} } : importIfcInWorker(input, {
             wasm: { path: wasm.path, absolute: wasm.absolute },
             webIfcSettings: { ...webIfc },
             doubleSidedMaterials: true,
@@ -5824,6 +5841,7 @@ export function useIfcViewer() {
           cancelImport = importJob.cancel;
           const loadPromise = importJob.promise.then(async ({ fragments, source: originalBytes }) => {
             sourceBytes = originalBytes;
+            const converted = fromCache ? null : cacheEntry && fragments.byteLength <= 80 * 1024 * 1024 ? fragments.slice() : null;
             setLoadingLabel(`Drawing ${shortName}…`);
             const core = pipeline.fragments.core; // read now: a restart replaces it
             core.settings.autoCoordinate = true;
@@ -5841,7 +5859,9 @@ export function useIfcViewer() {
               }, limit);
             });
             try {
-              return await Promise.race([building, hung]);
+              const built = await Promise.race([building, hung]);
+              if (converted) writeConverted(cacheEntry, converted);
+              return built;
             } finally {
               clearTimeout(timer);
             }
@@ -5853,6 +5873,11 @@ export function useIfcViewer() {
             // Given up (Cancel, the build watchdog): whatever the build makes is thrown away.
             if (building) discardModel(buildCore, modelId, building);
             building = null;
+            if (fromCache && cacheEntry) {
+              dropConverted(cacheEntry);
+              cacheTried = false;
+              throw Object.assign(new ImportError(KIND.WORKER_CRASHED, "The saved copy could not be built."), { fromCache: true });
+            }
             throw err;
           } finally {
             importJob.cancel(); // no-op once finished; stops an import that lost the race

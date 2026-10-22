@@ -291,3 +291,26 @@
     padding-top: 4px;
   }
 }
+
+/* Plan sheet on phones: the offer comes first and the whole thing is short enough to
+   reach Subscribe in about one scroll; the reassurance box moves below it. */
+@media (max-width: 600px) {
+  .acc-dialog--wide { display: flex; flex-direction: column; }
+  .acc-dialog--wide > * { order: 2; }
+  .acc-dialog--wide > .acc-dialog__head { order: 0; }
+  .acc-dialog--wide > .acc-note { order: 1; }
+  .acc-dialog--wide > .acc-plan { order: 1; margin-top: 4px; }
+  .acc-dialog--wide > .acc-links { order: 3; }
+  .acc-dialog--wide .acc-plan { padding: 14px; }
+  .acc-dialog--wide .acc-plan .acc-bullets { margin-bottom: 4px; font-size: 14px; }
+  .acc-dialog--wide .acc-plan .acc-bullets li { margin: 2px 0; }
+  .acc-dialog--wide .acc-plan .acc-price { font-size: 20px; margin: 0 0 6px; }
+  .acc-dialog--wide .acc-plan .acc-check { font-size: 13px; line-height: 1.35; padding: 4px 0; min-height: 44px; }
+  .acc-dialog--wide .acc-plan .acc-note { margin: 4px 0 8px; }
+}
+
+/* Camera clip on touch screens: the slider and Done are real touch targets, also in landscape. */
+@media (pointer: coarse) {
+  .camera-clip-popover input[type="range"] { min-height: 44px; }
+  .camera-clip-popover .camera-clip-popover__done { min-height: 44px; }
+}

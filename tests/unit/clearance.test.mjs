@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  boxCentre, boxFromChunks, viewDirections, nearestHit, rayExitDistance, clearanceValueText, clearanceLabelText,
+  boxCentre, boxFromChunks, viewDirections, faceDirections, nearestHit, rayExitDistance, clearanceValueText, clearanceLabelText,
   makeClearance, serializeClearance, deserializeClearance, clearanceSummary, DIRECTIONS,
 } from "../../src/ifc/clearance.js";
 
@@ -118,4 +118,34 @@ test("a clearance survives serialisation and rejects garbage", () => {
   assert.equal(deserializeClearance(bad), null);
   assert.deepEqual(DIRECTIONS, ["up", "down", "left", "right"]);
   assert.deepEqual(clearanceSummary(c), { id: "clearance-1", kind: "clearance", name: "Basic Wall", up: 1.5, down: 1.2, left: null, right: 0.3 });
+});
+
+test("faceDirections: on a wall facing +Z, up is vertical and left/right run along the wall", () => {
+  const d = faceDirections([0, 0, 1], [0, 0, -1], [0, 1, 0]);
+  vnear(d.up, [0, 1, 0]);
+  vnear(d.right, [1, 0, 0]);
+  vnear(d.left, [-1, 0, 0]);
+});
+
+test("faceDirections: a slanted wall (facing +X+Z) keeps all four directions in the wall plane, 90 degrees apart", () => {
+  const n = [Math.SQRT1_2, 0, Math.SQRT1_2];
+  const d = faceDirections(n, [-Math.SQRT1_2, 0, -Math.SQRT1_2], [0, 1, 0]);
+  for (const k of ["up", "down", "left", "right"]) assert.ok(Math.abs(d[k][0] * n[0] + d[k][1] * n[1] + d[k][2] * n[2]) < 1e-9);
+  assert.ok(Math.abs(d.up[0] * d.right[0] + d.up[1] * d.right[1] + d.up[2] * d.right[2]) < 1e-9);
+  vnear(d.right, [Math.SQRT1_2, 0, -Math.SQRT1_2]);
+});
+
+test("faceDirections: a wall seen from behind is flipped toward the camera, so left/right still match the screen", () => {
+  vnear(faceDirections([0, 0, -1], [0, 0, -1], [0, 1, 0]).right, [1, 0, 0]);
+});
+
+test("faceDirections: on a floor the camera's up decides", () => {
+  const d = faceDirections([0, 1, 0], [0, -1, 0], [0, 0, -1]);
+  vnear(d.up, [0, 0, -1]);
+  vnear(d.right, [1, 0, 0]);
+});
+
+test("faceDirections: no normal gives null", () => {
+  assert.equal(faceDirections(null), null);
+  assert.equal(faceDirections([0, 0, 0]), null);
 });

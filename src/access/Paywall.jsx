@@ -116,6 +116,7 @@ export default function Paywall({ hasWork }) {
               {limits.maxBytesTotal && <li>{t("paywall.bullet.bytes", { size: formatBytes(limits.maxBytesTotal) })}</li>}
               <li>{t("paywall.bullet.devices")}</li>
             </ul>
+            {access.session.billing.testMode && <p className="acc-note">{t("paywall.testNote")}</p>}
             <TermsConsent checked={terms} onChange={setTerms} extraDocs={["purchase-info", "withdrawal-form"]} />
             <label className="acc-check" data-testid="consent-waiver">
               <input type="checkbox" checked={waiver} onChange={(ev) => setWaiver(ev.target.checked)} />
@@ -125,7 +126,6 @@ export default function Paywall({ hasWork }) {
             <button type="button" className="acc-btn acc-btn--primary acc-btn--full" disabled={!terms || !waiver || !!busy} onClick={subscribe}>
               {busy === "pay" ? t("code.checking") : t("action.subscribe")}
             </button>
-            {access.session.billing.testMode && <p className="acc-note">{t("paywall.testNote")}</p>}
           </>
         ) : (
           <p className="acc-hint">{planError || plan === null ? t("paywall.noPlans") : ""}</p>

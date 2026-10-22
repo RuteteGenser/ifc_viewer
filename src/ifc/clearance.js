@@ -75,6 +75,25 @@ export function viewDirections(viewDir, camUp, up = MODEL_UP) {
   return { up: [...up], down: scale(up, -1), left: scale(right, -1), right };
 }
 
+// The four directions of a clearance from the tapped face: all four lie in the plane of that face, 90 degrees
+// apart. `normal` is the face's outward normal in the model's frame (flipped here to face the camera when
+// `viewDir` is given). Up is the model's vertical projected onto the face; on a floor or ceiling, where that
+// vanishes, the camera's up vector decides. Returns null when there is no usable normal.
+export function faceDirections(normal, viewDir = null, camUp = null, up = MODEL_UP) {
+  let n = normal ? unit(normal) : null;
+  if (!n) return null;
+  if (viewDir && dot(n, viewDir) > 0) n = scale(n, -1);
+  const inPlane = (v) => {
+    const k = dot(v, n);
+    return unit([v[0] - n[0] * k, v[1] - n[1] * k, v[2] - n[2] * k]);
+  };
+  const upVec = Math.abs(dot(n, up)) < 0.95 ? inPlane(up) : null;
+  const u = upVec || (camUp ? inPlane(camUp) : null) || inPlane(cross(n, [1, 0, 0])) || inPlane(cross(n, [0, 0, 1]));
+  if (!u) return null;
+  const right = unit(cross(u, n));
+  return { up: u, down: scale(u, -1), left: scale(right, -1), right };
+}
+
 // The nearest hit that is not the measured element itself, at least `epsilon` from the origin and within
 // `maxRange`. `hits` carry a numeric `distance`; `isSelf(hit)` says whether a hit belongs to the measured element.
 export function nearestHit(hits, { isSelf = () => false, epsilon = HIT_EPSILON, maxRange = Infinity } = {}) {

@@ -5,7 +5,7 @@
 import { visibleByHit, stepVisibility, onScreen } from "./anchorVisibility.js";
 import { stackUp } from "./labelStack.js";
 import {
-  DIRECTIONS, HIT_EPSILON, boxFromChunks, nearestHit, rayExitDistance, viewDirections, clearanceLabelText,
+  DIRECTIONS, HIT_EPSILON, boxFromChunks, nearestHit, rayExitDistance, viewDirections, faceDirections, clearanceLabelText,
   makeClearance, clearanceSummary, serializeClearance, deserializeClearance,
 } from "./clearance.js";
 
@@ -82,7 +82,9 @@ export function createClearanceScene(d) {
     const inv = modelsGroup.quaternion.clone().invert();
     const fwd = camera.getWorldDirection(new THREE.Vector3()).applyQuaternion(inv);
     const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).applyQuaternion(inv);
-    const dirs = viewDirections(fwd.toArray(), camUp.toArray());
+    // From the tapped face when its normal is known (all four rays in that face's plane), else from the camera.
+    const faceNormal = hit.normal ? hit.normal.clone().applyQuaternion(inv).toArray() : null;
+    const dirs = faceDirections(faceNormal, fwd.toArray(), camUp.toArray()) || viewDirections(fwd.toArray(), camUp.toArray());
     const sceneBox = d.sceneBox();
     const diag = sceneBox ? sceneBox.min.distanceTo(sceneBox.max) : 1000;
     const originWorld = modelsGroup.localToWorld(new THREE.Vector3(...centre));

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import CameraClipControl from "./CameraClipControl";
 import Tooltip from "./Tooltip";
 import SearchBar from "./SearchBar";
@@ -17,6 +18,24 @@ function TagIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12.5 3.5H5.5a2 2 0 0 0-2 2v7l10 10a2 2 0 0 0 2.8 0l6.2-6.2a2 2 0 0 0 0-2.8l-10-10Z" />
       <circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M20 20l-4.2-4.2" />
+    </svg>
+  );
+}
+
+function PanelIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 14h18" />
     </svg>
   );
 }
@@ -75,9 +94,18 @@ export default function Toolbar({
   isolatedKeys,
   onToggleIsolate,
   onClearIsolation,
+  panelOpen,
+  onTogglePanel,
 }) {
+  // Phones: the search box lives behind a button so the toolbar stays one row.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchWrapRef = useRef(null);
+  useEffect(() => {
+    if (searchOpen) searchWrapRef.current?.querySelector("input")?.focus();
+  }, [searchOpen]);
+
   return (
-    <div className="toolbar">
+    <div className={`toolbar${searchOpen ? " toolbar--search-open" : ""}`}>
       <Tooltip description="Reset to the default view">
         <button
           type="button"
@@ -139,14 +167,32 @@ export default function Toolbar({
           {tagsVisible ? <EyeIcon /> : <EyeOffIcon />}
         </button>
       </Tooltip>
-      <SearchBar
-        query={searchQuery}
-        onQueryChange={onQueryChange}
-        results={searchResults}
-        isolatedKeys={isolatedKeys}
-        onToggleIsolate={onToggleIsolate}
-        onClearIsolation={onClearIsolation}
-      />
+      <button
+        type="button"
+        className={`top-bar__icon-button toolbar__mobile-only${searchOpen ? " top-bar__icon-button--active" : ""}`}
+        onClick={() => setSearchOpen((v) => !v)}
+        aria-label="Search elements"
+      >
+        <SearchIcon />
+      </button>
+      <button
+        type="button"
+        className={`top-bar__icon-button toolbar__mobile-only${panelOpen ? " top-bar__icon-button--active" : ""}`}
+        onClick={onTogglePanel}
+        aria-label="Element info, measurements and dimensions"
+      >
+        <PanelIcon />
+      </button>
+      <div className="toolbar__search" ref={searchWrapRef}>
+        <SearchBar
+          query={searchQuery}
+          onQueryChange={onQueryChange}
+          results={searchResults}
+          isolatedKeys={isolatedKeys}
+          onToggleIsolate={onToggleIsolate}
+          onClearIsolation={onClearIsolation}
+        />
+      </div>
       <ShortcutsHelp />
     </div>
   );

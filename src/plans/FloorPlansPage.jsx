@@ -10,7 +10,8 @@ const KIND_STYLE = {
   other: { color: "#8a8172", width: 1 },
 };
 const FLOOR_MATCH_M = 0.25;
-const PIN_HIT_PX = 16;
+const isCoarsePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+const isPhoneLayout = () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
 const CLICK_SLOP_PX = 6;
 
 export default function FloorPlansPage({
@@ -30,6 +31,7 @@ export default function FloorPlansPage({
   const [fix, setFix] = useState(null); // { lat, lon, accuracy, t }
   const [geoError, setGeoError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [calibration, setCalibration] = useState({ points: [], northDeg: null, floorKey: null });
 
   const canvasRef = useRef(null);
@@ -185,6 +187,7 @@ export default function FloorPlansPage({
     }
 
     // case pins
+    const pinRadius = isCoarsePointer() ? 15 : 12;
     for (const c of floorCases) {
       const x = sx(c.plan[0]);
       const y = sy(c.plan[1]);
@@ -192,11 +195,11 @@ export default function FloorPlansPage({
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x, y, 12, 0, Math.PI * 2);
+      ctx.arc(x, y, pinRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = "#fff";
-      ctx.font = "600 12px sans-serif";
+      ctx.font = `600 ${pinRadius}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(caseNumber.get(c.id) ?? ""), x, y + 0.5);
@@ -251,14 +254,15 @@ export default function FloorPlansPage({
     const nice = [0.5, 1, 2, 5, 10, 20, 50, 100].find((m) => m * scale >= 70) ?? 100;
     ctx.strokeStyle = "#2a2622";
     ctx.lineWidth = 2;
+    const barY = h - (isPhoneLayout() ? 84 : 20);
     ctx.beginPath();
-    ctx.moveTo(16, h - 20);
-    ctx.lineTo(16 + nice * scale, h - 20);
+    ctx.moveTo(16, barY);
+    ctx.lineTo(16 + nice * scale, barY);
     ctx.stroke();
     ctx.fillStyle = "#2a2622";
     ctx.font = "12px sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(`${nice} m`, 16, h - 28);
+    ctx.fillText(`${nice} m`, 16, barY - 8);
   };
   // redraw after every render (all drawn inputs live in this render's closure)
   useEffect(() => {
@@ -302,7 +306,7 @@ export default function FloorPlansPage({
     for (const c of floorCases) {
       const px = rect.width / 2 + (c.plan[0] - cx) * scale;
       const py = rect.height / 2 - (c.plan[1] - cy) * scale;
-      if (Math.hypot(clientX - rect.left - px, clientY - rect.top - py) <= PIN_HIT_PX) {
+      if (Math.hypot(clientX - rect.left - px, clientY - rect.top - py) <= (isCoarsePointer() ? 28 : 16)) {
         onOpenCase(c.id);
         return;
       }
@@ -408,7 +412,7 @@ export default function FloorPlansPage({
 
   return (
     <div className="plans" ref={wrapRef}>
-      <div className="plans__bar">
+      <div className={`plans__bar${settingsOpen ? " plans__bar--settings-open" : ""}`}>
         <select
           className="plans__select"
           value={floor?.key ?? ""}
@@ -423,87 +427,97 @@ export default function FloorPlansPage({
           ))}
         </select>
 
-        <label className="plans__cut" title="Height above the floor where the plan is cut">
-          Cut {effectiveCut.toFixed(1)} m
-          <input
-            type="range"
-            min="0.3"
-            max={maxCut}
-            step="0.1"
-            value={effectiveCut}
-            disabled={!hasFloors}
-            onChange={(e) => setCutHeight(Number(e.target.value))}
-          />
-        </label>
-
         <button type="button" className="plans__btn" onClick={fitToFloor} disabled={!hasFloors}>
           Fit
         </button>
+        <button
+          type="button"
+          className={`plans__btn plans__settings-toggle${settingsOpen ? " plans__btn--active" : ""}`}
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((v) => !v)}
+        >
+          Settings
+        </button>
+
+        <div className="plans__settings">
+          <label className="plans__cut" title="Height above the floor where the plan is cut">
+            Cut {effectiveCut.toFixed(1)} m
+            <input
+              type="range"
+              min="0.3"
+              max={maxCut}
+              step="0.1"
+              value={effectiveCut}
+              disabled={!hasFloors}
+              onChange={(e) => setCutHeight(Number(e.target.value))}
+            />
+          </label>
+          <label className="plans__north" title="Bearing of the plan's up direction, clockwise from true north. Read from the IFC when available.">
+            Plan north
+            <input
+              type="number"
+              inputMode="decimal"
+              step="1"
+              value={Math.round(northFallback * 10) / 10}
+              onChange={(e) => updateCalibration({ ...calibration, northDeg: e.target.value === "" ? null : Number(e.target.value) })}
+            />
+            °
+          </label>
+        </div>
 
         <span className="plans__sep" />
 
-        <button
-          type="button"
-          className={`plans__btn${mode === "addCase" ? " plans__btn--active" : ""}`}
-          disabled={!hasFloors}
-          onClick={() => {
-            setNotice(null);
-            setMode((m) => (m === "addCase" ? "none" : "addCase"));
-          }}
-        >
-          + Case
-        </button>
-        <button
-          type="button"
-          className="plans__btn"
-          disabled={!userPlan || !userOnThisFloor}
-          title={userPlan && userOnThisFloor ? "Create a case at your GPS position" : "Needs GPS tracking, a set position and this floor selected as yours"}
-          onClick={addCaseAtMyLocation}
-        >
-          + Case here
-        </button>
-
-        <span className="plans__sep" />
-
-        <button
-          type="button"
-          className={`plans__btn${tracking ? " plans__btn--active" : ""}`}
-          onClick={() => setTracking((t) => !t)}
-          disabled={!hasFloors}
-        >
-          {tracking ? "GPS on" : "GPS off"}
-        </button>
-        <button
-          type="button"
-          className={`plans__btn${mode === "calibrate" ? " plans__btn--active" : ""}`}
-          disabled={!hasFloors || !tracking}
-          title="Stand somewhere you can identify on the plan, then tap that spot"
-          onClick={() => {
-            setNotice(null);
-            setMode((m) => (m === "calibrate" ? "none" : "calibrate"));
-          }}
-        >
-          Set my position
-        </button>
-        {calibrated && floor && calibration.floorKey !== floor.key && (
+        <div className="plans__actions">
+          <button
+            type="button"
+            className={`plans__btn${mode === "addCase" ? " plans__btn--active" : ""}`}
+            disabled={!hasFloors}
+            onClick={() => {
+              setNotice(null);
+              setMode((m) => (m === "addCase" ? "none" : "addCase"));
+            }}
+          >
+            + Case
+          </button>
           <button
             type="button"
             className="plans__btn"
-            onClick={() => updateCalibration({ ...calibration, floorKey: floor.key })}
+            disabled={!userPlan || !userOnThisFloor}
+            title={userPlan && userOnThisFloor ? "Create a case at your GPS position" : "Needs GPS tracking, a set position and this floor selected as yours"}
+            onClick={addCaseAtMyLocation}
           >
-            I&rsquo;m on this floor
+            + Case here
           </button>
-        )}
-        <label className="plans__north" title="Bearing of the plan's up direction, clockwise from true north. Read from the IFC when available.">
-          Plan north
-          <input
-            type="number"
-            step="1"
-            value={Math.round(northFallback * 10) / 10}
-            onChange={(e) => updateCalibration({ ...calibration, northDeg: e.target.value === "" ? null : Number(e.target.value) })}
-          />
-          °
-        </label>
+          <button
+            type="button"
+            className={`plans__btn${tracking ? " plans__btn--active" : ""}`}
+            onClick={() => setTracking((t) => !t)}
+            disabled={!hasFloors}
+          >
+            {tracking ? "GPS on" : "GPS off"}
+          </button>
+          <button
+            type="button"
+            className={`plans__btn${mode === "calibrate" ? " plans__btn--active" : ""}`}
+            disabled={!hasFloors || !tracking}
+            title="Stand somewhere you can identify on the plan, then tap that spot"
+            onClick={() => {
+              setNotice(null);
+              setMode((m) => (m === "calibrate" ? "none" : "calibrate"));
+            }}
+          >
+            Set position
+          </button>
+          {calibrated && floor && calibration.floorKey !== floor.key && (
+            <button
+              type="button"
+              className="plans__btn plans__btn--active"
+              onClick={() => updateCalibration({ ...calibration, floorKey: floor.key })}
+            >
+              I&rsquo;m on this floor
+            </button>
+          )}
+        </div>
       </div>
 
       {(hint || geoError) && (

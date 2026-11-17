@@ -20,3 +20,18 @@ body {
   color: #2a2622;
   overscroll-behavior: none;
 }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Removes the 300ms double-tap-zoom delay on every control. */
+button,
+a,
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
+}

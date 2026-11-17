@@ -44,9 +44,12 @@
   --text-muted: var(--ink-muted);
   --text-faint: var(--ink-faint);
   --header-height: 52px;
+  /* Height of the phone bottom tab bar; 0 on desktop (bar is hidden). */
+  --bottom-nav-h: 0px;
 }
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -1536,7 +1539,7 @@
   left: 0;
   right: 0;
   top: var(--header-height);
-  bottom: 0;
+  bottom: var(--bottom-nav-h);
   visibility: hidden;
   pointer-events: none;
 }
@@ -1556,7 +1559,7 @@
   left: 0;
   right: 0;
   top: var(--header-height);
-  bottom: 0;
+  bottom: var(--bottom-nav-h);
   visibility: hidden;
   pointer-events: none;
 }
@@ -2048,6 +2051,417 @@
 
 @media (max-width: 700px) {
   .header__title {
+    display: none;
+  }
+}
+
+
+/* ---------- Touch devices ---------- */
+
+.viewport canvas {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Hover tooltips just stick after a tap on touch screens. */
+@media (hover: none) {
+  .tooltip__box {
+    display: none !important;
+  }
+  .shortcuts-help {
+    display: none;
+  }
+}
+
+.bottom-nav,
+.toolbar__mobile-only,
+.plans__settings-toggle {
+  display: none;
+}
+
+.toolbar__search {
+  display: contents;
+}
+
+.plans__settings,
+.plans__actions {
+  display: contents;
+}
+
+/* ---------- Phone layout ---------- */
+
+@media (max-width: 768px) {
+  :root {
+    --bottom-nav-h: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Header: just menu + logo; pages move to the bottom tab bar. */
+  .header {
+    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  }
+  .header__pages {
+    display: none;
+  }
+  .menu-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .bottom-nav {
+    display: flex;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 45;
+    height: var(--bottom-nav-h);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--bg);
+    border-top: 1px solid var(--border-strong);
+  }
+  .bottom-nav__item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .bottom-nav__item--active {
+    color: var(--accent);
+  }
+  .bottom-nav__icon {
+    position: relative;
+    display: flex;
+  }
+  .bottom-nav__icon svg {
+    width: 24px;
+    height: 24px;
+  }
+  .bottom-nav__badge {
+    position: absolute;
+    top: -4px;
+    left: 100%;
+    margin-left: -6px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+    font-size: 10px;
+    padding: 0 5px;
+    line-height: 15px;
+  }
+
+  /* Drawers and sheets stop above the bottom bar. */
+  .sidebar,
+  .sidebar-backdrop {
+    bottom: var(--bottom-nav-h);
+    top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  }
+  .sidebar {
+    width: min(88vw, 340px);
+    max-width: 340px;
+  }
+  .sidebar .sidebar__add-button,
+  .sidebar .sidebar__save-button,
+  .sidebar .sidebar__reset-visibility-button {
+    min-height: 44px;
+  }
+
+  /* 3D toolbar: bigger touch targets, search behind a button. */
+  .toolbar {
+    height: auto;
+    min-height: var(--header-height);
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 5px 8px;
+  }
+  .toolbar .top-bar__icon-button {
+    width: 42px;
+    height: 42px;
+  }
+  .toolbar .top-bar__home-button {
+    height: 42px;
+    padding: 0 10px;
+  }
+  .toolbar__mobile-only {
+    display: flex;
+  }
+  .toolbar__search {
+    display: none;
+    order: 10;
+    flex-basis: 100%;
+  }
+  .toolbar--search-open .toolbar__search {
+    display: block;
+  }
+  .search-bar {
+    width: 100%;
+    margin-left: 0;
+  }
+  .search-bar__input {
+    font-size: 16px; /* >= 16px stops iOS zooming the page on focus */
+    padding: 12px;
+  }
+  .camera-clip-popover {
+    width: min(86vw, 280px);
+  }
+  .context-menu button {
+    min-height: 44px;
+  }
+
+  /* Info / measurements / dimensions: bottom sheet instead of a side panel. */
+  .element-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: var(--bottom-nav-h);
+    width: auto;
+    max-width: none;
+    height: min(58dvh, 520px);
+    border-left: none;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 28px rgba(42, 38, 34, 0.18);
+    z-index: 44;
+    transform: translateY(calc(100% + var(--bottom-nav-h)));
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+  .element-panel--open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.22s ease;
+  }
+  .element-panel__tabbar {
+    min-height: 48px;
+  }
+  .element-panel__tab {
+    font-size: 13px;
+    min-height: 44px;
+  }
+  .element-panel__close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .element-panel__body {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .compass {
+    left: 10px;
+    bottom: 10px;
+    transform: scale(0.85);
+    transform-origin: bottom left;
+  }
+
+  /* ----- Plans ----- */
+  .plans__bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+  }
+  .plans__select {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .plans__btn {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  .plans__settings-toggle {
+    display: block;
+  }
+  .plans__settings {
+    display: none;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 4px 2px 2px;
+  }
+  .plans__bar--settings-open .plans__settings {
+    display: flex;
+  }
+  .plans__cut {
+    flex: 1 1 200px;
+  }
+  .plans__cut input {
+    flex: 1;
+    width: auto;
+    min-height: 32px;
+  }
+  .plans__north input {
+    font-size: 16px;
+    min-height: 40px;
+  }
+  .plans__sep {
+    display: none;
+  }
+  /* Main actions float at the bottom edge, within thumb reach. */
+  .plans__actions {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 10px;
+    z-index: 6;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 6px;
+  }
+  .plans__actions .plans__btn {
+    min-height: 48px;
+    padding: 0 4px;
+    font-size: 13px;
+    background-color: var(--bg);
+    box-shadow: var(--shadow-sm);
+  }
+  .plans__actions .plans__btn--active {
+    background-color: var(--accent);
+  }
+  .plans__hint {
+    top: 70px;
+    font-size: 14px;
+  }
+  .plans__gps {
+    bottom: 72px;
+  }
+  .plans__empty {
+    inset: 60px 0 0 0;
+  }
+
+  /* ----- Photos ----- */
+  .case-overview__bar {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .case-overview__filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 100%;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .case-overview__filters .discipline-chip {
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+  .case-overview__body {
+    padding: 10px;
+  }
+  .case-overview__grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .case-lightbox {
+    padding: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    background: rgba(20, 18, 16, 0.96);
+  }
+  .case-lightbox__content {
+    max-width: 100%;
+    width: 100%;
+    flex: 1;
+    gap: 0;
+    justify-content: space-between;
+  }
+  .case-lightbox__img {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-height: none;
+    border-radius: 0;
+    touch-action: pan-y pinch-zoom;
+  }
+  .case-lightbox__info {
+    border-radius: 14px 14px 0 0;
+    max-height: 38dvh;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .case-lightbox__actions .confirm-dialog__confirm,
+  .case-lightbox__actions .confirm-dialog__cancel {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+  .case-lightbox__nav {
+    position: absolute;
+    top: 38%;
+    z-index: 2;
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.7);
+  }
+  .case-lightbox__nav--prev {
+    left: 8px;
+  }
+  .case-lightbox__nav--next {
+    right: 8px;
+  }
+
+  /* ----- Dialogs / case editor ----- */
+  .confirm-dialog__cancel,
+  .confirm-dialog__confirm {
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  .case-editor {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .case-editor__input {
+    font-size: 16px;
+    padding: 12px;
+  }
+  .discipline-chip {
+    min-height: 44px;
+    padding: 0 18px;
+  }
+  .case-editor__photo {
+    width: 96px;
+    height: 96px;
+  }
+  .case-editor__photo button {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+  .case-editor__add-photo {
+    width: 96px;
+    height: 96px;
+    font-size: 13px;
+  }
+  .case-editor__buttons {
+    position: sticky;
+    bottom: calc(-12px - env(safe-area-inset-bottom, 0px));
+    margin-top: auto;
+    padding: 12px 0 0;
+    background: var(--bg);
+  }
+  .case-editor__delete {
+    min-height: 44px;
+  }
+}
+
+@media (hover: none) {
+  .case-editor__hint {
     display: none;
   }
 }

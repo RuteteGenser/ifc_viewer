@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { blobUrl, DISCIPLINES } from "./caseStore";
 import { DISCIPLINE_COLORS } from "./disciplines";
 
@@ -41,6 +41,17 @@ export default function CaseOverview({ cases, onShowOnPlan, onEdit }) {
   );
 
   const current = openIndex !== null ? shown[openIndex] : null;
+  const swipeStartRef = useRef(null);
+  const onSwipeEnd = (e) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      setOpenIndex((i) => Math.min(Math.max(i + (dx < 0 ? 1 : -1), 0), shown.length - 1));
+    }
+  };
 
   useEffect(() => {
     const onKey = (e) => {
@@ -119,7 +130,19 @@ export default function CaseOverview({ cases, onShowOnPlan, onEdit }) {
             ‹
           </button>
           <div className="case-lightbox__content">
-            <img className="case-lightbox__img" src={blobUrl(current.photo.blob)} alt={current.photo.name} />
+            <img
+              className="case-lightbox__img"
+              src={blobUrl(current.photo.blob)}
+              alt={current.photo.name}
+              draggable={false}
+              onPointerDown={(e) => {
+                swipeStartRef.current = { x: e.clientX, y: e.clientY };
+              }}
+              onPointerUp={onSwipeEnd}
+              onPointerCancel={() => {
+                swipeStartRef.current = null;
+              }}
+            />
             <div className="case-lightbox__info">
               <div className="case-lightbox__head">
                 <strong>{current.c.title}</strong>

@@ -18,6 +18,7 @@ function TabUnderline() {
 }
 
 export default function RightPanel({
+  open,
   activeTab,
   onTabChange,
   onClose,
@@ -30,7 +31,7 @@ export default function RightPanel({
   onClearAllDimensionPins,
 }) {
   return (
-    <aside className="element-panel">
+    <aside className={`element-panel${open ? " element-panel--open" : ""}`}>
       <div className="element-panel__tabbar">
         <button
           type="button"

@@ -12,6 +12,7 @@ export default function CaseEditor({ initial, onSave, onCancel, onDelete }) {
   const [localError, setLocalError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const initialPhotoIds = useRef(new Set((initial.photos ?? []).map((p) => p.id)));
   const photosRef = useRef(photos);
   photosRef.current = photos;
@@ -155,9 +156,23 @@ export default function CaseEditor({ initial, onSave, onCancel, onDelete }) {
               </button>
             </div>
           ))}
-          <button type="button" className="case-editor__add-photo" onClick={() => fileInputRef.current?.click()} disabled={busy}>
-            {busy ? "Adding…" : "+ Add photos"}
+          <button type="button" className="case-editor__add-photo case-editor__add-camera" onClick={() => cameraInputRef.current?.click()} disabled={busy}>
+            {busy ? "Adding…" : "📷 Take photo"}
           </button>
+          <button type="button" className="case-editor__add-photo" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+            + From library
+          </button>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
           <input
             ref={fileInputRef}
             type="file"

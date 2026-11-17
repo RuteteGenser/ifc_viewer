@@ -10,7 +10,8 @@ import RightPanel from "./components/RightPanel";
 import MeasureDeleteButton from "./components/MeasureDeleteButton";
 import MeasureLegEditPopup from "./components/MeasureLegEditPopup";
 import ConfirmDialog from "./components/ConfirmDialog";
-import Header from "./components/Header";
+import Header, { BottomNav } from "./components/Header";
+import { useLongPressContextMenu } from "./hooks/useLongPressContextMenu";
 import Toolbar from "./components/Toolbar";
 import Compass from "./components/Compass";
 import FloorPlansPage from "./plans/FloorPlansPage";
@@ -95,10 +96,13 @@ function App() {
     clearAllDimensionPins,
   } = useIfcViewer();
 
+  useLongPressContextMenu(containerRef);
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeRightTab, setActiveRightTab] = useState("info");
   const [page, setPage] = useState("3d"); // "3d" | "plans" | "photos"
+  // Phones show the right panel as a bottom sheet; on desktop it is always visible.
+  const [infoSheetOpen, setInfoSheetOpen] = useState(false);
   const [caseError, setCaseError] = useState(null);
   const [caseDraft, setCaseDraft] = useState(null); // case being created/edited in the editor
   const [caseToDelete, setCaseToDelete] = useState(null);
@@ -118,6 +122,7 @@ function App() {
     const guid = selectedElement?.guid ?? null;
     if (guid && guid !== lastAutoSwitchGuidRef.current) {
       setActiveRightTab("info");
+      setInfoSheetOpen(true);
     }
     lastAutoSwitchGuidRef.current = guid;
   }, [selectedElement?.guid]);
@@ -229,6 +234,8 @@ function App() {
             isolatedKeys={isolatedKeys}
             onToggleIsolate={toggleIsolate}
             onClearIsolation={clearIsolation}
+            panelOpen={infoSheetOpen}
+            onTogglePanel={() => setInfoSheetOpen((open) => !open)}
           />
           <Compass
             angleDeg={compassAngleDeg}
@@ -256,9 +263,13 @@ function App() {
         )}
 
         <RightPanel
+          open={infoSheetOpen}
           activeTab={activeRightTab}
           onTabChange={setActiveRightTab}
-          onClose={clearSelection}
+          onClose={() => {
+            clearSelection();
+            setInfoSheetOpen(false);
+          }}
           element={selectedElement}
           loading={selectedElementLoading}
           measurements={measurements}
@@ -331,6 +342,8 @@ function App() {
           />
         </div>
       )}
+
+      <BottomNav page={page} onPageChange={setPage} photoCount={photoCount} />
 
       {caseDraft && (
         <CaseEditor

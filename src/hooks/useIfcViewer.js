@@ -4231,6 +4231,16 @@ export function useIfcViewer() {
     requestRenderRef.current();
   }, []);
 
+  // Original IFC bytes of every loaded model, for the 2D floor-plan page
+  // (src/plans/), which opens its own raw web-ifc handle per model.
+  const getModelSources = useCallback(
+    () =>
+      [...modelsRef.current.entries()]
+        .map(([id, entry]) => ({ id, name: modelNamesRef.current.get(id) ?? String(id), bytes: entry.sourceBytes }))
+        .filter((s) => s.bytes),
+    [],
+  );
+
   const clearError = useCallback(() => setError(null), []);
   const clearSelection = useCallback(() => {
     clearHighlightRef.current?.();
@@ -4240,6 +4250,7 @@ export function useIfcViewer() {
 
   return {
     containerRef,
+    getModelSources,
     models,
     isLoading,
     loadingLabel,

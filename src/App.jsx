@@ -13,6 +13,11 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import Header from "./components/Header";
 import Toolbar from "./components/Toolbar";
 import Compass from "./components/Compass";
+import FloorPlansPage from "./plans/FloorPlansPage";
+import { usePlans } from "./plans/usePlans";
+import CaseEditor from "./cases/CaseEditor";
+import CaseOverview from "./cases/CaseOverview";
+import { useCases } from "./cases/useCases";
 import "./App.css";
 
 // Matches the colors already used for each leg in the 3D dogleg
@@ -28,6 +33,7 @@ const MEASURE_LEG_META = {
 function App() {
   const {
     containerRef,
+    getModelSources,
     models,
     isLoading,
     loadingLabel,
@@ -92,6 +98,15 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeRightTab, setActiveRightTab] = useState("info");
+  const [page, setPage] = useState("3d"); // "3d" | "plans" | "photos"
+  const [caseError, setCaseError] = useState(null);
+  const [caseDraft, setCaseDraft] = useState(null); // case being created/edited in the editor
+  const [caseToDelete, setCaseToDelete] = useState(null);
+  const [focusRequest, setFocusRequest] = useState(null); // { caseId, nonce } — Photos -> Plans
+  const handleCaseError = useCallback((msg) => setCaseError(msg), []);
+  const { cases, upsertCase, removeCase } = useCases({ onError: handleCaseError });
+  const plans = usePlans({ active: page === "plans", models, getModelSources });
+  const photoCount = cases.reduce((n, c) => n + c.photos.length, 0);
   const dragDepthRef = useRef(0);
   const lastAutoSwitchGuidRef = useRef(null);
 
@@ -140,9 +155,14 @@ function App() {
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        page={page}
+        onPageChange={setPage}
+        photoCount={photoCount}
       />
 
-      <div className="app-body">
+      {/* The 3D viewer stays mounted (just hidden) on the other pages so its
+          WebGL scene, loaded models and camera survive page switches. */}
+      <div className={`app-body${page === "3d" ? "" : " app-body--hidden"}`}>
         {sidebarOpen && (
           <button
             type="button"
@@ -216,7 +236,13 @@ function App() {
             onOffsetChange={setNorthOffset}
             disabled={models.length === 0}
           />
-          <StatusBanner error={error} onDismissError={clearError} />
+          <StatusBanner
+            error={error || caseError}
+            onDismissError={() => {
+              clearError();
+              setCaseError(null);
+            }}
+          />
         </div>
 
         {contextMenu && (
@@ -280,6 +306,60 @@ function App() {
           />
         )}
       </div>
+
+      <div className={`page${page === "plans" ? "" : " page--hidden"}`}>
+        <FloorPlansPage
+          active={page === "plans"}
+          hasModels={models.length > 0}
+          plans={plans}
+          cases={cases}
+          focusRequest={focusRequest}
+          onCreateCase={(loc) => setCaseDraft({ title: "", summary: "", disciplines: [], photos: [], ...loc })}
+          onOpenCase={(id) => setCaseDraft(cases.find((c) => c.id === id) ?? null)}
+        />
+      </div>
+
+      {page === "photos" && (
+        <div className="page">
+          <CaseOverview
+            cases={cases}
+            onEdit={(c) => setCaseDraft(c)}
+            onShowOnPlan={(c) => {
+              setFocusRequest({ caseId: c.id, nonce: Date.now() });
+              setPage("plans");
+            }}
+          />
+        </div>
+      )}
+
+      {caseDraft && (
+        <CaseEditor
+          key={caseDraft.id ?? "new"}
+          initial={caseDraft}
+          onSave={async (record) => {
+            const saved = await upsertCase(record);
+            if (saved) setCaseDraft(null);
+            return saved;
+          }}
+          onCancel={() => setCaseDraft(null)}
+          onDelete={(id) => setCaseToDelete(id)}
+        />
+      )}
+
+      {caseToDelete && (
+        <ConfirmDialog
+          title="Delete case?"
+          message="This removes the case and all of its photos from this browser. It cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Keep"
+          onConfirm={async () => {
+            await removeCase(caseToDelete);
+            setCaseToDelete(null);
+            setCaseDraft(null);
+          }}
+          onCancel={() => setCaseToDelete(null)}
+        />
+      )}
     </div>
   );
 }
